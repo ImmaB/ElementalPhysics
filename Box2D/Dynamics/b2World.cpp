@@ -973,14 +973,35 @@ void b2World::SolveTOI(const b2TimeStep& step)
 	}
 }
 
-void b2World::Step(
-	float32 dt,
+void b2World::SetStepParams(float32 dt,
 	int32 velocityIterations,
 	int32 positionIterations,
 	int32 particleIterations)
 {
-	b2Timer stepTimer;
+	m_step.dt = dt; 
+	if (dt > 0.0f)
+	{
+		m_step.inv_dt = 1.0f / dt;
+	}
+	else
+	{
+		m_step.inv_dt = 0.0f;
+	}
+	m_step.dtRatio = m_inv_dt0 * dt;
+	m_step.warmStarting = m_warmStarting;
+	m_step.velocityIterations = velocityIterations;
+	m_step.positionIterations = positionIterations;
+	m_step.particleIterations = particleIterations;
 
+	// Set Particle System m_step
+	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
+	{
+		p->SetStep(m_step);
+	}
+}
+
+void b2World::StepPreParticle()
+{
 	// If new fixtures were added, we need to find the new contacts.
 	if (m_flags & e_newFixture)
 	{
@@ -990,54 +1011,30 @@ void b2World::Step(
 
 	m_flags |= e_locked;
 
-	b2TimeStep step;
-	step.dt = dt;
-	step.velocityIterations	= velocityIterations;
-	step.positionIterations = positionIterations;
-	step.particleIterations = particleIterations;
-	if (dt > 0.0f)
-	{
-		step.inv_dt = 1.0f / dt;
-	}
-	else
-	{
-		step.inv_dt = 0.0f;
-	}
-
-	step.dtRatio = m_inv_dt0 * dt;
-
-	step.warmStarting = m_warmStarting;
-
 	// Update contacts. This is where some contacts are destroyed.
 	{
 		b2Timer timer;
 		m_contactManager.Collide();
 		m_profile.collide = timer.GetMilliseconds();
 	}
+}
 
-	// Integrate velocities, solve velocity constraints, and integrate positions.
-	if (m_stepComplete && step.dt > 0.0f)
-	{
-		b2Timer timer;
-		for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-		{
-			p->Solve(step); // Particle Simulation
-		}
-		Solve(step);
-		m_profile.solve = timer.GetMilliseconds();
-	}
+void b2World::StepPostParticle()
+{
+	if (m_stepComplete && m_step.dt > 0.0f)
+		Solve(m_step);
 
 	// Handle TOI events.
-	if (m_continuousPhysics && step.dt > 0.0f)
+	if (m_continuousPhysics && m_step.dt > 0.0f)
 	{
 		b2Timer timer;
-		SolveTOI(step);
+		SolveTOI(m_step);
 		m_profile.solveTOI = timer.GetMilliseconds();
 	}
 
-	if (step.dt > 0.0f)
+	if (m_step.dt > 0.0f)
 	{
-		m_inv_dt0 = step.inv_dt;
+		m_inv_dt0 = m_step.inv_dt;
 	}
 
 	if (m_flags & e_clearForces)
@@ -1046,8 +1043,6 @@ void b2World::Step(
 	}
 
 	m_flags &= ~e_locked;
-
-	m_profile.step = stepTimer.GetMilliseconds();
 }
 
 void b2World::ClearForces()
@@ -1248,15 +1243,16 @@ void b2World::DrawParticleSystem(const b2ParticleSystem& system)
 	if (particleCount)
 	{
 		float32 radius = system.GetRadius();
-		const b2Vec2* positionBuffer = system.GetPositionBuffer();
-		if (system.m_colorBuffer.data)
+		const float32* posXBuf = system.GetPositionXBuffer();
+		const float32* posYBuf = system.GetPositionYBuffer();
+		if (system.m_colorBuffer.data())
 		{
 			const b2ParticleColor* colorBuffer = system.GetColorBuffer();
-			m_debugDraw->DrawParticles(positionBuffer, radius, colorBuffer, particleCount);
+			m_debugDraw->DrawParticles(posXBuf, posYBuf, radius, colorBuffer, particleCount);
 		}
 		else
 		{
-			m_debugDraw->DrawParticles(positionBuffer, radius, NULL, particleCount);
+			m_debugDraw->DrawParticles(posXBuf, posYBuf, radius, NULL, particleCount);
 		}
 	}
 }
@@ -1498,46 +1494,6 @@ void b2World::Dump()
 	b2Log("joints = NULL;\n");
 	b2Log("bodies = NULL;\n");
 }
-
-b2ParticleMaterial* b2World::AddParticleMaterial(b2ParticleMaterialDef def)
-{
-	void* mem = m_blockAllocator.Allocate(sizeof(b2ParticleMaterial));
-	b2ParticleMaterial* matPtr = new (mem) b2ParticleMaterial(def);
-
-	if (m_particleMaterialList)
-		m_particleMaterialList->m_prev = matPtr;
-	m_particleMaterialList = matPtr;
-
-	m_allMaterialFlags |= def.matFlags;
-
-	return matPtr;
-}
-
-void b2World::DestroyParticleMaterial(b2ParticleMaterial* mat)
-{
-	b2Assert(mat);
-
-	if (m_destructionListener)
-	{
-		m_destructionListener->SayGoodbye(mat);
-	}
-	if (mat->m_prev)
-	{
-		mat->m_prev->m_next = mat->m_next;
-	}
-	if (mat->m_next)
-	{
-		mat->m_next->m_prev = mat->m_prev;
-	}
-	if (mat == m_particleMaterialList)
-	{
-		m_particleMaterialList = mat->m_next;
-	}
-
-	mat->~b2ParticleMaterial();
-	m_blockAllocator.Free(mat, sizeof(b2ParticleMaterial));
-}
-
 
 
 b2BodyMaterial* b2World::AddBodyMaterial(b2BodyMaterialDef def)

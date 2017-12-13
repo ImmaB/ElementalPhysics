@@ -99,6 +99,11 @@ public:
 	/// @warning This function is locked during callbacks.
 	void DestroyParticleSystem(b2ParticleSystem* p);
 
+	void SetStepParams(	float32 timeStep,
+						int32 velocityIterations,
+						int32 positionIterations,
+						int32 particleIterations);
+
 	/// Take a time step. This performs collision detection, integration,
 	/// and constraint solution.
 	/// For the numerical stability of particles, minimize the following
@@ -111,22 +116,10 @@ public:
 	/// @param velocityIterations for the velocity constraint solver.
 	/// @param positionIterations for the position constraint solver.
 	/// @param particleIterations for the particle simulation.
-	void Step(	float32 timeStep,
-				int32 velocityIterations,
-				int32 positionIterations,
-				int32 particleIterations);
+	void Step();
 
-	/// Take a time step. This performs collision detection, integration,
-	/// and constraint solution.
-	/// @param timeStep the amount of time to simulate, this should not vary.
-	/// @param velocityIterations for the velocity constraint solver.
-	/// @param positionIterations for the position constraint solver.
-	void Step(	float32 timeStep,
-				int32 velocityIterations,
-				int32 positionIterations)
-	{
-		Step(timeStep, velocityIterations, positionIterations, 1);
-	}
+	void StepPreParticle();
+	void StepPostParticle();
 
 	/// Recommend a value to be used in `Step` for `particleIterations`.
 	/// This calculation is necessarily a simplification and should only be
@@ -270,12 +263,10 @@ public:
 
 	int32 m_allMaterialFlags;
 
-	b2ParticleMaterial* AddParticleMaterial(b2ParticleMaterialDef def);
-	void DestroyParticleMaterial(b2ParticleMaterial* mat);
-
 	b2BodyMaterial* AddBodyMaterial(b2BodyMaterialDef def);
 	void DestroyBodyMaterial(b2BodyMaterial* mat);
 
+	bool m_stepComplete;
 
 	/// Get API version.
 	const b2Version* GetVersion() const {
@@ -322,6 +313,8 @@ private:
 
 	void DrawParticleSystem(const b2ParticleSystem& system);
 
+	b2TimeStep m_step;
+
 	b2BlockAllocator m_blockAllocator;
 	b2StackAllocator m_stackAllocator;
 
@@ -351,7 +344,6 @@ private:
 	bool m_continuousPhysics;
 	bool m_subStepping;
 
-	bool m_stepComplete;
 
 	b2Profile m_profile;
 

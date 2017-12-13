@@ -5,5 +5,5 @@
 char* debugString = new char[64];
 
 // Use
-// snprintf(debugString, sizeof debugString, "%f", someFloat));
-// snprintf(debugString, sizeof debugString, "%d", someInt));
+// snprintf(debugString, 64, "%f", someFloat);
+// snprintf(debugString, 64, "%d", someInt);

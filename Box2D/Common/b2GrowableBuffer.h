@@ -19,8 +19,8 @@
 #define B2_GROWABLE_BUFFER_H
 
 #include <Box2D/Common/b2BlockAllocator.h>
-#include <string>
-#include <memory>
+#include <string.h>
+#include <memory.h>
 #include <algorithm>
 
 
@@ -95,7 +95,7 @@ public:
 	{
 		// Double the capacity.
 		int32 newCapacity = capacity ? 2 * capacity
-						  : b2_minParticleSystemBufferCapacity;
+						  : b2_minParticleBufferCapacity;
 		b2Assert(newCapacity > capacity);
 		Reserve(newCapacity);
 	}

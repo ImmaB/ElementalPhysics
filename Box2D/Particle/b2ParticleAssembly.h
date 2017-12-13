@@ -33,7 +33,8 @@ struct FindContactCheck
 struct FindContactInput
 {
     uint32 proxyIndex;
-    b2Vec2 position;
+	float32 positionX;
+	float32 positionY;
 };
 
 enum { NUM_V32_SLOTS = 4 };

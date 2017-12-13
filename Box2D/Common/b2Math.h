@@ -21,6 +21,7 @@
 
 #include <Box2D/Common/b2Settings.h>
 #include <math.h>
+#include <arrayfire.h>
 
 /// This function is used to ensure that a floating point number is not a NaN or infinity.
 inline bool b2IsValid(float32 x)
@@ -415,6 +416,7 @@ struct b2Transform
 
 	/// Initialize using a position vector and a rotation.
 	b2Transform(const b2Vec2& position, const b2Rot& rotation) : p(position), q(rotation) {}
+	b2Transform(float32 posX, float32 posY, const b2Rot& rotation) : p(b2Vec2(posX, posY)), q(rotation) {}
 
 	/// Set this to the identity transform.
 	void SetIdentity()
@@ -482,11 +484,19 @@ inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b)
 {
 	return a.x * b.x + a.y * b.y;
 }
+inline float32 b2Dot(const float& ax, const float& ay, const float& bx, const float& by)
+{
+	return ax * bx + ay * by;
+}
 
 /// Perform the cross product on two vectors. In 2D this produces a scalar.
 inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b)
 {
 	return a.x * b.y - a.y * b.x;
+}
+inline float32 b2Cross(const float& ax, const float& ay, const float& bx, const float& by)
+{
+	return ax * by - ay * bx;
 }
 
 /// Perform the cross product on a vector and a scalar. In 2D this produces
@@ -660,6 +670,22 @@ inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec2& v)
 	float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y;
 
 	return b2Vec2(x, y);
+}
+inline float32 b2MulX(const b2Transform& T, float32 x, float32 y)
+{
+	return (T.q.c * x - T.q.s * y) + T.p.x;
+}
+inline float32 b2MulY(const b2Transform& T, float32 x, float32 y)
+{
+	return (T.q.s * x + T.q.c * y) + T.p.y;
+}
+inline af::array b2MulX(const b2Transform& T, const af::array& x, const af::array& y)
+{
+	return (T.q.c * x - T.q.s * y) + T.p.x;
+}
+inline af::array b2MulY(const b2Transform& T, const af::array& x, const af::array& y)
+{
+	return (T.q.s * x + T.q.c * y) + T.p.y;
 }
 
 inline b2Vec2 b2MulT(const b2Transform& T, const b2Vec2& v)

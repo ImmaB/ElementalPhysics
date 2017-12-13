@@ -54,9 +54,9 @@ public:
 	virtual void SayGoodbye(b2Fixture* fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
-	virtual void SayGoodbye(b2ParticleGroup* group)
+	virtual void SayGoodbye(int32 groupIdx)
 	{
-		B2_NOT_USED(group);
+		B2_NOT_USED(groupIdx);
 	}
 
 	/// Called when any particle material is about to be destroyed.

@@ -22,8 +22,10 @@
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <vector>
 
 #include <arrayfire.h>
+//#include <arrayfire.h>
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -53,6 +55,8 @@ struct b2AABB;
 struct FindContactInput;
 struct FindContactCheck;
 
+using namespace std;
+
 struct b2ParticleContact
 {
 private:
@@ -74,7 +78,7 @@ private:
 	/// 0.0f ==> particles are just barely touching
 	/// 1.0f ==> particles are perfectly on top of each other
 	float32 weight;
-	
+
 	float32 mass;
 
 	/// The normalized direction from A to B.
@@ -287,13 +291,44 @@ struct b2ParticleSystemDef
 	/// 2.27 years.
 	float32 lifetimeGranularity;
 };
+struct b2ParticleMaterialDef
+{
+	uint32 matFlags;
+	float32 mass;
+	float32 stability;
+	float32 extinguishingPoint;
+	float32 meltingPoint;
+	float32 boilingPoint;
+	float32 ignitionPoint;
+	float32 heatConductivity;
+};
 
 
 class b2ParticleSystem
 {
+private:
+	b2TimeStep m_step;
+	b2TimeStep subStep;
+
 public:
 	int MyIndex;
 	void SetIndex(int ind);
+
+	void SetStep(b2TimeStep step) 
+	{
+		m_step = step;
+	}
+
+	void SolveInit();
+	void SolveIterationPart1(int32 iteration);
+	void SolveIterationPart2();
+	void SolveIterationPart3();
+	void SolveIterationPart4();
+	void SolveIterationPart5();
+	void SolveEnd();
+
+	template <class T>
+	void CopyFromAFarrayToVector(const int32& count, af::array& afArray, std::vector<T>& vec);
 
 	/// Create a particle whose properties have been defined.
 	/// No reference to the definition is retained.
@@ -363,21 +398,70 @@ public:
 	int32 DestroyParticlesInShape(const b2Shape& shape, const b2Transform& xf,
 	                              bool callDestructionListener);
 
+	void FilterRealGroups();
+
+	int32 CreateParticleMaterial(const b2ParticleMaterialDef& def);
+
 	/// Create a particle group whose properties have been defined. No
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
-	b2ParticleGroup* CreateParticleGroup(const b2ParticleGroupDef& def);
+	int32 CreateParticleGroup(const b2ParticleGroupDef& def);
 
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
 	/// @param the second group. It is destroyed.
 	/// @warning This function is locked during callbacks.
-	void JoinParticleGroups(b2ParticleGroup* groupA, b2ParticleGroup* groupB);
+	void JoinParticleGroups(int32 groupAIdx, int32 groupBIdx);
 
 	/// Split particle group into multiple disconnected groups.
 	/// @param the group to be split.
 	/// @warning This function is locked during callbacks.
 	void SplitParticleGroup(b2ParticleGroup* group);
+
+	/// Get the world linear velocity of a world point, from the average linear
+	/// and angular velocities of the particle group.
+	/// @param a point in world coordinates.
+	/// @return the world velocity of a point.
+	inline b2Vec2 b2ParticleSystem::GetGroupLinearVelocityFromWorldPoint(int32 groupIdx,
+		const b2Vec2& worldPoint)
+	{
+		UpdateGroupStatistics(groupIdx);
+		return b2Vec2(m_groupLinVelXBuf[groupIdx], m_groupLinVelYBuf[groupIdx])
+			+ b2Cross(m_groupAngVelBuf[groupIdx], worldPoint - b2Vec2(m_groupCenterXBuf[groupIdx],
+					  m_groupCenterYBuf[groupIdx]));
+	}
+
+	void UpdateGroupStatistics(int32 groupIdx);
+	
+	inline float32 b2ParticleSystem::GetGroupMass(int32 groupIdx)
+	{
+		UpdateGroupStatistics(groupIdx);
+		return m_groupMassBuf[groupIdx];
+	}
+	inline float32 b2ParticleSystem::GetGroupInertia(int32 groupIdx)
+	{
+		UpdateGroupStatistics(groupIdx);
+		return m_groupInertiaBuf[groupIdx];
+	}
+	inline b2Vec2 b2ParticleSystem::GetGroupCenter(int32 groupIdx)
+	{
+		UpdateGroupStatistics(groupIdx);
+		return b2Vec2(m_groupCenterXBuf[groupIdx], m_groupCenterYBuf[groupIdx]);
+	}
+	/*inline b2Vec2 b2ParticleSystem::GetGroupLinearVelocity(int32 groupIdx) const
+	{
+		UpdateStatistics(groupIdx);
+		return m_groupLinVelBuf[groupIdx];
+	}*/
+
+	inline int32 GetGroupMaterialIdx(int32 groupIdx)
+	{
+		return m_groupMatIdxBuf[groupIdx];
+	}
+	inline int32 GetGroupUserData(int32 groupIdx)
+	{
+		return m_groupUserDataBuf[groupIdx];
+	}
 
 	/// Get the world particle group list. With the returned group, use
 	/// b2ParticleGroup::GetNext to get the next group in the world list.
@@ -463,13 +547,13 @@ public:
 	float32 GetRoomTemperature() const;
 
 	void SetHeatLossRatio(float32 heatLossRatio);
-	float32 GetHeatLossRatio() const;
+	//float32 GetHeatLossRatio() const;
 
 	void SetPointsPerLayer(float32 pointsPerLayer);
-	float32 GetPointsPerLayer() const;
+	//float32 GetPointsPerLayer() const;
 
 	void SetLowestPoint(float32 lowestLayer);
-	float32 GetLowestPoint() const;
+	//float32 GetLowestPoint() const;
 
 	void CalcLayerValues();
 
@@ -485,29 +569,32 @@ public:
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle positions array.
-	b2Vec2* GetPositionBuffer();
-	const b2Vec2* GetPositionBuffer() const;
-
-	float32* GetHeightBuffer();
-	const float32* GetHeightBuffer() const;
+	float32* GetPositionXBuffer();
+	const float32* GetPositionXBuffer() const;
+	float32* GetPositionYBuffer();
+	const float32* GetPositionYBuffer() const;
+	float32* GetPositionZBuffer();
+	const float32* GetPositionZBuffer() const;
 
 	/// Get the velocity of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle velocities array.
-	b2Vec2* GetVelocityBuffer();
-	const b2Vec2* GetVelocityBuffer() const;
+	float32* GetVelocityXBuffer();
+	const float32* GetVelocityXBuffer() const;
+	float32* GetVelocityYBuffer();
+	const float32* GetVelocityYBuffer() const;
 
 	/// Get the color of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle colors array.
-	b2ParticleColor* GetColorBuffer();
+	vector<b2ParticleColor> GetColorBuffer();
 	const b2ParticleColor* GetColorBuffer() const;
 
 	/// Get the particle-group of each particle.
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle group array.
-	b2ParticleGroup* const* GetGroupBuffer();
-	const b2ParticleGroup* const* GetGroupBuffer() const;
+	int32* GetGroupIdxBuffer();
+	const int32* GetGroupIdxBuffer() const;
 
 	/// Get the weight of each particle
 	/// Array is length GetParticleCount()
@@ -530,8 +617,8 @@ public:
 	/// Get the user-specified data of each particle.
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle user-data array.
-	void** GetUserDataBuffer();
-	void* const* GetUserDataBuffer() const;
+	int32* GetUserDataBuffer();
+	const int32* GetUserDataBuffer() const;
 
 	/// Get the flags for each particle. See the b2ParticleFlag enum.
 	/// Array is length GetParticleCount()
@@ -560,21 +647,28 @@ public:
 	/// @param buffer is a pointer to a block of memory.
 	/// @param size is the number of values in the block.
 	void SetFlagsBuffer(uint32* buffer, int32 capacity);
-	void SetPositionBuffer(b2Vec2* buffer, int32 capacity);
-	void SetVelocityBuffer(b2Vec2* buffer, int32 capacity);
+	void SetPositionBuffer(float* bufferX, float* bufferY, int32 capacity);
+	void SetVelocityBuffer(float* bufferX, float* bufferY, int32 capacity);
 	void SetColorBuffer(b2ParticleColor* buffer, int32 capacity);
-	void SetUserDataBuffer(void** buffer, int32 capacity);
+	void SetUserDataBuffer(int32* buffer, int32 capacity);
 
 	/// Get contacts between particles
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const b2ParticleContact* GetContacts() const;
-	int32 GetContactCount() const;
+	const int32* GetContactIdxAs() const;
+	const int32* GetContactIdxBs() const;
+	const int32 GetContactCount() const;
 
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const b2ParticleBodyContact* GetBodyContacts() const;
+	const int32* GetBodyContactIdxs() const;
+	b2Body** GetBodyContactBodys();
+	b2Fixture** GetBodyContactFixtures();
+	const float32* GetBodyContactNormalXs() const;
+	const float32* GetBodyContactNormalYs() const;
+	const float32* GetBodyContactWeights() const;
+
 	int32 GetBodyContactCount() const;
 
 	/// Get array of particle pairs. The particles in a pair:
@@ -705,7 +799,7 @@ public:
 	/// Apply a force to the center of a particle.
 	/// @param index the particle that will be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ParticleApplyForce(int32 index, const b2Vec2& force);
+	void ParticleApplyForce(int32 index, float32 forceX, float32 forceY);
 
 	/// Distribute a force across several particles. The particles must not be
 	/// wall particles. Note that the force is distributed across all the
@@ -714,7 +808,7 @@ public:
 	/// @param firstIndex the first particle to be modified.
 	/// @param lastIndex the last particle to be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ApplyForce(int32 firstIndex, int32 lastIndex, const b2Vec2& force);
+	void ApplyForce(int32 firstIndex, int32 lastIndex, float32 forceX, float32 forceY);
 
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();
@@ -867,11 +961,17 @@ private:
 	class InsideBoundsEnumerator
 	{
 	public:
+		const b2ParticleSystem *m_partSys;
 		/// Construct an enumerator with bounds of tags and a range of proxies.
+		/*/
 		InsideBoundsEnumerator(
 			uint32 lower, uint32 upper,
 			const Proxy* first, const Proxy* last);
-
+		/*/
+		InsideBoundsEnumerator(const b2ParticleSystem* partSys,
+			uint32 lower, uint32 upper,
+			int32 firstPos, int32 lastPos);
+		//*/
 		/// Get index of the next particle. Returns b2_invalidParticleIndex if
 		/// there are no more particles.
 		int32 GetNext();
@@ -881,8 +981,10 @@ private:
 		/// The lower and upper bound of y component in the tag.
 		uint32 m_yLower, m_yUpper;
 		/// The range of proxies.
-		const Proxy* m_first;
-		const Proxy* m_last;
+		//const Proxy* m_first;
+		//const Proxy* m_last;
+		int32 m_firstPos;
+		int32 m_lastPos;
 	};
 
 	/// Node of linked lists of connected particles
@@ -934,7 +1036,11 @@ private:
 	/// pool for handle allocation.
 	void ReallocateHandleBuffers(int32 newCapacity);
 
-	void ReallocateInternalAllocatedBuffers(int32 capacity);
+	void ResizePartMatBuffers(int32 size);
+	void ResizeParticleBuffers(int32 size);
+	void ResizeGroupBuffers(int32 size);
+	void ResizeContactBuffers(int32 size);
+	void ResizeBodyContactBuffers(int32 size);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const b2Vec2& position);
@@ -953,12 +1059,13 @@ private:
 	void CreateParticlesWithShapesForGroup(
 		const b2Shape* const* shapes, int32 shapeCount,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	int32 CloneParticle(int32 index, b2ParticleGroup* group);
-	void DestroyParticleGroup(b2ParticleGroup* group);
+	int32 CloneParticle(int32 index, int32 groupIdx);
+	void DestroyParticleGroup(int32 groupIdx);
 
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
 	void UpdatePairsAndTriadsWithReactiveParticles();
+	void AFUpdatePairsAndTriadsWithReactiveParticles();
 	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
 	static bool MatchPairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
 	static bool CompareTriadIndices(const b2ParticleTriad& a, const b2ParticleTriad& b);
@@ -984,17 +1091,18 @@ private:
 		const b2ParticleGroup* group, const ParticleListNode* nodeBuffer);
 
 	void ComputeDepth();
+	void AFComputeDepth();
 
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
 
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
-	void AddContact(int32 a, int32 b,
-		b2GrowableBuffer<b2ParticleContact>& contacts) const;
-	void FindContacts_Reference(
-		b2GrowableBuffer<b2ParticleContact>& contacts) const;
+	void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
 	bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const;
 	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
+	af::array b2ParticleSystem::AFShouldCollide(const af::array& a, const af::array& b) const;
+	void b2ParticleSystem::AFAddContacts(af::array& a, af::array& b);
+	af::array afB2InvSqrt(af::array x);
 	void ReorderForFindContact(FindContactInput* reordered,
 		                       int alignedCount) const;
 	void GatherChecksOneParticle(
@@ -1004,47 +1112,55 @@ private:
 		int* nextUncheckedIndex,
 		b2GrowableBuffer<FindContactCheck>& checks) const;
 	void GatherChecks(b2GrowableBuffer<FindContactCheck>& checks) const;
-	void FindContacts_Simd(
-		b2GrowableBuffer<b2ParticleContact>& contacts) const;
-	void FindContacts(
-		b2GrowableBuffer<b2ParticleContact>& contacts) const;
-	static void UpdateProxyTags(
-		const uint32* const tags,
-		b2GrowableBuffer<Proxy>& proxies);
-	static bool ProxyBufferHasIndex(
-		int32 index, const Proxy* const a, int count);
-	static int NumProxiesWithSameTag(
-		const Proxy* const a, const Proxy* const b, int count);
-	static bool AreProxyBuffersTheSame(const b2GrowableBuffer<Proxy>& a,
-								   	   const b2GrowableBuffer<Proxy>& b);
-	void UpdateProxies_Reference(b2GrowableBuffer<Proxy>& proxies) const;
-	void UpdateProxies_Simd(b2GrowableBuffer<Proxy>& proxies) const;
-	void UpdateProxies(b2GrowableBuffer<Proxy>& proxies) const;
-	void SortProxies(b2GrowableBuffer<Proxy>& proxies) const;
-	void FilterContacts(b2GrowableBuffer<b2ParticleContact>& contacts);
+	void FindContacts(int32& contactCount);
+	void AFFindContacts(int32& contactCount);
+	void AFFindContactsbyTags(vector<int32>& aIdxs, vector<int32>& bIdxs);
+	void UpdateProxies();
+	void AFUpdateProxies();
+	void SortProxies();
+	void AFSortProxies(af::array& proxyIdxsOut, af::array& proxyTagsOut, const af::array& proxyIdxsIn, const af::array& proxyTagsIn) const;
+	void FilterContacts();
 	void NotifyContactListenerPreContact(
 		b2ParticlePairSet* particlePairs) const;
 	void NotifyContactListenerPostContact(b2ParticlePairSet& particlePairs);
 	void UpdateContacts(bool exceptZombie);
+	void AFUpdateContacts();
 	void NotifyBodyContactListenerPreContact(
 		FixtureParticleSet* fixtureSet) const;
 	void NotifyBodyContactListenerPostContact(FixtureParticleSet& fixtureSet);
 	void UpdateBodyContacts();
+	void AFUpdateBodyContacts();
 
-	void Solve(const b2TimeStep& step);
+	void CopyParticlesToGPU();
+	void CopyParticlesToCPU();
+	void CopyProxiesToGPU();
+	void CopyProxiesToCPU();
+	void CopyGroupsToGPU();
+	void CopyGroupsToCPU();
+	void CopyMatsToGPU();
+	void CopyMatsToCPU();
+	void CopyContactsToGPU();
+	void CopyContactsToCPU();
+	void CopyBodyContactsToGPU();
+	void CopyBodyContactsToCPU();
+
 	void SolveCollision(const b2TimeStep& step);
+	void AFSolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
 	void SolveBarrier(const b2TimeStep& step);
 	void SolveStaticPressure(const b2TimeStep& step);
 	void ComputeWeight();
+	void AFComputeWeight();
 	void SolvePressure(const b2TimeStep& step);
 	void SolveDamping(const b2TimeStep& step); 
 	void SolveSlowDown(const b2TimeStep& step);
+	void AFSolveSlowDown(const b2TimeStep& step);
 	void SolveRigidDamping();
 	void SolveExtraDamping();
 	void SolveWall();
 	void SolveRigid(const b2TimeStep& step);
+	void AFSolveRigid(const b2TimeStep& step);
 	void SolveElastic(const b2TimeStep& step);
 	void SolveSpring(const b2TimeStep& step);
 	void SolveTensile(const b2TimeStep& step);
@@ -1053,6 +1169,7 @@ private:
 	void SolvePowder(const b2TimeStep& step);
 	void SolveSolid(const b2TimeStep& step);
 	void SolveForce(const b2TimeStep& step);
+	void AFSolveForce(const b2TimeStep& step);
 	void SolveColorMixing();
 	void SolveHeatConduct(const b2TimeStep& step);
 	void SolveLooseHeat(const b2TimeStep& step);
@@ -1071,6 +1188,20 @@ private:
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
 	void RotateBuffer(int32 start, int32 mid, int32 end);
+
+	template <class T1, class UnaryPredicate> static void RemoveFromVectorIf(vector<T1>& vectorToTest,
+		int32& size, UnaryPredicate pred, bool adjustSize);
+	template <class T1, class T2, class UnaryPredicate> static void RemoveFromVectorsIf(vector<T1>& vectorToTest, vector<T2>& v2,
+		int32& size, UnaryPredicate pred, bool adjustSize);
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate> static void RemoveFromVectorsIf(
+		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7,
+		int32& size, UnaryPredicate pred, bool adjustSize);
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate> static void RemoveFromVectorsIf(
+		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
+		int32& size, UnaryPredicate pred, bool adjustSize);
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> static void RemoveFromVectorsIf(
+		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
+		int32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize);
 
 	float32 GetCriticalVelocity(const b2TimeStep& step) const;
 	float32 GetCriticalVelocitySquared(const b2TimeStep& step) const;
@@ -1096,7 +1227,8 @@ private:
 	template <typename T> void SetUserOverridableBuffer(
 		UserOverridableBuffer<T>* buffer, T* newBufferData, int32 newCapacity);
 
-	void SetGroupFlags(b2ParticleGroup* group, uint32 flags);
+	void SetGroupFlags(int32 groupIdx, uint32 flags);
+	void AFSetGroupFlags(const af::array& afGroupIdxs, af::array& afNewFlags);
 
 	void RemoveSpuriousBodyContacts();
 	static bool BodyContactCompare(const b2ParticleBodyContact& lhs,
@@ -1115,26 +1247,26 @@ private:
 	bool ForceCanBeApplied(uint32 flags) const;
 	void PrepareForceBuffer();
 
-	bool IsRigidGroup(b2ParticleGroup *group) const;
+	bool IsRigidGroup(int32 groupIdx) const;
 	b2Vec2 GetLinearVelocity(
-		b2ParticleGroup *group, int32 particleIndex,
-		const b2Vec2 &point) const;
+		int32 groupIdx, int32 particleIndex,
+		const b2Vec2 &point);
 	void InitDampingParameter(
 		float32* invMass, float32* invInertia, float32* tangentDistance,
 		float32 mass, float32 inertia, const b2Vec2& center,
 		const b2Vec2& point, const b2Vec2& normal) const;
 	void InitDampingParameterWithRigidGroupOrParticle(
 		float32* invMass, float32* invInertia, float32* tangentDistance,
-		bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
-		const b2Vec2& point, const b2Vec2& normal) const;
+		bool isRigidGroup, int32 groupIdx, int32 particleIndex,
+		const b2Vec2& point, const b2Vec2& normal);
 	float32 ComputeDampingImpulse(
 		float32 invMassA, float32 invInertiaA, float32 tangentDistanceA,
 		float32 invMassB, float32 invInertiaB, float32 tangentDistanceB,
 		float32 normalVelocity) const;
 	void ApplyDamping(
 		float32 invMass, float32 invInertia, float32 tangentDistance,
-		bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
-		float32 impulse, const b2Vec2& normal);
+		bool isRigidGroup, int32 groupIdx, int32 particleIndex,
+		float32 impulse, float32 normalX, float32 normalY);
 
 	bool m_paused;
 	int32 m_timestamp;
@@ -1158,20 +1290,68 @@ private:
 	float32 m_layerGraphB;
 
 	int32 m_count;
-	int32 m_internalAllocatedCapacity;
+	int32 m_particleBufferSize;
+	int32 m_groupCount;
+	int32 m_groupBufferSize;
+	int32 m_partMatCount;
+	int32 m_partMatBufferSize;
+	int32 m_contactCount;
+	int32 m_contactBufferSize;
+	int32 m_bodyContactCount;
+	int32 m_bodyContactBufferSize;
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
 	UserOverridableBuffer<b2ParticleHandle*> m_handleIndexBuffer;
-	UserOverridableBuffer<uint32> m_flagsBuffer;
-	UserOverridableBuffer<uint32> m_collisionLayerBuffer;
-	UserOverridableBuffer<b2Vec2> m_positionBuffer;
-	UserOverridableBuffer<float32> m_heightBuffer;
-	UserOverridableBuffer<b2Vec2> m_velocityBuffer;
-	b2Vec2* m_forceBuffer;
-	/// m_weightBuffer is populated in ComputeWeight and used in
-	/// ComputeDepth(), SolveStaticPressure() and SolvePressure().
-	float32* m_weightBuffer;
+	vector<uint32>	m_flagsBuffer,
+					m_collisionLayerBuffer;
+	vector<float32> m_positionXBuffer,
+					m_positionYBuffer,
+					m_positionZBuffer,
+					m_velocityXBuffer,
+					m_velocityYBuffer,
+					m_weightBuffer,
+					m_heatBuffer,
+					m_healthBuffer,
+					m_forceXBuffer,
+					m_forceYBuffer;
+	vector<b2ParticleColor> m_colorBuffer;
+
+	vector<int32>	m_partMatIdxBuffer;
+	vector<int32>   m_groupIdxBuffer;
+
+	vector<int32>	m_freeGroupIdxBuffer;
+	vector<int32>	m_realGroupIdxBuffer;
+
+	//vector<b2ParticleGroup> m_groupBuffer;
+	vector<int32>	m_groupFirstIdxBuf,
+					m_groupLastIdxBuf;
+	vector<uint32>	m_groupFlagsBuf;
+	vector<int32>	m_groupColGroupBuf;
+	vector<float32>	m_groupStrengthBuf;
+	vector<int32>	m_groupMatIdxBuf;
+	vector<int32>	m_groupTimestampBuf;
+	vector<float32>	m_groupMassBuf,
+					m_groupInertiaBuf,
+					m_groupCenterXBuf,
+					m_groupCenterYBuf,
+					m_groupLinVelXBuf,
+					m_groupLinVelYBuf;
+	vector<float32> m_groupAngVelBuf;
+	vector<b2Transform> m_groupTransformBuf;
+	vector<int32>	m_groupUserDataBuf;
+			
+	vector<uint32>  m_partMatFlagsBuf;
+	vector<float32> m_partMatMassBuf;
+	vector<float32> m_partMatInvMassBuf;
+	vector<float32> m_partMatStabilityBuf;
+	vector<float32> m_partMatInvStabilityBuf;
+	vector<float32> m_partMatExtinguishingPointBuf;
+	vector<float32> m_partMatMeltingPointBuf;
+	vector<float32> m_partMatBoilingPointBuf;
+	vector<float32> m_partMatIgnitionPointBuf;
+	vector<float32> m_partMatHeatConductivityBuf;
+
 	/// When any particles have the flag b2_staticPressureParticle,
 	/// m_staticPressureBuffer is first allocated and used in
 	/// SolveStaticPressure() and SolvePressure().  It will be reallocated on
@@ -1189,13 +1369,60 @@ private:
 	/// m_depthBuffer is first allocated and populated in ComputeDepth() and
 	/// used in SolveSolid(). It will be reallocated on subsequent
 	/// CreateParticle() calls.
-	float32* m_depthBuffer;
-	UserOverridableBuffer<b2ParticleColor> m_colorBuffer;
-	UserOverridableBuffer<float32> m_heatBuffer;
-	UserOverridableBuffer<float32> m_healthBuffer;
-	b2ParticleGroup** m_groupBuffer;
-	b2ParticleMaterial** m_materialBuffer;
-	UserOverridableBuffer<void*> m_userDataBuffer;
+	vector<float32> m_depthBuffer;
+	vector<int32> m_userDataBuffer;
+
+	af::array	afPosXBuf, afPosYBuf, afPosZBuf,
+				afFlagBuf,
+				afColLayBuf,
+				afVelXBuf, afVelYBuf,
+				afForceXBuf, afForceYBuf,
+				afWeightBuf,
+				afHeatBuf,
+				afHealthBuf,
+				afColorBuf,
+				afGroupIdxBuf,
+				afPartMatIdxBuf,
+
+				afProxyIdxBuf, 
+				afProxyTagBuf,
+
+				afGroupFirstIdxBuf, afGroupLastIdxBuf,
+				afGroupFlagsBuf,
+				afGroupColGroupBuf,
+				afGroupStrengthBuf,
+				afGroupMatIdxBuf,
+				afGroupTimestampBuf,
+				afGroupMassBuf,
+				afGroupInertiaBuf,
+				afGroupCenterXBuf, afGroupCenterYBuf,
+				afGroupLinVelXBuf, afGroupLinVelYBuf,
+				afGroupAngVelBuf,
+				afGroupTransformBuf,
+				afGroupUserDataBuf,
+
+				afContactIdxABuf, afContactIdxBBuf,
+				afContactWeightBuf, afContactMassBuf,
+				afContactNormalXBuf, afContactNormalYBuf,
+				afContactFlagsBuf, afContactMatFlagsBuf,
+
+				afBodyContactIdxBuf,
+				afBodyContactBodyBuf,
+				afBodyContactFixtureBuf,
+				afBodyContactWeightBuf,
+				afBodyContactNormalXBuf, afBodyContactNormalYBuf,
+				afBodyContactMassBuf,
+
+				afPartMatFlagsBuf,
+				afPartMatMassBuf, afPartMatInvMassBuf,
+				afPartMatStabilityBuf,
+				afPartMatInvStabilityBuf,
+				afPartMatExtinguishingPointBuf,
+				afPartMatMeltingPointBuf,
+				afPartMatBoilingPointBuf,
+				afPartMatIgnitionPointBuf,
+				afPartMatHeatConductivityBuf;
+				
 
 	/// Stuck particle detection parameters and record keeping
 	int32 m_stuckThreshold;
@@ -1203,9 +1430,29 @@ private:
 	UserOverridableBuffer<int32> m_bodyContactCountBuffer;
 	UserOverridableBuffer<int32> m_consecutiveContactStepsBuffer;
 	b2GrowableBuffer<int32> m_stuckParticleBuffer;
-	b2GrowableBuffer<Proxy> m_proxyBuffer;
-	b2GrowableBuffer<b2ParticleContact> m_contactBuffer;
-	b2GrowableBuffer<b2ParticleBodyContact> m_bodyContactBuffer;
+
+	vector<int32> m_proxyIdxBuffer;
+	vector<uint32> m_proxyTagBuffer;
+
+	vector<int32>	m_contactIdxABuffer;
+	vector<int32>	m_contactIdxBBuffer;
+	vector<float32> m_contactWeightBuffer;
+	vector<float32> m_contactMassBuffer;
+	vector<float32> m_contactNormalXBuffer;
+	vector<float32> m_contactNormalYBuffer;
+	vector<uint32>	m_contactFlagsBuffer;
+	vector<uint32>	m_contactMatFlagsBuffer;
+
+	vector<int32>	   m_bodyContactIdxBuffer;
+	vector<b2Body*>	   m_bodyContactBodyBuffer;
+	vector<b2Fixture*> m_bodyContactFixtureBuffer;
+	vector<float32>	   m_bodyContactWeightBuffer;
+	vector<float32>	   m_bodyContactNormalXBuffer;
+	vector<float32>	   m_bodyContactNormalYBuffer;
+	vector<float32>	   m_bodyContactMassBuffer;
+
+	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
+
 	b2GrowableBuffer<b2ParticlePair> m_pairBuffer;
 	b2GrowableBuffer<b2ParticleTriad> m_triadBuffer;
 
@@ -1221,9 +1468,6 @@ private:
 	/// Whether the expiration time buffer has been modified and needs to be
 	/// resorted.
 	bool m_expirationTimeBufferRequiresSorting;
-
-	int32 m_groupCount;
-	b2ParticleGroup* m_groupList;
 
 	b2ParticleSystemDef m_def;
 
@@ -1264,16 +1508,6 @@ inline bool b2ParticleContact::ApproximatelyEqual(
 		&& (normal - rhs.normal).Length() < MAX_NORMAL_DIFF;
 }
 
-inline b2ParticleGroup* b2ParticleSystem::GetParticleGroupList()
-{
-	return m_groupList;
-}
-
-inline const b2ParticleGroup* b2ParticleSystem::GetParticleGroupList() const
-{
-	return m_groupList;
-}
-
 inline int32 b2ParticleSystem::GetParticleGroupCount() const
 {
 	return m_groupCount;
@@ -1294,24 +1528,48 @@ inline bool b2ParticleSystem::GetPaused() const
 	return m_paused;
 }
 
-inline const b2ParticleContact* b2ParticleSystem::GetContacts() const
+inline const int32* b2ParticleSystem::GetContactIdxAs() const
 {
-	return m_contactBuffer.Data();
+	return m_contactIdxABuffer.data();
+}
+inline const int32* b2ParticleSystem::GetContactIdxBs() const
+{
+	return m_contactIdxBBuffer.data();
 }
 
-inline int32 b2ParticleSystem::GetContactCount() const
+inline const int32 b2ParticleSystem::GetContactCount() const
 {
-	return m_contactBuffer.GetCount();
+	return m_contactCount;
 }
 
-inline const b2ParticleBodyContact* b2ParticleSystem::GetBodyContacts() const
+inline const int32* b2ParticleSystem::GetBodyContactIdxs() const
 {
-	return m_bodyContactBuffer.Data();
+	return m_bodyContactIdxBuffer.data();
+}
+inline b2Body** b2ParticleSystem::GetBodyContactBodys()
+{
+	return m_bodyContactBodyBuffer.data();
+}
+inline b2Fixture** b2ParticleSystem::GetBodyContactFixtures()
+{
+	return m_bodyContactFixtureBuffer.data();
+}
+inline const float32* b2ParticleSystem::GetBodyContactNormalXs() const
+{
+	return m_bodyContactNormalXBuffer.data();
+}
+inline const float32* b2ParticleSystem::GetBodyContactNormalYs() const
+{
+	return m_bodyContactNormalYBuffer.data();
+}
+inline const float32* b2ParticleSystem::GetBodyContactWeights() const
+{
+	return m_bodyContactWeightBuffer.data();
 }
 
 inline int32 b2ParticleSystem::GetBodyContactCount() const
 {
-	return m_bodyContactBuffer.GetCount();
+	return m_bodyContactCount;
 }
 
 inline const b2ParticlePair* b2ParticleSystem::GetPairs() const
@@ -1485,49 +1743,71 @@ inline float32 b2ParticleSystem::GetParticleInvMass() const
 	return m_inverseDensity * inverseStride * inverseStride;
 }
 
-inline b2Vec2* b2ParticleSystem::GetPositionBuffer()
+inline float32* b2ParticleSystem::GetPositionXBuffer()
 {
-	return m_positionBuffer.data;
+	return m_positionXBuffer.data();
+}
+inline float32* b2ParticleSystem::GetPositionYBuffer()
+{
+	return m_positionYBuffer.data();
+}
+inline float32* b2ParticleSystem::GetPositionZBuffer()
+{
+	return m_positionZBuffer.data();
+}
+inline const float* b2ParticleSystem::GetPositionXBuffer() const
+{
+	return m_positionXBuffer.data();
+}
+inline const float* b2ParticleSystem::GetPositionYBuffer() const
+{
+	return m_positionYBuffer.data();
+}
+inline const float* b2ParticleSystem::GetPositionZBuffer() const
+{
+	return m_positionZBuffer.data();
 }
 
-inline float32* b2ParticleSystem::GetHeightBuffer()
+inline float32* b2ParticleSystem::GetVelocityXBuffer()
 {
-	return m_heightBuffer.data;
+	return m_velocityXBuffer.data();
 }
-inline const float32* b2ParticleSystem::GetHeightBuffer() const
+inline float32* b2ParticleSystem::GetVelocityYBuffer()
 {
-	return m_heightBuffer.data;
+	return m_velocityYBuffer.data();
 }
-
-
-inline b2Vec2* b2ParticleSystem::GetVelocityBuffer()
+inline const float32* b2ParticleSystem::GetVelocityXBuffer() const
 {
-	return m_velocityBuffer.data;
+	return m_velocityXBuffer.data();
+}
+inline const float32* b2ParticleSystem::GetVelocityYBuffer() const
+{
+	return m_velocityYBuffer.data();
 }
 
 inline float32* b2ParticleSystem::GetWeightBuffer()
 {
-	return m_weightBuffer;
+	return m_weightBuffer.data();
 }
 
 inline const float32* b2ParticleSystem::GetHeatBuffer() const
 {
-	return m_heatBuffer.data;
+	return m_heatBuffer.data();
 }
 
 inline float32* b2ParticleSystem::GetHeatBuffer()
 {
-	return m_heatBuffer.data;
+	return m_heatBuffer.data();
 }
 
 inline const float32* b2ParticleSystem::GetHealthBuffer() const
 {
-	return m_healthBuffer.data;
+	return m_healthBuffer.data();
 }
 
 inline float32* b2ParticleSystem::GetHealthBuffer()
 {
-	return m_healthBuffer.data;
+	return m_healthBuffer.data();
 }
 
 inline int32 b2ParticleSystem::GetMaxParticleCount() const
@@ -1553,52 +1833,41 @@ inline uint32 b2ParticleSystem::GetAllGroupFlags() const
 
 inline const uint32* b2ParticleSystem::GetFlagsBuffer() const
 {
-	return m_flagsBuffer.data;
+	return m_flagsBuffer.data();
 }
 
 inline const uint32* b2ParticleSystem::GetCollisionLayerBuffer() const
 {
-	return m_collisionLayerBuffer.data;
+	return m_collisionLayerBuffer.data();
 }
-
 inline uint32* b2ParticleSystem::GetCollisionLayerBuffer()
 {
-	return m_collisionLayerBuffer.data;
-}
-
-inline const b2Vec2* b2ParticleSystem::GetPositionBuffer() const
-{
-	return m_positionBuffer.data;
-}
-
-inline const b2Vec2* b2ParticleSystem::GetVelocityBuffer() const
-{
-	return m_velocityBuffer.data;
+	return m_collisionLayerBuffer.data();
 }
 
 inline const b2ParticleColor* b2ParticleSystem::GetColorBuffer() const
 {
-	return ((b2ParticleSystem*) this)->GetColorBuffer();
+	return ((b2ParticleSystem*) this)->GetColorBuffer().data();
 }
 
-inline const b2ParticleGroup* const* b2ParticleSystem::GetGroupBuffer() const
+inline const int32* b2ParticleSystem::GetGroupIdxBuffer() const
 {
-	return m_groupBuffer;
+	return m_groupIdxBuffer.data();
 }
+inline int32* b2ParticleSystem::GetGroupIdxBuffer()
+{
+	return m_groupIdxBuffer.data();
+}
+
 
 inline const float32* b2ParticleSystem::GetWeightBuffer() const
 {
-	return m_weightBuffer;
+	return m_weightBuffer.data();
 }
 
-inline void* const* b2ParticleSystem::GetUserDataBuffer() const
+inline const int32* b2ParticleSystem::GetUserDataBuffer() const
 {
 	return ((b2ParticleSystem*) this)->GetUserDataBuffer();
-}
-
-inline b2ParticleGroup* const* b2ParticleSystem::GetGroupBuffer()
-{
-	return m_groupBuffer;
 }
 
 inline uint32 b2ParticleSystem::GetParticleFlags(int32 index)

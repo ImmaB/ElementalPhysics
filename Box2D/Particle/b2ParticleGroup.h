@@ -72,9 +72,9 @@ struct b2ParticleGroupDef
 		particleCount = 0;
 		positionData = NULL;
 		lifetime = 0.0f;
-		userData = NULL;
-		group = NULL;
-		material = NULL;
+		userData = 0;
+		groupIdx = b2_invalidGroupIndex;
+		matIdx = b2_invalidMaterialIndex;
 		collisionGroup = 0;
 		heat = 0.0f;
 		health = 1.0f;
@@ -147,12 +147,12 @@ struct b2ParticleGroupDef
 	float32 lifetime;
 
 	/// Use this to store application-specific group data.
-	void* userData;
+	int32 userData;
 
 	/// An existing particle group to which the particles will be added.
-	b2ParticleGroup* group;
+	int32 groupIdx;
 
-	b2ParticleMaterial* material;
+	int32 matIdx;
 
 	int32 collisionGroup;
 
@@ -217,24 +217,9 @@ public:
 	uint32 GetGroupFlags() const;
 
 	/// Set the construction flags for the group.
-	void SetGroupFlags(uint32 flags);
+	//void SetGroupFlags(uint32 flags);
 
 	b2ParticleMaterial* GetMaterial() const;
-
-	/// Get the total mass of the group: the sum of all particles in it.
-	float32 GetMass() const;
-
-	/// Get the moment of inertia for the group.
-	float32 GetInertia() const;
-
-	/// Get the center of gravity for the group.
-	b2Vec2 GetCenter() const;
-
-	/// Get the linear velocity of the group.
-	b2Vec2 GetLinearVelocity() const;
-
-	/// Get the angular velocity of the group.
-	float32 GetAngularVelocity() const;
 
 	/// Get the position of the group's origin and rotation.
 	/// Used only with groups of rigid particles.
@@ -248,20 +233,14 @@ public:
 	/// Used only with groups of rigid particles.
 	float32 GetAngle() const;
 
-	/// Get the world linear velocity of a world point, from the average linear
-	/// and angular velocities of the particle group.
-	/// @param a point in world coordinates.
-	/// @return the world velocity of a point.
-	b2Vec2 GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const;
-
 	/// Get the user data pointer that was provided in the group definition.
-	void* GetUserData() const;
+	int32 GetUserData() const;
 
 	/// Set the user data. Use this to store your application specific data.
-	void SetUserData(void* data);
+	void SetUserData(int32 data);
 
 	/// Call b2ParticleSystem::ApplyForce for every particle in the group.
-	void ApplyForce(const b2Vec2& force);
+	void ApplyForce(float32 forceX, float32 forceY);
 
 	/// Call b2ParticleSystem::ApplyLinearImpulse for every particle in the
 	/// group.
@@ -302,11 +281,10 @@ private:
 	mutable float32 m_angularVelocity;
 	mutable b2Transform m_transform;
 
-	void* m_userData;
+	int32 m_userData;
 
 	b2ParticleGroup();
 	~b2ParticleGroup();
-	void UpdateStatistics() const;
 
 };
 
@@ -369,36 +347,6 @@ inline b2ParticleMaterial* b2ParticleGroup::GetMaterial() const
 	return m_material;
 }
 
-inline float32 b2ParticleGroup::GetMass() const
-{
-	UpdateStatistics();
-	return m_mass;
-}
-
-inline float32 b2ParticleGroup::GetInertia() const
-{
-	UpdateStatistics();
-	return m_inertia;
-}
-
-inline b2Vec2 b2ParticleGroup::GetCenter() const
-{
-	UpdateStatistics();
-	return m_center;
-}
-
-inline b2Vec2 b2ParticleGroup::GetLinearVelocity() const
-{
-	UpdateStatistics();
-	return m_linearVelocity;
-}
-
-inline float32 b2ParticleGroup::GetAngularVelocity() const
-{
-	UpdateStatistics();
-	return m_angularVelocity;
-}
-
 inline const b2Transform& b2ParticleGroup::GetTransform() const
 {
 	return m_transform;
@@ -414,19 +362,12 @@ inline float32 b2ParticleGroup::GetAngle() const
 	return m_transform.q.GetAngle();
 }
 
-inline b2Vec2 b2ParticleGroup::GetLinearVelocityFromWorldPoint(
-												const b2Vec2& worldPoint) const
-{
-	UpdateStatistics();
-	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_center);
-}
-
-inline void* b2ParticleGroup::GetUserData() const
+inline int32 b2ParticleGroup::GetUserData() const
 {
 	return m_userData;
 }
 
-inline void b2ParticleGroup::SetUserData(void* data)
+inline void b2ParticleGroup::SetUserData(int32 data)
 {
 	m_userData = data;
 }

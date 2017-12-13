@@ -296,14 +296,16 @@ struct b2ParticleDef
 	b2ParticleDef()
 	{
 		flags = 0;
-		position = b2Vec2_zero;
-		height = 0.0f;
-		velocity = b2Vec2_zero;
+		positionX = 0.0f;
+		positionY = 0.0f;
+		positionZ = 0.0f;
+		velocityX = 0.0f;
+		velocityY = 0.0f;
 		color = b2ParticleColor_zero;
 		lifetime = 0.0f;
 		userData = NULL;
-		group = NULL;
-		material = NULL;
+		groupIdx = b2_invalidGroupIndex;
+		matIdx = b2_invalidMaterialIndex;
 		heat = 0.0f;
 		health = 1.0f;
 	}
@@ -324,11 +326,13 @@ struct b2ParticleDef
 	uint32 flags;
 
 	/// The world position of the particle.
-	b2Vec2 position;
-	float32 height;
+	float32 positionX;
+	float32 positionY;
+	float32 positionZ;
 
 	/// The linear velocity of the particle in world co-ordinates.
-	b2Vec2 velocity;
+	float32 velocityX;
+	float32 velocityY;
 
 	/// The color of the particle.
 	b2ParticleColor color;
@@ -341,12 +345,12 @@ struct b2ParticleDef
 	float32 lifetime;
 
 	/// Use this to store application-specific body data.
-	void* userData;
+	int32 userData;
 
 	/// An existing particle group to which the particle will be added.
-	b2ParticleGroup* group;
+	int32 groupIdx;
 
-	b2ParticleMaterial* material;
+	int32 matIdx;
 };
 
 /// A helper function to calculate the optimal number of iterations.
