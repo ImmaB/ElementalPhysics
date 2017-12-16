@@ -1752,20 +1752,20 @@ void b2ParticleSystem::UpdatePairsAndTriadsWithReactiveParticles()
 }
 void b2ParticleSystem::AFUpdatePairsAndTriadsWithReactiveParticles()
 {
-	class ReactiveFilter : public ConnectionFilter
+	class AFReactiveFilter : public AFConnectionFilter
 	{
-		bool IsNecessary(int32 index) const
+		af::array IsNecessary(af::array idxs) const
 		{
-			return (m_flagsBuffer[index] & b2_reactiveParticle) != 0;
+			return (afFlagBuf(idxs) & b2_reactiveParticle) != 0;
 		}
-		const uint32* m_flagsBuffer;
+		af::array afFlagBuf;
 	public:
-		ReactiveFilter(uint32* flagsBuffer)
+		AFReactiveFilter(af::array flags)
 		{
-			m_flagsBuffer = flagsBuffer;
+			afFlagBuf = flags;
 		}
-	} filter(m_flagsBuffer.data());
-	UpdatePairsAndTriads(0, m_count, filter);	//TODO
+	} filter(afFlagBuf);
+	AFUpdatePairsAndTriads(0, m_count, filter);	//TODO
 
 	afFlagBuf = afFlagBuf & ~b2_reactiveParticle;
 	m_allParticleFlags &= ~b2_reactiveParticle;
@@ -1773,6 +1773,13 @@ void b2ParticleSystem::AFUpdatePairsAndTriadsWithReactiveParticles()
 
 static bool ParticleCanBeConnected(
 	uint32 flags, int32 groupIdx, int32 groupFlags)
+{
+	return
+		(flags & (b2_wallParticle | b2_springParticle | b2_elasticParticle)) ||
+		(groupIdx && groupFlags & b2_rigidParticleGroup);
+}
+static af::array AFParticleCanBeConnected(
+	af::array flags, af::array groupIdx, af::array groupFlags)
 {
 	return
 		(flags & (b2_wallParticle | b2_springParticle | b2_elasticParticle)) ||
@@ -1813,7 +1820,7 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 				((af | bf) & k_pairFlags) &&
 				(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
 				ParticleCanBeConnected(af, groupAIdx, m_groupFlagsBuf[groupAIdx]) &&
-				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupAIdx]) &&
+				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupBIdx]) &&
 				filter.ShouldCreatePair(a, b))
 			{
 				b2ParticlePair& pair = m_pairBuffer.Append();
@@ -1887,6 +1894,155 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 						groupBIdx ? strengthBuf[groupBIdx] : 1),
 						groupCIdx ? strengthBuf[groupCIdx] : 1);
 					b2Vec2 midPoint = (float32) 1 / 3 * (pa + pb + pc);
+					triad.pa = pa - midPoint;
+					triad.pb = pb - midPoint;
+					triad.pc = pc - midPoint;
+					triad.ka = -b2Dot(dca, dab);
+					triad.kb = -b2Dot(dab, dbc);
+					triad.kc = -b2Dot(dbc, dca);
+					triad.s = b2Cross(pa, pb) + b2Cross(pb, pc) + b2Cross(pc, pa);
+				}
+			}
+			b2ParticleSystem* m_system;
+			const ConnectionFilter* m_filter;
+		public:
+			UpdateTriadsCallback(
+				b2ParticleSystem* system, const ConnectionFilter* filter)
+			{
+				m_system = system;
+				m_filter = filter;
+			}
+		} callback(this, &filter);
+		diagram.GetNodes(callback);
+		stable_sort(
+			m_triadBuffer.Begin(), m_triadBuffer.End(), CompareTriadIndices);
+		m_triadBuffer.Unique(MatchTriadIndices);
+	}
+}
+void b2ParticleSystem::AFUpdatePairsAndTriads(
+int32 firstIndex, int32 lastIndex, const AFConnectionFilter& filter)
+{
+	// Create pairs or triads.
+	// All particles in each pair/triad should satisfy the following:
+	// * firstIndex <= index < lastIndex
+	// * don't have b2_zombieParticle
+	// * ParticleCanBeConnected returns true
+	// * ShouldCreatePair/ShouldCreateTriad returns true
+	// Any particles in each pair/triad should satisfy the following:
+	// * filter.IsNeeded returns true
+	// * have one of k_pairFlags/k_triadsFlags
+	b2Assert(firstIndex <= lastIndex);
+	uint32 particleFlags = 0;
+	for (int32 i = firstIndex; i < lastIndex; i++)
+	{
+		particleFlags |= m_flagsBuffer[i];
+	}
+	if (particleFlags & k_pairFlags)
+	{
+		af::array a = afContactIdxABuf;
+		af::array b = afContactIdxBBuf;
+		af::array af = afFlagBuf(a);
+		af::array bf = afFlagBuf(b);
+		af::array groupAIdx = afGroupIdxBuf(a);
+		af::array groupBIdx = afGroupIdxBuf(b);
+
+		af::array condition(a >= firstIndex && a < lastIndex &&
+							b >= firstIndex && b < lastIndex &&
+							!((af | bf) & b2_zombieParticle) &&
+							((af | bf) & k_pairFlags) &&
+							(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
+							AFParticleCanBeConnected(af, groupAIdx, afGroupFlagsBuf(groupAIdx)) &&
+							AFParticleCanBeConnected(bf, groupBIdx, afGroupFlagsBuf(groupBIdx)) &&
+							filter.ShouldCreatePair(a, b)) ;
+
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			int32 a = m_contactIdxABuffer[k];
+			int32 b = m_contactIdxBBuffer[k];
+			uint32 af = m_flagsBuffer[a];
+			uint32 bf = m_flagsBuffer[b];
+			int32 groupAIdx = m_groupIdxBuffer[a];
+			int32 groupBIdx = m_groupIdxBuffer[b];
+			if (a >= firstIndex && a < lastIndex &&
+				b >= firstIndex && b < lastIndex &&
+				!((af | bf) & b2_zombieParticle) &&
+				((af | bf) & k_pairFlags) &&
+				(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
+				ParticleCanBeConnected(af, groupAIdx, m_groupFlagsBuf[groupAIdx]) &&
+				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupAIdx]) &&
+				filter.ShouldCreatePair(a, b))
+			{
+				b2ParticlePair& pair = m_pairBuffer.Append();
+				pair.indexA = a;
+				pair.indexB = b;
+				pair.flags = m_contactFlagsBuffer[k];
+				pair.strength = b2Min(
+					groupAIdx ? m_groupStrengthBuf[groupAIdx] : 1,
+					groupBIdx ? m_groupStrengthBuf[groupBIdx] : 1);
+				pair.distance = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
+					b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]));
+			}
+		}
+		Concurrency::parallel_sort(
+			//std::stable_sort(
+			m_pairBuffer.Begin(), m_pairBuffer.End(), ComparePairIndices);
+		m_pairBuffer.Unique(MatchPairIndices);
+	}
+	if (particleFlags & k_triadFlags)
+	{
+		b2VoronoiDiagram diagram(
+			&m_world->m_stackAllocator, lastIndex - firstIndex);
+		for (int32 i = firstIndex; i < lastIndex; i++)
+		{
+			uint32 flags = m_flagsBuffer[i];
+			int32 groupIdx = m_groupIdxBuffer[i];
+			if (!(flags & b2_zombieParticle) &&
+				ParticleCanBeConnected(flags, groupIdx, m_groupFlagsBuf[groupIdx]))
+			{
+				diagram.AddGenerator(
+					b2Vec2(m_positionXBuffer[i], m_positionYBuffer[i]), i, filter.IsNecessary(i));
+			}
+		}
+		float32 stride = GetParticleStride();
+		diagram.Generate(stride / 2, stride * 2);
+		class UpdateTriadsCallback : public b2VoronoiDiagram::NodeCallback
+		{
+			void operator()(int32 a, int32 b, int32 c)
+			{
+				uint32 af = m_system->m_flagsBuffer[a];
+				uint32 bf = m_system->m_flagsBuffer[b];
+				uint32 cf = m_system->m_flagsBuffer[c];
+				if (((af | bf | cf) & k_triadFlags) &&
+					m_filter->ShouldCreateTriad(a, b, c))
+				{
+					const b2Vec2& pa = b2Vec2(m_system->m_positionXBuffer[a], m_system->m_positionYBuffer[a]);
+					const b2Vec2& pb = b2Vec2(m_system->m_positionXBuffer[b], m_system->m_positionYBuffer[b]);
+					const b2Vec2& pc = b2Vec2(m_system->m_positionXBuffer[c], m_system->m_positionYBuffer[c]);
+					b2Vec2 dab = pa - pb;
+					b2Vec2 dbc = pb - pc;
+					b2Vec2 dca = pc - pa;
+					float32 maxDistanceSquared = b2_maxTriadDistanceSquared *
+						m_system->m_squaredDiameter;
+					if (b2Dot(dab, dab) > maxDistanceSquared ||
+						b2Dot(dbc, dbc) > maxDistanceSquared ||
+						b2Dot(dca, dca) > maxDistanceSquared)
+					{
+						return;
+					}
+					int32 groupAIdx = m_system->m_groupIdxBuffer[a];
+					int32 groupBIdx = m_system->m_groupIdxBuffer[b];
+					int32 groupCIdx = m_system->m_groupIdxBuffer[c];
+					b2ParticleTriad& triad = m_system->m_triadBuffer.Append();
+					triad.indexA = a;
+					triad.indexB = b;
+					triad.indexC = c;
+					triad.flags = af | bf | cf;
+					const std::vector<float32>& strengthBuf = m_system->m_groupStrengthBuf;
+					triad.strength = b2Min(b2Min(
+						groupAIdx ? strengthBuf[groupAIdx] : 1,
+						groupBIdx ? strengthBuf[groupBIdx] : 1),
+						groupCIdx ? strengthBuf[groupCIdx] : 1);
+					b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
 					triad.pa = pa - midPoint;
 					triad.pb = pb - midPoint;
 					triad.pc = pc - midPoint;
@@ -2187,10 +2343,8 @@ void b2ParticleSystem::AFComputeDepth()
 		bp0(bCondition) = bp1;
 		if (af::anyTrue(bCondition).elements())
 			updated = true;
-
 		if (!updated)
 			break;
-
 	}
 	gfor(af::seq i, groupsToUpdateCount)
 	{

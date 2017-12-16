@@ -956,7 +956,35 @@ private:
 			B2_NOT_USED(c);
 			return true;
 		}
+	}; 
+	class AFConnectionFilter
+	{
+	public:
+		virtual ~AFConnectionFilter() {}
+		/// Is the particle necessary for connection?
+		/// A pair or a triad should contain at least one 'necessary' particle.
+		virtual af::array IsNecessary(af::array idxs) const
+		{
+			B2_NOT_USED(idxs);
+			return af::constant(1, idxs.elements(), af::dtype::b8);
+		}
+		/// An additional condition for creating a pair.
+		virtual af::array ShouldCreatePair(af::array a, af::array b) const
+		{
+			B2_NOT_USED(a);
+			B2_NOT_USED(b);
+			return af::constant(1, a.elements(), af::dtype::b8);
+		}
+		/// An additional condition for creating a triad.
+		virtual bool ShouldCreateTriad(int32 a, int32 b, int32 c) const
+		{
+			B2_NOT_USED(a);
+			B2_NOT_USED(b);
+			B2_NOT_USED(c);
+			return true;
+		}
 	};
+
 
 	/// InsideBoundsEnumerator enumerates all particles inside the given bounds.
 	class InsideBoundsEnumerator
@@ -1065,6 +1093,8 @@ private:
 
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
+	void AFUpdatePairsAndTriads(
+		int32 firstIndex, int32 lastIndex, const AFConnectionFilter& filter);
 	void UpdatePairsAndTriadsWithReactiveParticles();
 	void AFUpdatePairsAndTriadsWithReactiveParticles();
 	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
@@ -1461,6 +1491,11 @@ private:
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
 	b2GrowableBuffer<b2ParticlePair> m_pairBuffer;
+	vector<int32>	m_pairIdxA, indexB;
+	vector<uint32>	m_pairFlags;
+	vector<float32> m_pairStrength;	   /// The strength of cohesion among the particles.
+	vector<float32> m_pairDistance;	   /// The initial distance of the particles.
+
 	b2GrowableBuffer<b2ParticleTriad> m_triadBuffer;
 
 	/// Time each particle should be destroyed relative to the last time
