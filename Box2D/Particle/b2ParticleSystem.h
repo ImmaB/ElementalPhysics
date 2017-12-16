@@ -399,6 +399,7 @@ public:
 	                              bool callDestructionListener);
 
 	void FilterRealGroups();
+	void AFFilterRealGroups();
 
 	int32 CreateParticleMaterial(const b2ParticleMaterialDef& def);
 
@@ -1384,9 +1385,15 @@ private:
 				afGroupIdxBuf,
 				afPartMatIdxBuf,
 
+				afAccumulationBuf,
+				afDepthBuf,
+
 				afProxyIdxBuf, 
 				afProxyTagBuf,
-
+				
+				//afFreeGroupIdxBuffer,
+				afRealGroupIdxBuf,
+				
 				afGroupFirstIdxBuf, afGroupLastIdxBuf,
 				afGroupFlagsBuf,
 				afGroupColGroupBuf,

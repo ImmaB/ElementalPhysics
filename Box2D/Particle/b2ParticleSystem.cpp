@@ -2003,6 +2003,16 @@ void b2ParticleSystem::FilterRealGroups()
 	if (!m_freeGroupIdxBuffer.empty())
 		m_realGroupIdxBuffer.erase(m_freeGroupIdxBuffer.begin(), m_freeGroupIdxBuffer.end());
 }
+void b2ParticleSystem::AFFilterRealGroups()
+{
+	if (!m_freeGroupIdxBuffer.empty())
+	{
+		af::array afFreeGroupIdxBuf(m_freeGroupIdxBuffer.data());
+		afRealGroupIdxBuf = af::seq(0, m_groupCount);
+		afRealGroupIdxBuf(afFreeGroupIdxBuf) = b2_invalidGroupIndex;
+		afRealGroupIdxBuf = afRealGroupIdxBuf(af::where(afRealGroupIdxBuf != b2_invalidGroupIndex));
+	}
+}
 
 void b2ParticleSystem::ComputeDepth()
 {
@@ -2109,12 +2119,13 @@ void b2ParticleSystem::ComputeDepth()
 }
 void b2ParticleSystem::AFComputeDepth()
 {
-	const af::array afGroupAIdxs = afGroupIdxBuf(afContactIdxABuf);
-	const af::array afGroupBIdxs = afGroupIdxBuf(afContactIdxBBuf);
-	af::array k = af::range(af::dim4(m_contactCount));
+	const af::array afGroupAIdxs(afContactIdxABuf);
+	const af::array afGroupBIdxs(afContactIdxBBuf);
+	af::array k = af::seq(0, m_contactCount);
 	af::array afContactGroups = k(afGroupAIdxs >= 0 && afGroupAIdxs == afGroupBIdxs &&
 									(afGroupFlagsBuf(afGroupAIdxs) & b2_particleGroupNeedsUpdateDepth));
-	
+	int contactGroupsCount = afContactGroups.elements();
+
 	af::array afRealGroupIdxs(m_realGroupIdxBuffer.data());
 
 	af::array afGroupsToUpdate = afRealGroupIdxs(afGroupFlagsBuf(afRealGroupIdxs) & b2_particleGroupNeedsUpdateDepth != 0);
@@ -2122,34 +2133,73 @@ void b2ParticleSystem::AFComputeDepth()
 	AFSetGroupFlags(afGroupsToUpdate, afGroupFlagsBuf(afGroupsToUpdate) &
 		~b2_particleGroupNeedsUpdateDepth);
 	
-	//TODO array from a to b
-	/*
+	
 	vector<int32> groupsToUpdate(groupsToUpdateCount);
 	CopyFromAFarrayToVector(groupsToUpdateCount, afGroupsToUpdate, groupsToUpdate);
 
-	for (int32 i = 0; i < groupsToUpdateCount; i++)
+	gfor(af::seq i, groupsToUpdateCount)
 	{
-		int32 groupIdx = groupsToUpdate[i];
-
-		afAccumulationBuf(af::seq(afGroupFirstIdxBuf[groupIdx], afGroupLastIdxBuf(groupIdx))) = 0;
+		af::array groupIdx = afGroupsToUpdate(i);
+		af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
+									 afGroupLastIdxBuf(groupIdx).scalar<int32>());
+		afAccumulationBuf(partIdxs) = 0;
 	}
-	
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+
+	// Compute sum of weight of contacts except between different groups.
+	af::array a = afContactIdxABuf(afContactGroups);
+	af::array b = afContactIdxBBuf(afContactGroups);
+	af::array w = afContactWeightBuf(afContactGroups);
+	afAccumulationBuf(a) += w;
+	afAccumulationBuf(b) += w;
+
+	gfor(af::seq i, groupsToUpdateCount)
 	{
-		if (m_groupFlagsBuf[groupIdx] & b2_particleGroupNeedsUpdateDepth)
-		{
-			groupsToUpdate[groupsToUpdateCount++] = groupIdx;
-			SetGroupFlags(groupIdx,
-				m_groupFlagsBuf[groupIdx] &
-				~b2_particleGroupNeedsUpdateDepth);
-			for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
-			{
-				m_accumulationBuffer[i] = 0;
-			}
-		}
-	}*/
+		af::array groupIdx = afGroupsToUpdate(i);
+		af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
+			afGroupLastIdxBuf(groupIdx).scalar<int32>());
+		af::array d = afDepthBuf(partIdxs);
+		d = af::constant(b2_maxFloat, partIdxs.elements());
+		d(afAccumulationBuf < 0.8f) = 0;
+	}
 
 	//TODO
+	
+	// The number of iterations is equal to particle number from the deepest
+	// particle to the nearest surface particle, and in general it is smaller
+	// than sqrt of total particle number.
+	int32 iterationCount = (int32)b2Sqrt((float)m_count);
+	for (int32 t = 0; t < iterationCount; t++)
+	{
+		bool updated = false;
+		
+		af::array a = afContactIdxABuf(afContactGroups);
+		af::array b = afContactIdxBBuf(afContactGroups);
+		af::array r = 1.0f - afContactWeightBuf(afContactGroups);
+		af::array ap0 = afDepthBuf(a);
+		af::array bp0 = afDepthBuf(b);
+		af::array ap1 = bp0 + r;
+		af::array bp1 = ap0 + r;
+		af::array aCondition = (ap0 > ap1);
+		ap0(aCondition) = ap1;
+		if (af::anyTrue(aCondition).elements())
+			updated = true;
+		af::array bCondition = (bp0 > bp1);
+		bp0(bCondition) = bp1;
+		if (af::anyTrue(bCondition).elements())
+			updated = true;
+
+		if (!updated)
+			break;
+
+	}
+	gfor(af::seq i, groupsToUpdateCount)
+	{
+		af::array groupIdx = afGroupsToUpdate(i);
+		af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
+			afGroupLastIdxBuf(groupIdx).scalar<int32>());
+		af::array d = afDepthBuf(partIdxs);
+		d = af::select(d < b2_maxFloat, d * m_particleDiameter, 0);
+	}
 }
 
 b2ParticleSystem::InsideBoundsEnumerator
@@ -2361,8 +2411,8 @@ void b2ParticleSystem::AFFindContacts(int32& contactCount)
 	AFFindContactsbyTags(contactIdxAs, contactIdxBs);
 	
 	//Copy to GPU
-	af::array afContactIdxsA = af::array(maxContactCount, afArrayDims, contactIdxAs.data());
-	af::array afContactIdxsB = af::array(maxContactCount, afArrayDims, contactIdxBs.data());
+	af::array afContactIdxsA(maxContactCount, afArrayDims, contactIdxAs.data());
+	af::array afContactIdxsB(maxContactCount, afArrayDims, contactIdxBs.data());
 
 	//Remove Empty Contacts
 	af::array afEmptyContactCond(afContactIdxsA != b2_invalidParticleIndex || afContactIdxsB != b2_invalidParticleIndex);
@@ -2446,7 +2496,7 @@ inline void b2ParticleSystem::AFAddContacts(af::array& a, af::array& b)
 	afContactMatFlagsBuf = afPartMatFlagsBuf(matIdxsA) | afPartMatFlagsBuf(matIdxsB);
 	afContactWeightBuf = 1 - distBtParticlesSq * invD * m_inverseDiameter;
 	af::array mass = afPartMatMassBuf(matIdxsA) + afPartMatMassBuf(matIdxsB);
-	afContactMassBuf = 0;
+	afContactMassBuf = af::constant(0, idxs.elements());
 	afContactMassBuf(mass > 0) = (1.0f / mass);
 	afContactNormalXBuf = invD * dx(idxs);
 	afContactNormalYBuf = invD * dy(idxs);
@@ -3074,6 +3124,10 @@ void b2ParticleSystem::UpdateBodyContacts()
 	//}
 
 	//NotifyBodyContactListenerPostContact(fixtureSet);
+
+	CopyBodyContactsToGPU();
+
+
 }
 void b2ParticleSystem::AFUpdateBodyContacts()
 {
@@ -3448,7 +3502,7 @@ void b2ParticleSystem::SolveInit()
 		SolveZombie();
 	if (m_needsUpdateAllParticleFlags)
 		UpdateAllParticleFlags();
-	FilterRealGroups();
+	AFFilterRealGroups();
 	if (m_needsUpdateAllGroupFlags)
 		UpdateAllGroupFlags();
 	CopyParticlesToGPU();
@@ -3469,7 +3523,7 @@ void b2ParticleSystem::SolveIterationPart1(int32 iteration)
 	subStep.inv_dt *= m_step.particleIterations;
 	AFUpdateContacts();		// <-- THIS ... 50% of calculation time
 	UpdateBodyContacts();
-	CopyBodyContactsToGPU();
+	
 	AFComputeWeight();
 }
 
@@ -3481,7 +3535,7 @@ void b2ParticleSystem::SolveIterationPart2()
 		return;
 
 	if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-		ComputeDepth();
+		AFComputeDepth();
 	if (m_allParticleFlags & b2_reactiveParticle)
 		AFUpdatePairsAndTriadsWithReactiveParticles();
 	if (m_hasForce)
@@ -3603,6 +3657,9 @@ void b2ParticleSystem::CopyParticlesToGPU()
 	//afColorBuf	= af::array(m_count, afArrayDims, m_colorBuffer.data);
 	afGroupIdxBuf	= af::array(m_count, afArrayDims, m_groupIdxBuffer.data());
 	afPartMatIdxBuf = af::array(m_count, afArrayDims, m_partMatIdxBuffer.data());
+
+	afAccumulationBuf(m_count);
+	afDepthBuf(m_count);
 }
 void b2ParticleSystem::CopyParticlesToCPU()
 {
@@ -5684,6 +5741,7 @@ void b2ParticleSystem::AFSetGroupFlags(const af::array& afGroupIdxs, af::array& 
 	}
 	oldFlags = newFlags;*/
 }
+
 
 static inline bool IsSignificantForce(float32 forceX, float32 forceY)
 {
