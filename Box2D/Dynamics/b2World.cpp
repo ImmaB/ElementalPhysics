@@ -1065,6 +1065,17 @@ struct b2WorldQueryWrapper
 	const b2BroadPhase* broadPhase;
 	b2QueryCallback* callback;
 };
+struct AFWorldQueryWrapper
+{
+	bool QueryCallback(int32 proxyId)
+	{
+		b2FixtureProxy* proxy = (b2FixtureProxy*)broadPhase->GetUserData(proxyId);
+		return callback->ReportFixture(proxy->fixture);
+	}
+
+	const b2BroadPhase* broadPhase;
+	AFQueryCallback* callback;
+};
 
 void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 {
@@ -1077,6 +1088,20 @@ void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 		if (callback->ShouldQueryParticleSystem(p))
 		{
 			p->QueryAABB(callback, aabb);
+		}
+	}
+}
+void b2World::AFQueryAABB(AFQueryCallback* callback, const b2AABB& aabb) const
+{
+	AFWorldQueryWrapper wrapper;
+	wrapper.broadPhase = &m_contactManager.m_broadPhase;
+	wrapper.callback = callback;
+	m_contactManager.m_broadPhase.Query(&wrapper, aabb);
+	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
+	{
+		if (callback->ShouldQueryParticleSystem(p))
+		{
+			p->AFQueryAABB(callback, aabb);
 		}
 	}
 }

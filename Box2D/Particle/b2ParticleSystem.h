@@ -22,10 +22,12 @@
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <Box2D/Particle/AFVoronoiDiagram.h>
 #include <vector>
+#include <numeric>
 
 #include <arrayfire.h>
-//#include <arrayfire.h>
+#include <af/compatible.h>
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -43,6 +45,7 @@ class b2ParticleMaterial;
 class b2BlockAllocator;
 class b2StackAllocator;
 class b2QueryCallback;
+class AFQueryCallback;
 class b2RayCastCallback;
 class b2Fixture;
 class b2ContactFilter;
@@ -821,6 +824,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
+	void AFQueryAABB(AFQueryCallback* callback, const b2AABB& aabb) const;
 
 	/// Query the particle system for all particles that potentially overlap
 	/// the provided shape's AABB. Calls QueryAABB internally.
@@ -893,6 +897,7 @@ private:
 	friend class b2ParticleGroup;
 	friend class b2ParticleBodyContactRemovePredicate;
 	friend class b2FixtureParticleQueryCallback;
+	friend class AFFixtureParticleQueryCallback;
 #ifdef LIQUIDFUN_UNIT_TESTS
 	FRIEND_TEST(FunctionTests, GetParticleMass);
 	FRIEND_TEST(FunctionTests, AreProxyBuffersTheSame);
@@ -976,12 +981,12 @@ private:
 			return af::constant(1, a.elements(), af::dtype::b8);
 		}
 		/// An additional condition for creating a triad.
-		virtual bool ShouldCreateTriad(int32 a, int32 b, int32 c) const
+		virtual af::array AFShouldCreateTriad(const af::array& a, const af::array& b, const af::array& c) const
 		{
 			B2_NOT_USED(a);
 			B2_NOT_USED(b);
 			B2_NOT_USED(c);
-			return true;
+			return af::constant(1, a.elements(), af::dtype::b8);
 		}
 	};
 
@@ -1070,6 +1075,8 @@ private:
 	void ResizeGroupBuffers(int32 size);
 	void ResizeContactBuffers(int32 size);
 	void ResizeBodyContactBuffers(int32 size);
+	void ResizePairBuffers(int32 size);
+	void ResizeTriadBuffers(int32 size);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const b2Vec2& position);
@@ -1097,11 +1104,6 @@ private:
 		int32 firstIndex, int32 lastIndex, const AFConnectionFilter& filter);
 	void UpdatePairsAndTriadsWithReactiveParticles();
 	void AFUpdatePairsAndTriadsWithReactiveParticles();
-	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
-	static bool MatchPairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
-	static bool CompareTriadIndices(const b2ParticleTriad& a, const b2ParticleTriad& b);
-	static bool MatchTriadIndices(const b2ParticleTriad& a, const b2ParticleTriad& b);
-
 	static void InitializeParticleLists(
 		const b2ParticleGroup* group, ParticleListNode* nodeBuffer);
 	void MergeParticleListsInContact(
@@ -1149,6 +1151,19 @@ private:
 	void UpdateProxies();
 	void AFUpdateProxies();
 	void SortProxies();
+	template <class UnaryPredicate>
+	static vector<int32> GetValidIdxs(int32 vSize, UnaryPredicate isValidFunc);
+	template <class UnaryPredicate>
+	vector<int32> GetSortedIdxs(int32 vSize, const UnaryPredicate compFunc);
+	af::array AFGetSortedPairIdxs() const;
+	template <class UnaryPredicate>
+	vector<int32> GetStableSortedIdxs(int32 vSize, const UnaryPredicate compFunc);
+	template <class UnaryPredicate>
+	vector<int32> GetUniqueIdxs(int32 vSize, const UnaryPredicate compFunc);
+	af::array AFGetUniquePairIdxs();
+	af::array AFGetUniqueTriadIdxs();
+	template<class T>
+	void reorder(vector<T>& v, const vector<int32>& order);
 	void AFSortProxies(af::array& proxyIdxsOut, af::array& proxyTagsOut, const af::array& proxyIdxsIn, const af::array& proxyTagsIn) const;
 	void FilterContacts();
 	void NotifyContactListenerPreContact(
@@ -1220,17 +1235,22 @@ private:
 	void SolveLifetimes(const b2TimeStep& step);
 	void RotateBuffer(int32 start, int32 mid, int32 end);
 
-	template <class T1, class UnaryPredicate> static void RemoveFromVectorIf(vector<T1>& vectorToTest,
+	template <class T1, class UnaryPredicate>
+	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
 		int32& size, UnaryPredicate pred, bool adjustSize);
-	template <class T1, class T2, class UnaryPredicate> static void RemoveFromVectorsIf(vector<T1>& vectorToTest, vector<T2>& v2,
+	template <class T1, class T2, class UnaryPredicate>
+	static void RemoveFromVectorsIf(vector<T1>& vectorToTest, vector<T2>& v2,
 		int32& size, UnaryPredicate pred, bool adjustSize);
-	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate> static void RemoveFromVectorsIf(
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate>
+	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7,
 		int32& size, UnaryPredicate pred, bool adjustSize);
-	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate> static void RemoveFromVectorsIf(
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate>
+	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
 		int32& size, UnaryPredicate pred, bool adjustSize);
-	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> static void RemoveFromVectorsIf(
+	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> 
+	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
 		int32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize);
 
@@ -1330,6 +1350,11 @@ private:
 	int32 m_contactBufferSize;
 	int32 m_bodyContactCount;
 	int32 m_bodyContactBufferSize;
+	int32 m_pairCount;
+	int32 m_pairBufferSize;
+	int32 m_triadCount;
+	int32 m_triadBufferSize;
+
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
@@ -1458,7 +1483,26 @@ private:
 				afPartMatMeltingPointBuf,
 				afPartMatBoilingPointBuf,
 				afPartMatIgnitionPointBuf,
-				afPartMatHeatConductivityBuf;
+				afPartMatHeatConductivityBuf,
+
+				afPairIdxABuf, afPairIdxBBuf,
+				afPairFlagsBuf,
+				afPairStrengthBuf,
+				afPairDistanceBuf,
+
+				afTriadIdxABuf, afTriadIdxBBuf, afTriadIdxCBuf,
+				afTriadFlagsBuf,	
+				afTriadStrengthBuf,	
+				afTriadPAXBuf, afTriadPAYBuf,
+				afTriadPBXBuf, afTriadPBYBuf,
+				afTriadPCXBuf, afTriadPCYBuf,
+				afTriadKABuf, afTriadKBBuf, afTriadKCBuf, afTriadSBuf;
+
+
+
+
+
+
 				
 
 	/// Stuck particle detection parameters and record keeping
@@ -1490,13 +1534,30 @@ private:
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
-	b2GrowableBuffer<b2ParticlePair> m_pairBuffer;
-	vector<int32>	m_pairIdxA, indexB;
-	vector<uint32>	m_pairFlags;
-	vector<float32> m_pairStrength;	   /// The strength of cohesion among the particles.
-	vector<float32> m_pairDistance;	   /// The initial distance of the particles.
+	//b2GrowableBuffer<b2ParticlePair> m_pairBuffer;
+	vector<int32>   m_pairIdxABuf, m_pairIdxBBuf;
+	vector<uint32>  m_pairFlagsBuf;
+	vector<float32> m_pairStrengthBuf;	   /// The strength of cohesion among the particles.
+	vector<float32> m_pairDistanceBuf;	   /// The initial distance of the particles.
+					
+	//b2GrowableBuffer<b2ParticleTriad> m_triadBuffer;
+	vector<int32>   m_triadIdxABuf, m_triadIdxBBuf, m_triadIdxCBuf;
+	vector<uint32>  m_triadFlagsBuf;		/// The logical sum of the particle flags. See the b2ParticleFlag enum.
+	vector<float32> m_triadStrengthBuf;		/// The strength of cohesion among the particles.
+	vector<float32> m_triadPAXBuf, m_triadPAYBuf, 	/// Values used for calculation.
+				   m_triadPBXBuf, m_triadPBYBuf,
+				   m_triadPCXBuf, m_triadPCYBuf;
+	vector<float32> m_triadKABuf, m_triadKBBuf, m_triadKCBuf, m_triadSBuf;
 
-	b2GrowableBuffer<b2ParticleTriad> m_triadBuffer;
+	
+	uint32 flags;
+
+	
+	float32 strength;
+
+	
+	b2Vec2 pa, pb, pc;
+	float32 ka, kb, kc, s;
 
 	/// Time each particle should be destroyed relative to the last time
 	/// m_timeElapsed was initialized.  Each unit of time corresponds to
@@ -1614,25 +1675,16 @@ inline int32 b2ParticleSystem::GetBodyContactCount() const
 	return m_bodyContactCount;
 }
 
+/*
 inline const b2ParticlePair* b2ParticleSystem::GetPairs() const
 {
 	return m_pairBuffer.Data();
 }
 
-inline int32 b2ParticleSystem::GetPairCount() const
-{
-	return m_pairBuffer.GetCount();
-}
-
 inline const b2ParticleTriad* b2ParticleSystem::GetTriads() const
 {
 	return m_triadBuffer.Data();
-}
-
-inline int32 b2ParticleSystem::GetTriadCount() const
-{
-	return m_triadBuffer.GetCount();
-}
+}*/
 
 inline b2ParticleSystem* b2ParticleSystem::GetNext()
 {

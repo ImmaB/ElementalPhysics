@@ -488,6 +488,10 @@ inline float32 b2Dot(const float& ax, const float& ay, const float& bx, const fl
 {
 	return ax * bx + ay * by;
 }
+inline af::array b2Dot(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
+{
+	return ax * bx + ay * by;
+}
 
 /// Perform the cross product on two vectors. In 2D this produces a scalar.
 inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b)
@@ -495,6 +499,10 @@ inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b)
 	return a.x * b.y - a.y * b.x;
 }
 inline float32 b2Cross(const float& ax, const float& ay, const float& bx, const float& by)
+{
+	return ax * by - ay * bx;
+}
+inline af::array b2Cross(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
 {
 	return ax * by - ay * bx;
 }
@@ -558,6 +566,12 @@ inline float32 b2Distance(const b2Vec2& a, const b2Vec2& b)
 {
 	b2Vec2 c = a - b;
 	return c.Length();
+}
+inline af::array afDistance(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
+{
+	af::array cx = ax - bx;
+	af::array cy = ay - by;
+	return af::sqrt(cx * cx + cy * cy);
 }
 
 inline float32 b2DistanceSquared(const b2Vec2& a, const b2Vec2& b)
@@ -656,6 +670,14 @@ inline b2Rot b2MulT(const b2Rot& q, const b2Rot& r)
 inline b2Vec2 b2Mul(const b2Rot& q, const b2Vec2& v)
 {
 	return b2Vec2(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y);
+}
+inline float32 b2MulX(const b2Rot& q, float32 x, float32 y)
+{
+	return q.c * x - q.s * y;
+}
+inline float32 b2MulY(const b2Rot& q, float32 x, float32 y)
+{
+	return q.s * x + q.c * y;
 }
 
 /// Inverse rotate a vector

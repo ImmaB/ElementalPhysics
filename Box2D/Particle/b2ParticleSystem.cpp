@@ -15,6 +15,7 @@
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 */
+#define NOMINMAX
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
 #include <Box2D/Particle/b2VoronoiDiagram.h>
@@ -436,9 +437,7 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 								   b2World* world) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
-	m_stuckParticleBuffer(world->m_blockAllocator),
-	m_pairBuffer(world->m_blockAllocator),
-	m_triadBuffer(world->m_blockAllocator)
+	m_stuckParticleBuffer(world->m_blockAllocator)
 {
 	b2Assert(def);
 	m_paused = false;
@@ -464,6 +463,10 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_partMatBufferSize = 0;
 	m_contactBufferSize = 0;
 	m_bodyContactBufferSize = 0;
+	m_pairCount = 0;
+	m_pairBufferSize = 0;
+	m_triadCount = 0;
+	m_triadBufferSize = 0;
 	//m_forceBuffer = NULL;
 	//m_weightBuffer = NULL;
 	m_staticPressureBuffer = NULL;
@@ -523,6 +526,20 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	afPartMatBoilingPointBuf(afArrayDims, af::dtype::f32);
 	afPartMatIgnitionPointBuf(afArrayDims, af::dtype::f32);
 	afPartMatHeatConductivityBuf(afArrayDims, af::dtype::f32);
+
+	afPairIdxABuf(afArrayDims, af::dtype::s32), afPairIdxBBuf(afArrayDims, af::dtype::s32);
+	afPairFlagsBuf(afArrayDims, af::dtype::u32);
+	afPairStrengthBuf(afArrayDims, af::dtype::u32);
+	afPairDistanceBuf(afArrayDims, af::dtype::u32);
+
+	afTriadIdxABuf(afArrayDims, af::dtype::s32), afTriadIdxBBuf(afArrayDims, af::dtype::s32), afTriadIdxCBuf(afArrayDims, af::dtype::s32);
+	afTriadFlagsBuf(afArrayDims, af::dtype::u32);
+	afTriadStrengthBuf(afArrayDims, af::dtype::f32);
+	afTriadPAXBuf(afArrayDims, af::dtype::f32), afTriadPAYBuf(afArrayDims, af::dtype::f32);
+	afTriadPBXBuf(afArrayDims, af::dtype::f32), afTriadPBYBuf(afArrayDims, af::dtype::f32);
+	afTriadPCXBuf(afArrayDims, af::dtype::f32), afTriadPCYBuf(afArrayDims, af::dtype::f32);
+	afTriadKABuf(afArrayDims, af::dtype::f32), afTriadKBBuf(afArrayDims, af::dtype::f32);
+	afTriadKCBuf(afArrayDims, af::dtype::f32), afTriadSBuf(afArrayDims, af::dtype::f32);
 
 	b2Assert(def->lifetimeGranularity > 0.0f);
 	m_def = *def;
@@ -784,6 +801,7 @@ void b2ParticleSystem::ResizeGroupBuffers(int32 size)
 
 void b2ParticleSystem::ResizeContactBuffers(int32 size)
 {
+	if (!size) size = b2_minParticleBufferCapacity;
 	m_contactIdxABuffer.resize(size);
 	m_contactIdxBBuffer.resize(size);
 	m_contactWeightBuffer.resize(size);
@@ -794,9 +812,9 @@ void b2ParticleSystem::ResizeContactBuffers(int32 size)
 	m_contactMatFlagsBuffer.resize(size);
 	m_contactBufferSize = size;
 }
-
 void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
+	if (!size) size = b2_minParticleBufferCapacity;
 	m_bodyContactIdxBuffer.resize(size);
 	m_bodyContactBodyBuffer.resize(size);
 	m_bodyContactFixtureBuffer.resize(size);
@@ -805,6 +823,37 @@ void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 	m_bodyContactNormalYBuffer.resize(size);
 	m_bodyContactMassBuffer.resize(size);
 	m_bodyContactBufferSize = size;
+}
+
+void b2ParticleSystem::ResizePairBuffers(int32 size)
+{
+	if (!size) size = b2_minParticleBufferCapacity;
+	m_pairIdxABuf.resize(size);
+	m_pairIdxBBuf.resize(size);
+	m_pairFlagsBuf.resize(size);
+	m_pairStrengthBuf.resize(size);
+	m_pairDistanceBuf.resize(size);
+	m_pairBufferSize = size;
+}
+void b2ParticleSystem::ResizeTriadBuffers(int32 size)
+{
+	if (!size) size = b2_minParticleBufferCapacity;
+	m_triadIdxABuf.resize(size);
+	m_triadIdxBBuf.resize(size);
+	m_triadIdxCBuf.resize(size);
+	m_triadFlagsBuf.resize(size);
+	m_triadStrengthBuf.resize(size);
+	m_triadPAXBuf.resize(size);
+	m_triadPAYBuf.resize(size);
+	m_triadPBXBuf.resize(size);
+	m_triadPBYBuf.resize(size);
+	m_triadPCXBuf.resize(size);
+	m_triadPCYBuf.resize(size);
+	m_triadKABuf.resize(size);
+	m_triadKBBuf.resize(size);
+	m_triadKCBuf.resize(size);
+	m_triadSBuf.resize(size);
+	m_triadBufferSize = size;
 }
 
 int32 b2ParticleSystem::CreateParticleMaterial(const b2ParticleMaterialDef & def)
@@ -1630,37 +1679,35 @@ void b2ParticleSystem::UpdatePairsAndTriadsWithParticleList(
 	// replace it with the corresponding value in nodeBuffer.
 	// Note that nodeBuffer is allocated only for the group and the index should
 	// be shifted by bufferIndex.
-	for (int32 k = 0; k < m_pairBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		b2ParticlePair& pair = m_pairBuffer[k];
-		int32 a = pair.indexA;
-		int32 b = pair.indexB;
+		int32 a = m_pairIdxABuf[k];
+		int32 b = m_pairIdxBBuf[k];
 		if (group->ContainsParticle(a))
 		{
-			pair.indexA = nodeBuffer[a - bufferIndex].index;
+			m_pairIdxABuf[k] = nodeBuffer[a - bufferIndex].index;
 		}
 		if (group->ContainsParticle(b))
 		{
-			pair.indexB = nodeBuffer[b - bufferIndex].index;
+			m_pairIdxBBuf[k] = nodeBuffer[b - bufferIndex].index;
 		}
 	}
-	for (int32 k = 0; k < m_triadBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		b2ParticleTriad& triad = m_triadBuffer[k];
-		int32 a = triad.indexA;
-		int32 b = triad.indexB;
-		int32 c = triad.indexC;
+		int32 a = m_triadIdxABuf[k];
+		int32 b = m_triadIdxBBuf[k];
+		int32 c = m_triadIdxCBuf[k];
 		if (group->ContainsParticle(a))
 		{
-			triad.indexA = nodeBuffer[a - bufferIndex].index;
+			m_triadIdxABuf[k] = nodeBuffer[a - bufferIndex].index;
 		}
 		if (group->ContainsParticle(b))
 		{
-			triad.indexB = nodeBuffer[b - bufferIndex].index;
+			m_triadIdxBBuf[k] = nodeBuffer[b - bufferIndex].index;
 		}
 		if (group->ContainsParticle(c))
 		{
-			triad.indexC = nodeBuffer[c - bufferIndex].index;
+			m_triadIdxCBuf[k] = nodeBuffer[c - bufferIndex].index;
 		}
 	}
 }
@@ -1823,21 +1870,53 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupBIdx]) &&
 				filter.ShouldCreatePair(a, b))
 			{
-				b2ParticlePair& pair = m_pairBuffer.Append();
-				pair.indexA = a;
-				pair.indexB = b;
-				pair.flags = m_contactFlagsBuffer[k];
-				pair.strength = b2Min(
+				if (m_pairCount >= m_pairBufferSize)
+					ResizePairBuffers(m_pairCount * 2);
+				int32 i = m_pairCount;
+				m_pairCount++;
+				m_pairIdxABuf[i] = a;
+				m_pairIdxBBuf[i] = b;
+				m_pairFlagsBuf[i] = m_contactFlagsBuffer[k];
+				m_pairStrengthBuf[i] = b2Min(
 					groupAIdx ? m_groupStrengthBuf[groupAIdx] : 1,
 					groupBIdx ? m_groupStrengthBuf[groupBIdx] : 1);
-				pair.distance = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
+				m_pairDistanceBuf[i] = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
 										   b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]));
 			}
 		}
-		Concurrency::parallel_sort(
-		//std::stable_sort(
-			m_pairBuffer.Begin(), m_pairBuffer.End(), ComparePairIndices);
-		m_pairBuffer.Unique(MatchPairIndices);
+
+		// Sort
+		vector<int32> idxs(m_pairCount);
+		std::iota(idxs.begin(), idxs.end(), 0);
+
+		auto ComparePairIndices = [this](int32 a, int32 b) -> bool
+		{
+			int32 diffA = m_pairIdxABuf[a] - m_pairIdxABuf[b];
+			if (diffA != 0) return diffA < 0;
+			return m_pairIdxBBuf[a] < m_pairIdxBBuf[b];
+		};
+
+		concurrency::parallel_sort(idxs.begin(), idxs.end(), ComparePairIndices);
+
+		reorder(m_pairIdxABuf, idxs);
+		reorder(m_pairIdxBBuf, idxs);
+		reorder(m_pairFlagsBuf, idxs);
+		reorder(m_pairStrengthBuf, idxs);
+		reorder(m_pairDistanceBuf, idxs);
+
+		auto MatchPairIndices = [this](int32 a, int32 b) -> bool
+		{
+			return m_pairIdxABuf[a] == m_pairIdxABuf[b] && m_pairIdxBBuf[a] == m_pairIdxBBuf[b];
+		};
+
+		idxs = GetUniqueIdxs(m_pairCount, MatchPairIndices);
+		reorder(m_pairIdxABuf, idxs);
+		reorder(m_pairIdxBBuf, idxs);
+		reorder(m_pairFlagsBuf, idxs);
+		reorder(m_pairStrengthBuf, idxs);
+		reorder(m_pairDistanceBuf, idxs);
+
+		m_pairCount = idxs.size();
 	}
 	if (particleFlags & k_triadFlags)
 	{
@@ -1866,41 +1945,56 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 				if (((af | bf | cf) & k_triadFlags) &&
 					m_filter->ShouldCreateTriad(a, b, c))
 				{
-					const b2Vec2& pa = b2Vec2(m_system->m_positionXBuffer[a], m_system->m_positionYBuffer[a]);
-					const b2Vec2& pb = b2Vec2(m_system->m_positionXBuffer[b], m_system->m_positionYBuffer[b]);
-					const b2Vec2& pc = b2Vec2(m_system->m_positionXBuffer[c], m_system->m_positionYBuffer[c]);
-					b2Vec2 dab = pa - pb;
-					b2Vec2 dbc = pb - pc;
-					b2Vec2 dca = pc - pa;
+					const float32 pax = m_system->m_positionXBuffer[a];
+					const float32 pay = m_system->m_positionYBuffer[a];
+					const float32 pbx = m_system->m_positionXBuffer[b];
+					const float32 pby = m_system->m_positionYBuffer[b];
+					const float32 pcx = m_system->m_positionXBuffer[c];
+					const float32 pcy = m_system->m_positionYBuffer[c];
+					float32 dabx = pax - pbx;
+					float32 daby = pay - pby;
+					float32 dbcx = pbx - pcx;
+					float32 dbcy = pby - pcy;
+					float32 dcax = pcx - pax;
+					float32 dcay = pcy - pay;
 					float32 maxDistanceSquared = b2_maxTriadDistanceSquared *
 												 m_system->m_squaredDiameter;
-					if (b2Dot(dab, dab) > maxDistanceSquared ||
-						b2Dot(dbc, dbc) > maxDistanceSquared ||
-						b2Dot(dca, dca) > maxDistanceSquared)
+					if (b2Dot(dabx, daby, dabx, daby) > maxDistanceSquared ||
+						b2Dot(dbcx, dbcy, dbcx, dbcy) > maxDistanceSquared ||
+						b2Dot(dcax, dcay, dcax, dcay) > maxDistanceSquared)
 					{
 						return;
 					}
 					int32 groupAIdx = m_system->m_groupIdxBuffer[a];
 					int32 groupBIdx = m_system->m_groupIdxBuffer[b];
 					int32 groupCIdx = m_system->m_groupIdxBuffer[c];
-					b2ParticleTriad& triad = m_system->m_triadBuffer.Append();
-					triad.indexA = a;
-					triad.indexB = b;
-					triad.indexC = c;
-					triad.flags = af | bf | cf;
+					int32& triadCount = m_system->m_triadCount;
+					if (triadCount >= m_system->m_triadBufferSize)
+						m_system->ResizeTriadBuffers(triadCount * 2);
+					int i = triadCount;
+					triadCount++;
+					m_system->m_triadIdxABuf[i] = a;
+					m_system->m_triadIdxBBuf[i] = b;
+					m_system->m_triadIdxCBuf[i] = c;
+					m_system->m_triadFlagsBuf[i] = af | bf | cf;
 					const std::vector<float32>& strengthBuf = m_system->m_groupStrengthBuf;
-					triad.strength = b2Min(b2Min(
+					m_system->m_triadStrengthBuf[i] = b2Min(b2Min(
 						groupAIdx ? strengthBuf[groupAIdx] : 1,
 						groupBIdx ? strengthBuf[groupBIdx] : 1),
 						groupCIdx ? strengthBuf[groupCIdx] : 1);
-					b2Vec2 midPoint = (float32) 1 / 3 * (pa + pb + pc);
-					triad.pa = pa - midPoint;
-					triad.pb = pb - midPoint;
-					triad.pc = pc - midPoint;
-					triad.ka = -b2Dot(dca, dab);
-					triad.kb = -b2Dot(dab, dbc);
-					triad.kc = -b2Dot(dbc, dca);
-					triad.s = b2Cross(pa, pb) + b2Cross(pb, pc) + b2Cross(pc, pa);
+					float32 midPointX = (float32)1 / 3 * (pax + pbx + pcx);
+					float32 midPointY = (float32)1 / 3 * (pay + pby + pcy);
+					m_system->m_triadPAXBuf[i] = pax - midPointX;
+					m_system->m_triadPAYBuf[i] = pay - midPointY;
+					m_system->m_triadPBXBuf[i] = pbx - midPointX;
+					m_system->m_triadPBYBuf[i] = pby - midPointY;
+					m_system->m_triadPCXBuf[i] = pcx - midPointX;
+					m_system->m_triadPCYBuf[i] = pcy - midPointY;
+					m_system->m_triadKABuf[i] = -b2Dot(dcay, dcay, dabx, daby);
+					m_system->m_triadKBBuf[i] = -b2Dot(daby, daby, dbcx, dbcy);
+					m_system->m_triadKCBuf[i] = -b2Dot(dbcy, dbcy, dcax, dcay);
+					m_system->m_triadSBuf[i] = b2Cross(pax, pay, pbx, pby) + b2Cross(pbx, pby, pcx, pcy) + b2Cross(pcx, pcy, pax, pay);
+					triadCount++;
 				}
 			}
 			b2ParticleSystem* m_system;
@@ -1914,9 +2008,59 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 			}
 		} callback(this, &filter);
 		diagram.GetNodes(callback);
-		stable_sort(
-			m_triadBuffer.Begin(), m_triadBuffer.End(), CompareTriadIndices);
-		m_triadBuffer.Unique(MatchTriadIndices);
+
+
+		auto CompareTriadIndices = [this](int32 a, int32 b) -> bool
+		{
+			int32 diffA = m_triadIdxABuf[a] - m_triadIdxABuf[b];
+			if (diffA != 0) return diffA < 0;
+			int32 diffB = m_triadIdxBBuf[a] - m_triadIdxBBuf[b];
+			if (diffB != 0) return diffB < 0;
+			return m_triadIdxCBuf[a] < m_triadIdxCBuf[b];
+		};
+		auto MatchTriadIndices = [this](int32 a, int32 b) -> bool
+		{
+			return m_triadIdxABuf[a] == m_triadIdxABuf[b]
+				&& m_triadIdxBBuf[a] == m_triadIdxBBuf[b]
+				&& m_triadIdxCBuf[a] == m_triadIdxCBuf[b];
+		};
+
+
+
+		vector<int32> idxs = GetStableSortedIdxs(m_triadCount, CompareTriadIndices);
+		reorder(m_triadIdxABuf, idxs);
+		reorder(m_triadIdxBBuf, idxs);
+		reorder(m_triadIdxCBuf, idxs);
+		reorder(m_triadFlagsBuf, idxs);
+		reorder(m_triadStrengthBuf, idxs);
+		reorder(m_triadPAXBuf, idxs);
+		reorder(m_triadPAYBuf, idxs);
+		reorder(m_triadPBXBuf, idxs);
+		reorder(m_triadPBYBuf, idxs);
+		reorder(m_triadPCXBuf, idxs);
+		reorder(m_triadPCYBuf, idxs);
+		reorder(m_triadKABuf, idxs);
+		reorder(m_triadKBBuf, idxs);
+		reorder(m_triadKCBuf, idxs);
+		reorder(m_triadSBuf, idxs);
+
+		idxs = GetUniqueIdxs(m_triadCount, MatchTriadIndices);
+		reorder(m_triadIdxABuf, idxs);
+		reorder(m_triadIdxBBuf, idxs);
+		reorder(m_triadIdxCBuf, idxs);
+		reorder(m_triadFlagsBuf, idxs);
+		reorder(m_triadStrengthBuf, idxs);
+		reorder(m_triadPAXBuf, idxs);
+		reorder(m_triadPAYBuf, idxs);
+		reorder(m_triadPBXBuf, idxs);
+		reorder(m_triadPBYBuf, idxs);
+		reorder(m_triadPCXBuf, idxs);
+		reorder(m_triadPCYBuf, idxs);
+		reorder(m_triadKABuf, idxs);
+		reorder(m_triadKBBuf, idxs);
+		reorder(m_triadKCBuf, idxs);
+		reorder(m_triadSBuf, idxs);
+		m_triadCount = idxs.size();
 	}
 }
 void b2ParticleSystem::AFUpdatePairsAndTriads(
@@ -1946,157 +2090,184 @@ int32 firstIndex, int32 lastIndex, const AFConnectionFilter& filter)
 		af::array groupAIdx = afGroupIdxBuf(a);
 		af::array groupBIdx = afGroupIdxBuf(b);
 
-		af::array condition(a >= firstIndex && a < lastIndex &&
-							b >= firstIndex && b < lastIndex &&
-							!((af | bf) & b2_zombieParticle) &&
-							((af | bf) & k_pairFlags) &&
-							(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
-							AFParticleCanBeConnected(af, groupAIdx, afGroupFlagsBuf(groupAIdx)) &&
-							AFParticleCanBeConnected(bf, groupBIdx, afGroupFlagsBuf(groupBIdx)) &&
-							filter.ShouldCreatePair(a, b)) ;
-
-		for (int32 k = 0; k < m_contactCount; k++)
+		af::array condIdxs = af::where(a >= firstIndex && a < lastIndex &&
+									   b >= firstIndex && b < lastIndex &&
+									   !((af | bf) & b2_zombieParticle) &&
+									   ((af | bf) & k_pairFlags) &&
+									   (filter.IsNecessary(a) || filter.IsNecessary(b)) &&
+									   AFParticleCanBeConnected(af, groupAIdx, afGroupFlagsBuf(groupAIdx)) &&
+									   AFParticleCanBeConnected(bf, groupBIdx, afGroupFlagsBuf(groupBIdx)) &&
+									   filter.ShouldCreatePair(a, b));
+		if (!condIdxs.isempty())
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
-			uint32 af = m_flagsBuffer[a];
-			uint32 bf = m_flagsBuffer[b];
-			int32 groupAIdx = m_groupIdxBuffer[a];
-			int32 groupBIdx = m_groupIdxBuffer[b];
-			if (a >= firstIndex && a < lastIndex &&
-				b >= firstIndex && b < lastIndex &&
-				!((af | bf) & b2_zombieParticle) &&
-				((af | bf) & k_pairFlags) &&
-				(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
-				ParticleCanBeConnected(af, groupAIdx, m_groupFlagsBuf[groupAIdx]) &&
-				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupAIdx]) &&
-				filter.ShouldCreatePair(a, b))
-			{
-				b2ParticlePair& pair = m_pairBuffer.Append();
-				pair.indexA = a;
-				pair.indexB = b;
-				pair.flags = m_contactFlagsBuffer[k];
-				pair.strength = b2Min(
-					groupAIdx ? m_groupStrengthBuf[groupAIdx] : 1,
-					groupBIdx ? m_groupStrengthBuf[groupBIdx] : 1);
-				pair.distance = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
-					b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]));
-			}
+			af::array newPairIdxABuf = a(condIdxs);
+			af::array newPairIdxBBuf = b(condIdxs);
+			af::array newPairFlagsBuf = afContactFlagsBuf(condIdxs);
+			af::array strengthA = afGroupStrengthBuf(groupAIdx);
+			af::array strengthB = afGroupStrengthBuf(groupBIdx);
+			af::array newPairStrengthBuf = af::select(strengthA < strengthB, strengthA, strengthB);
+			af::array newPairDistanceBuf = afDistance(afPosXBuf(a), afPosYBuf(a), afPosXBuf(b), afPosYBuf(b));
+
+			//Append to existing
+			af::join(afArrayDims, afPairIdxABuf, newPairIdxABuf);
+			af::join(afArrayDims, afPairIdxBBuf, newPairIdxBBuf);
+			af::join(afArrayDims, afPairFlagsBuf, newPairFlagsBuf);
+			af::join(afArrayDims, afPairStrengthBuf, newPairStrengthBuf);
+			af::join(afArrayDims, afPairDistanceBuf, newPairDistanceBuf);
+
+			/*//Sort Pairs
+			af::array idxs = AFGetSortedPairIdxs();
+			afPairIdxABuf = afPairIdxABuf(idxs);
+			afPairIdxBBuf = afPairIdxBBuf(idxs);
+			afPairFlagsBuf = afPairFlagsBuf(idxs);
+			afPairStrengthBuf = afPairStrengthBuf(idxs);
+			afPairDistanceBuf = afPairDistanceBuf(idxs);*/
+
+			// TODO Fix Unique
+			//Filter Unique Pairs
+			/*af::array idxs = AFGetUniquePairIdxs();
+			afPairIdxABuf = afPairIdxABuf(idxs);
+			afPairIdxBBuf = afPairIdxBBuf(idxs);
+			afPairFlagsBuf = afPairFlagsBuf(idxs);
+			afPairStrengthBuf = afPairStrengthBuf(idxs);
+			afPairDistanceBuf = afPairDistanceBuf(idxs);*/
+
+			//m_pairCount = idxs.elements();
 		}
-		Concurrency::parallel_sort(
-			//std::stable_sort(
-			m_pairBuffer.Begin(), m_pairBuffer.End(), ComparePairIndices);
-		m_pairBuffer.Unique(MatchPairIndices);
 	}
+
 	if (particleFlags & k_triadFlags)
 	{
-		b2VoronoiDiagram diagram(
-			&m_world->m_stackAllocator, lastIndex - firstIndex);
-		for (int32 i = firstIndex; i < lastIndex; i++)
-		{
-			uint32 flags = m_flagsBuffer[i];
-			int32 groupIdx = m_groupIdxBuffer[i];
-			if (!(flags & b2_zombieParticle) &&
-				ParticleCanBeConnected(flags, groupIdx, m_groupFlagsBuf[groupIdx]))
-			{
-				diagram.AddGenerator(
-					b2Vec2(m_positionXBuffer[i], m_positionYBuffer[i]), i, filter.IsNecessary(i));
-			}
-		}
+		AFVoronoiDiagram diagram(lastIndex - firstIndex);
+
+		af::array idxs = af::seq(firstIndex, lastIndex);
+		af::array flags = afFlagBuf(idxs);
+		af::array groupIdxs = afGroupIdxBuf(idxs);
+		af::array condIdxs = af::where(!(flags & b2_zombieParticle) &&
+			AFParticleCanBeConnected(flags, groupIdxs, afGroupFlagsBuf(groupIdxs)));
+		if (!condIdxs.isempty())
+			diagram.AddGenerators(afPosXBuf(condIdxs), afPosYBuf(condIdxs), condIdxs, filter.IsNecessary(condIdxs));
+		
 		float32 stride = GetParticleStride();
 		diagram.Generate(stride / 2, stride * 2);
-		class UpdateTriadsCallback : public b2VoronoiDiagram::NodeCallback
+
+		class AFUpdateTriadsCallback : public AFVoronoiDiagram::NodeCallback
 		{
-			void operator()(int32 a, int32 b, int32 c)
+			void operator()(af::array a, af::array b, af::array c)
 			{
-				uint32 af = m_system->m_flagsBuffer[a];
-				uint32 bf = m_system->m_flagsBuffer[b];
-				uint32 cf = m_system->m_flagsBuffer[c];
-				if (((af | bf | cf) & k_triadFlags) &&
-					m_filter->ShouldCreateTriad(a, b, c))
+				af::array af = m_system->afFlagBuf(a);
+				af::array bf = m_system->afFlagBuf(b);
+				af::array cf = m_system->afFlagBuf(c);
+
+				af::array condIdxs = af::where(((af | bf | cf) & k_triadFlags) &&
+					m_filter->AFShouldCreateTriad(a, b, c));
+				if (!condIdxs.isempty())
 				{
-					const b2Vec2& pa = b2Vec2(m_system->m_positionXBuffer[a], m_system->m_positionYBuffer[a]);
-					const b2Vec2& pb = b2Vec2(m_system->m_positionXBuffer[b], m_system->m_positionYBuffer[b]);
-					const b2Vec2& pc = b2Vec2(m_system->m_positionXBuffer[c], m_system->m_positionYBuffer[c]);
-					b2Vec2 dab = pa - pb;
-					b2Vec2 dbc = pb - pc;
-					b2Vec2 dca = pc - pa;
+					a = a(condIdxs);
+					b = b(condIdxs);
+					c = c(condIdxs);
+
+					af::array pax = m_system->afPosXBuf(a);
+					af::array pay = m_system->afPosYBuf(a);
+					af::array pbx = m_system->afPosXBuf(b);
+					af::array pby = m_system->afPosYBuf(b);
+					af::array pcx = m_system->afPosXBuf(c);
+					af::array pcy = m_system->afPosYBuf(c);
+					af::array dabx = pax - pbx;
+					af::array daby = pay - pby;
+					af::array dbcx = pbx - pcx;
+					af::array dbcy = pby - pcy;
+					af::array dcax = pcx - pax;
+					af::array dcay = pcy - pay;
+
 					float32 maxDistanceSquared = b2_maxTriadDistanceSquared *
 						m_system->m_squaredDiameter;
-					if (b2Dot(dab, dab) > maxDistanceSquared ||
-						b2Dot(dbc, dbc) > maxDistanceSquared ||
-						b2Dot(dca, dca) > maxDistanceSquared)
+
+					af::array condIdxs = af::where(!(b2Dot(dabx, daby, dabx, daby) > maxDistanceSquared ||
+						b2Dot(dbcx, dbcy, dbcx, dbcy) > maxDistanceSquared ||
+						b2Dot(dcax, dcay, dcax, dcay) > maxDistanceSquared));
+					if (!condIdxs.isempty())
 					{
-						return;
+						a = a(condIdxs);
+						b = b(condIdxs);
+						c = c(condIdxs);
+						af = af(condIdxs);
+						bf = bf(condIdxs);
+						cf = cf(condIdxs);
+						pax	= pax(condIdxs);
+						pay	= pay(condIdxs);
+						pbx	= pbx(condIdxs);
+						pby	= pby(condIdxs);
+						pcx	= pcx(condIdxs);
+						pcy	= pcy(condIdxs);
+						dabx = dabx(condIdxs);
+						daby = daby(condIdxs);
+						dbcx = dbcx(condIdxs);
+						dbcy = dbcy(condIdxs);
+						dcax = dcax(condIdxs);
+						dcay = dcay(condIdxs);
+
+						af::array groupAIdx = m_system->afGroupIdxBuf(a);
+						af::array groupBIdx = m_system->afGroupIdxBuf(b);
+						af::array groupCIdx = m_system->afGroupIdxBuf(c);
+
+						const af::array& strengthBuf = m_system->afGroupStrengthBuf;
+						af::array s = af::min(af::min(
+							af::select(groupAIdx != -1, strengthBuf(groupAIdx), 1),
+							af::select(groupBIdx != -1, strengthBuf(groupBIdx), 1)),
+							af::select(groupCIdx != -1, strengthBuf(groupCIdx), 1));
+
+						af::array midPointX = 1.0f / 3.0f * (pax + pbx + pcx);
+						af::array midPointY = 1.0f / 3.0f * (pay + pby + pcy);
+
+						af::join(afArrayDims, m_system->afTriadIdxABuf, a);
+						af::join(afArrayDims, m_system->afTriadIdxBBuf, b);
+						af::join(afArrayDims, m_system->afTriadIdxCBuf, c);
+						af::join(afArrayDims, m_system->afTriadFlagsBuf, af | bf | cf);
+						af::join(afArrayDims, m_system->afTriadStrengthBuf, s);
+						af::join(afArrayDims, m_system->afTriadPAXBuf, pax - midPointX);
+						af::join(afArrayDims, m_system->afTriadPAYBuf, pay - midPointY);
+						af::join(afArrayDims, m_system->afTriadPBXBuf, pbx - midPointX);
+						af::join(afArrayDims, m_system->afTriadPBYBuf, pby - midPointY);
+						af::join(afArrayDims, m_system->afTriadPCXBuf, pcx - midPointX);
+						af::join(afArrayDims, m_system->afTriadPCYBuf, pcy - midPointY);
+						af::join(afArrayDims, m_system->afTriadKABuf, -b2Dot(dcax, dcay, dabx, daby));
+						af::join(afArrayDims, m_system->afTriadKBBuf, -b2Dot(dabx, daby, dbcx, dbcy));
+						af::join(afArrayDims, m_system->afTriadKCBuf, -b2Dot(dbcx, dbcy, dcax, dcay));
+						af::join(afArrayDims, m_system->afTriadSBuf, b2Cross(pax, pay, pbx, pby) + b2Cross(pbx, pby, pcx, pcy) + b2Cross(pcx, pcy, pax, pay));
 					}
-					int32 groupAIdx = m_system->m_groupIdxBuffer[a];
-					int32 groupBIdx = m_system->m_groupIdxBuffer[b];
-					int32 groupCIdx = m_system->m_groupIdxBuffer[c];
-					b2ParticleTriad& triad = m_system->m_triadBuffer.Append();
-					triad.indexA = a;
-					triad.indexB = b;
-					triad.indexC = c;
-					triad.flags = af | bf | cf;
-					const std::vector<float32>& strengthBuf = m_system->m_groupStrengthBuf;
-					triad.strength = b2Min(b2Min(
-						groupAIdx ? strengthBuf[groupAIdx] : 1,
-						groupBIdx ? strengthBuf[groupBIdx] : 1),
-						groupCIdx ? strengthBuf[groupCIdx] : 1);
-					b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
-					triad.pa = pa - midPoint;
-					triad.pb = pb - midPoint;
-					triad.pc = pc - midPoint;
-					triad.ka = -b2Dot(dca, dab);
-					triad.kb = -b2Dot(dab, dbc);
-					triad.kc = -b2Dot(dbc, dca);
-					triad.s = b2Cross(pa, pb) + b2Cross(pb, pc) + b2Cross(pc, pa);
 				}
 			}
 			b2ParticleSystem* m_system;
-			const ConnectionFilter* m_filter;
+			const AFConnectionFilter* m_filter;
 		public:
-			UpdateTriadsCallback(
-				b2ParticleSystem* system, const ConnectionFilter* filter)
+			AFUpdateTriadsCallback(b2ParticleSystem* system, const AFConnectionFilter* filter)
 			{
 				m_system = system;
 				m_filter = filter;
 			}
 		} callback(this, &filter);
 		diagram.GetNodes(callback);
-		stable_sort(
-			m_triadBuffer.Begin(), m_triadBuffer.End(), CompareTriadIndices);
-		m_triadBuffer.Unique(MatchTriadIndices);
+
+
+		// TODO Fix Unique
+		/*
+		af::array uniqueIdxs = AFGetUniqueTriadIdxs();
+		afTriadStrengthBuf = afTriadStrengthBuf(uniqueIdxs);
+		afTriadPAXBuf = afTriadPAXBuf(uniqueIdxs);
+		afTriadPAYBuf = afTriadPAYBuf(uniqueIdxs);
+		afTriadPBXBuf = afTriadPBXBuf(uniqueIdxs);
+		afTriadPBYBuf = afTriadPBYBuf(uniqueIdxs);
+		afTriadPCXBuf = afTriadPCXBuf(uniqueIdxs);
+		afTriadPCYBuf = afTriadPCYBuf(uniqueIdxs);
+		afTriadKABuf = afTriadKABuf(uniqueIdxs);
+		afTriadKBBuf = afTriadKBBuf(uniqueIdxs);
+		afTriadKCBuf = afTriadKCBuf(uniqueIdxs);
+		afTriadSBuf = afTriadSBuf(uniqueIdxs);
+		
+		m_triadCount = uniqueIdxs.elements()
+		*/
 	}
-}
-
-bool b2ParticleSystem::ComparePairIndices(
-							const b2ParticlePair& a, const b2ParticlePair& b)
-{
-	int32 diffA = a.indexA - b.indexA;
-	if (diffA != 0) return diffA < 0;
-	return a.indexB < b.indexB;
-}
-
-bool b2ParticleSystem::MatchPairIndices(
-							const b2ParticlePair& a, const b2ParticlePair& b)
-{
-	return a.indexA == b.indexA && a.indexB == b.indexB;
-}
-
-bool b2ParticleSystem::CompareTriadIndices(
-							const b2ParticleTriad& a, const b2ParticleTriad& b)
-{
-	int32 diffA = a.indexA - b.indexA;
-	if (diffA != 0) return diffA < 0;
-	int32 diffB = a.indexB - b.indexB;
-	if (diffB != 0) return diffB < 0;
-	return a.indexC < b.indexC;
-}
-
-bool b2ParticleSystem::MatchTriadIndices(
-							const b2ParticleTriad& a, const b2ParticleTriad& b)
-{
-	return a.indexA == b.indexA && a.indexB == b.indexB && a.indexC == b.indexC;
 }
 
 // Only called from SolveZombie() or JoinParticleGroups().
@@ -2851,6 +3022,82 @@ void b2ParticleSystem::SortProxies()
 	concurrency::parallel_sort(m_proxyTagBuffer.begin(), m_proxyTagBuffer.begin() + m_count,
 		greater<int>());
 }
+
+template <class UnaryPredicate>
+vector<int32> b2ParticleSystem::GetValidIdxs(int32 vSize, const UnaryPredicate isValidFunc)
+{
+	vector<int32> idx(vSize);
+	std::iota(idx.begin(), idx.end(), 0);
+	int newI = 0;
+	for (int i = 0; i < vSize; i++)
+	{
+		if (isValidFunc(i))
+		{
+			idx[newI] = i;
+			newI++;
+		}
+	}
+	return idx;
+}
+template <class UnaryPredicate>
+vector<int32> b2ParticleSystem::GetSortedIdxs(int32 vSize, UnaryPredicate compFunc)
+{
+	vector<int32> idx(vSize);
+	std::iota(idx.begin(), idx.end(), 0);
+	concurrency::parallel_sort(idx.begin(), idx.end(), compFunc);
+	return idx;
+}
+af::array b2ParticleSystem::AFGetSortedPairIdxs() const
+{
+	af::array keys = af::select(afPairIdxABuf != 0, -afPairIdxABuf, -afPairIdxBBuf);
+	af::array idxs = af::seq(0, m_pairCount);
+	af::sort(keys, idxs, keys, idxs);
+	return idxs;
+}
+template <class UnaryPredicate>
+vector<int32> b2ParticleSystem::GetStableSortedIdxs(int32 vSize, UnaryPredicate compFunc)
+{
+	vector<int32> idx(vSize);
+	iota(idx.begin(), idx.end(), 0);
+	stable_sort(idx.begin(), idx.end(), compFunc);
+	return idx;
+}
+template <class UnaryPredicate>
+vector<int32> b2ParticleSystem::GetUniqueIdxs(int32 vSize, UnaryPredicate compFunc)
+{
+	vector<int32> idx(vSize);
+	iota(idx.begin(), idx.end(), 0);
+	unique(idx.begin(), idx.end(), compFunc);
+	return idx;
+}
+
+af::array b2ParticleSystem::AFGetUniquePairIdxs()
+{
+	int32 p = m_pairCount + 1;
+	af::array hashs = afPairIdxABuf * p + afPairIdxBBuf;
+	af::array vals, idxs, locs;
+	//af::sea(vals, idxs, locs, hashs);
+	return idxs;
+}
+af::array b2ParticleSystem::AFGetUniqueTriadIdxs()
+{
+	int32 p = m_triadCount + 1;
+	af::array hashs = (afTriadIdxABuf * p + afTriadIdxBBuf) * p + afTriadIdxCBuf;
+
+	af::array vals, idxs, locs;
+	//af::setUnique(vals, idxs, locs, hashs);
+	af::setUnique(hashs);
+	return idxs;
+}
+
+template<class T>
+void b2ParticleSystem::reorder(vector<T>& v, const vector<int32>& order) {
+	for (int s = 1, d; s < order.size(); ++s) {
+		for (d = order[s]; d < s; d = order[d]);
+		if (d == s) while (d = order[d], d != s) swap(v[s], v[d]);
+	}
+}
+
 void b2ParticleSystem::AFSortProxies(af::array& proxyIdxsOut, af::array& proxyTagsOut, const af::array& proxyIdxsIn, const af::array& proxyTagsIn) const
 {
 	af::sort(proxyTagsOut, proxyIdxsOut, proxyTagsIn, proxyIdxsIn);
@@ -3127,6 +3374,59 @@ private:
 
 protected:
 	b2ParticleSystem* m_system;
+};
+/// Callback class to receive pairs of fixtures and particles which may be
+/// overlapping. Used as an argument of b2World::QueryAABB.
+class AFFixtureParticleQueryCallback : public AFQueryCallback
+{
+public:
+	explicit AFFixtureParticleQueryCallback(b2ParticleSystem* system)
+	{
+		m_system = system;
+	}
+
+private:
+	// Skip reporting particles.
+	bool ShouldQueryParticleSystem(const b2ParticleSystem* system)
+	{
+		B2_NOT_USED(system);
+		return false;
+	}
+
+	// Receive a fixture and call ReportFixtureAndParticle() for each particle
+	// inside aabb of the fixture.
+	bool ReportFixture(b2Fixture* fixture)
+	{
+		if (fixture->IsSensor())
+			return true;
+		
+
+		const b2Shape* shape = fixture->GetShape();
+		int32 childCount = shape->GetChildCount();
+
+		af::array childIdxs = af::seq(0, childCount);
+
+		//TODO change to AF
+		for (int32 childIndex = 0; childIndex < childCount; childIndex++)
+		{
+			b2AABB aabb = fixture->GetAABB(childIndex);
+			b2ParticleSystem::InsideBoundsEnumerator enumerator =
+				m_system->GetInsideBoundsEnumerator(aabb);
+			int32 index;
+			while ((index = enumerator.GetNext()) >= 0)
+			{
+				ReportFixtureAndParticle(fixture, childIndex, index);
+			}
+		}
+		return true;
+	}
+
+	// Receive a fixture and a particle which may be overlapping.
+	virtual void ReportFixtureAndParticle(
+		b2Fixture* fixture, int32 childIndex, int32 index) = 0;
+
+protected:
+	b2ParticleSystem * m_system;
 };
 
 void b2ParticleSystem::NotifyBodyContactListenerPreContact(
@@ -3519,7 +3819,111 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 }
 void b2ParticleSystem::AFSolveCollision(const b2TimeStep& step)
 {
-	//TODO
+	// This function detects particles which are crossing boundary of bodies
+	// and modifies velocities of them so that they will move just in front of
+	// boundary. This function function also applies the reaction force to
+	// bodies as precisely as the numerical stability is kept.
+
+	af::array& p1x = afPosXBuf;
+	af::array& p1y = afPosYBuf;
+	af::array& p2x = afPosXBuf + step.dt * afVelXBuf;
+	af::array& p2y = afPosYBuf + step.dt * afVelYBuf;
+
+	af::array minX = af::min(p1x, p2x);
+	af::array maxX = af::max(p1x, p2x);
+	af::array minY = af::min(p1y, p2y);
+	af::array maxY = af::max(p1y, p2y);
+
+	b2AABB aabb;
+	aabb.lowerBound.x = af::min<float32>(minX);
+	aabb.lowerBound.y = af::max<float32>(maxX);
+	aabb.upperBound.x = af::min<float32>(minY);
+	aabb.upperBound.y = af::max<float32>(maxY);
+
+	class AFSolveCollisionCallback : public AFFixtureParticleQueryCallback
+	{
+		// Call the contact filter if it's set, to determine whether to
+		// filter this contact.  Returns true if contact calculations should
+		// be performed, false otherwise.
+		/*inline bool ShouldCollide(b2Fixture * const fixture,
+		int32 particleIndex)
+		{
+		if (m_contactFilter) {
+		const uint32* const flags = m_system->GetFlagsBuffer();
+		if (flags[particleIndex] & b2_fixtureContactFilterParticle) {
+		return m_contactFilter->ShouldCollide(fixture, m_system,
+		particleIndex);
+		}
+		}
+		return true;
+		}*/
+
+		void ReportFixtureAndParticle(
+			b2Fixture* fixture, int32 childIndex, int32 a)
+		{
+			//if (ShouldCollide(fixture, a)) {
+			if (m_system->ShouldCollide(a, fixture)) {
+				b2Body* body = fixture->GetBody();
+				b2Vec2 ap = b2Vec2(m_system->m_positionXBuffer[a], m_system->m_positionYBuffer[a]);
+				b2Vec2 av = b2Vec2(m_system->m_velocityXBuffer[a], m_system->m_velocityYBuffer[a]);
+				b2RayCastOutput output;
+				b2RayCastInput input;
+				if (m_system->m_iterationIndex == 0)
+				{
+					// Put 'ap' in the local space of the previous frame
+					b2Vec2 p1 = b2MulT(body->m_xf0, ap);
+					if (fixture->GetShape()->GetType() == b2Shape::e_circle)
+					{
+						// Make relative to the center of the circle
+						p1 -= body->GetLocalCenter();
+						// Re-apply rotation about the center of the
+						// circle
+						p1 = b2Mul(body->m_xf0.q, p1);
+						// Subtract rotation of the current frame
+						p1 = b2MulT(body->m_xf.q, p1);
+						// Return to local space
+						p1 += body->GetLocalCenter();
+					}
+					// Return to global space and apply rotation of current frame
+					input.p1 = b2Mul(body->m_xf, p1);
+				}
+				else
+				{
+					input.p1 = ap;
+				}
+				input.p2 = ap + m_step.dt * av;
+				input.maxFraction = 1;
+				if (fixture->RayCast(&output, input, childIndex))
+				{
+					b2Vec2 n = output.normal;
+					b2Vec2 p =
+						(1 - output.fraction) * input.p1 +
+						output.fraction * input.p2 +
+						b2_linearSlop * n;
+					b2Vec2 v = m_step.inv_dt * (p - ap);
+					m_system->m_velocityXBuffer[a] = v.x;
+					m_system->m_velocityYBuffer[a] = v.y;
+					b2Vec2 f = m_step.inv_dt *
+						//m_system->GetParticleMass() * (av - v);
+						m_system->m_partMatMassBuf[m_system->m_partMatIdxBuffer[a]] * (av - v); // CHANGED
+					m_system->ParticleApplyForce(a, f.x, f.y);
+				}
+			}
+		}
+
+		b2TimeStep m_step;
+		b2ContactFilter* m_contactFilter;
+
+	public:
+		AFSolveCollisionCallback(
+			b2ParticleSystem* system, const b2TimeStep& step, b2ContactFilter* contactFilter) :
+			AFFixtureParticleQueryCallback(system)
+		{
+			m_step = step;
+			m_contactFilter = contactFilter;
+		}
+	} callback(this, step, GetFixtureContactFilter());
+	m_world->AFQueryAABB(&callback, aabb);
 }
 
 void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
@@ -3538,13 +3942,12 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 		}
 	}
 	float32 tmax = b2_barrierCollisionTime * step.dt;
-	for (int32 k = 0; k < m_pairBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		const b2ParticlePair& pair = m_pairBuffer[k];
-		if (pair.flags & b2_barrierParticle)
+		if (m_pairFlagsBuf[k] & b2_barrierParticle)
 		{
-			int32 a = pair.indexA;
-			int32 b = pair.indexB;
+			int32 a = m_pairIdxABuf[k];
+			int32 b = m_pairIdxBBuf[k];
 			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
 			b2AABB aabb;
@@ -3740,7 +4143,7 @@ void b2ParticleSystem::SolveIterationPart2()
 		
 	SolvePressure(subStep);
 	SolveDamping(subStep);
-	SolveSlowDown(subStep);
+	AFSolveSlowDown(subStep);
 	if (m_allParticleFlags & k_extraDampingFlags)
 		SolveExtraDamping();
 		
@@ -3759,7 +4162,7 @@ void b2ParticleSystem::SolveIterationPart2()
 	// SolveCollision, SolveRigid and SolveWall should be called after
 	// other force functions because they may require particles to have
 	// specific velocities.
-	SolveCollision(subStep);
+	AFSolveCollision(subStep);
 	if (m_allGroupFlags & b2_rigidParticleGroup)
 		SolveRigid(subStep);
 	if (m_allParticleFlags & b2_wallParticle)
@@ -4236,11 +4639,14 @@ void b2ParticleSystem::AFSolveSlowDown(const b2TimeStep& step)
 	if (m_def.dampingStrength > 0)
 	{
 		float d = 1 - (step.dt * m_def.dampingStrength);
-		float dd = d * d;
-		af::array slowDown = d;
-		slowDown(af::where(afColLayBuf & (b2_Layer1ground | b2_Layer0underGround))) = dd;
-		afVelXBuf *= slowDown;
-		afVelYBuf *= slowDown;
+		afVelXBuf *= d;
+		afVelYBuf *= d;
+		af::array condIdxs = af::where(afColLayBuf & (b2_Layer1ground | b2_Layer0underGround));
+		if (!condIdxs.isempty())
+		{
+			afVelXBuf *= d;
+			afVelYBuf *= d;
+		}
 	}
 }
 
@@ -4516,47 +4922,65 @@ void b2ParticleSystem::AFSolveRigid(const b2TimeStep& step)
 void b2ParticleSystem::SolveElastic(const b2TimeStep& step)
 {
 	float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
-	for (int32 k = 0; k < m_triadBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		const b2ParticleTriad& triad = m_triadBuffer[k];
-		if (triad.flags & b2_elasticParticle)
+		if (m_triadFlagsBuf[k] & b2_elasticParticle)
 		{
-			int32 a = triad.indexA;
-			int32 b = triad.indexB;
-			int32 c = triad.indexC;
-			const b2Vec2& oa = triad.pa;
-			const b2Vec2& ob = triad.pb;
-			const b2Vec2& oc = triad.pc;
-			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
-			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
-			b2Vec2 pc = b2Vec2(m_positionXBuffer[c], m_positionYBuffer[c]);
-			b2Vec2 va = b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
-			b2Vec2 vb = b2Vec2(m_velocityXBuffer[b], m_velocityYBuffer[b]);
-			b2Vec2 vc = b2Vec2(m_velocityXBuffer[c], m_velocityYBuffer[c]);
-			pa += step.dt * va;
-			pb += step.dt * vb;
-			pc += step.dt * vc;
-			b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
-			pa -= midPoint;
-			pb -= midPoint;
-			pc -= midPoint;
+			int32 a = m_triadIdxABuf[k];
+			int32 b = m_triadIdxBBuf[k];
+			int32 c = m_triadIdxCBuf[k];
+			const float32 oax = m_triadPAXBuf[k];
+			const float32 oay = m_triadPAYBuf[k];
+			const float32 obx = m_triadPBXBuf[k];
+			const float32 oby = m_triadPBYBuf[k];
+			const float32 ocx = m_triadPCXBuf[k];
+			const float32 ocy = m_triadPCYBuf[k];
+			float32 pax = m_positionXBuffer[a];
+			float32 pay = m_positionYBuffer[a];
+			float32 pbx = m_positionXBuffer[b];
+			float32 pby = m_positionYBuffer[b];
+			float32 pcx = m_positionXBuffer[c];
+			float32 pcy = m_positionYBuffer[c];
+			float32 vax = m_velocityXBuffer[a];
+			float32 vay = m_velocityYBuffer[a];
+			float32 vbx = m_velocityXBuffer[b];
+			float32 vby = m_velocityYBuffer[b];
+			float32 vcx = m_velocityXBuffer[c];
+			float32 vcy = m_velocityYBuffer[c];
+			pax += step.dt * vax;
+			pay += step.dt * vay;
+			pbx += step.dt * vbx;
+			pby += step.dt * vby;
+			pcx += step.dt * vcx;
+			pcy += step.dt * vcy;
+			float32 midPointX = (float32)1 / 3 * (pax + pbx + pcx);
+			float32 midPointY = (float32)1 / 3 * (pay + pby + pcy);
+			pax -= midPointX;
+			pay -= midPointY;
+			pbx -= midPointX;
+			pby -= midPointY;
+			pcx -= midPointX;
+			pcy -= midPointY;
 			b2Rot r;
-			r.s = b2Cross(oa, pa) + b2Cross(ob, pb) + b2Cross(oc, pc);
-			r.c = b2Dot(oa, pa) + b2Dot(ob, pb) + b2Dot(oc, pc);
+			r.s = b2Cross(oax, oay, pax, pay) + b2Cross(obx, oby, pbx, pby) + b2Cross(ocx, ocy, pcx, pcy);
+			r.c = b2Dot(oax, oay, pax, pay) + b2Dot(obx, oby, pbx, pby) + b2Dot(ocx, ocy, pcx, pcy);
 			float32 r2 = r.s * r.s + r.c * r.c;
 			float32 invR = b2InvSqrt(r2);
 			r.s *= invR;
 			r.c *= invR;
-			float32 strength = elasticStrength * triad.strength;
-			b2Vec2 vel = (b2Mul(r, oa) - pa);
-			m_velocityXBuffer[a] += strength * vel.x;
-			m_velocityYBuffer[a] += strength * vel.y;
-			vel = (b2Mul(r, ob) - pb);
-			m_velocityXBuffer[b] += strength * vel.x;
-			m_velocityYBuffer[b] += strength * vel.y;
-			vel = (b2Mul(r, oc) - pc);
-			m_velocityXBuffer[c] += strength * vel.x;
-			m_velocityYBuffer[c] += strength * vel.y;
+			float32 strength = elasticStrength * m_triadStrengthBuf[k];
+			float32 velX = (b2MulX(r, oax, oay) - pax);
+			float32 velY = (b2MulY(r, oax, oay) - pay);
+			m_velocityXBuffer[a] += strength * velX;
+			m_velocityYBuffer[a] += strength * velY;
+			velX = (b2MulX(r, obx, oby) - pbx);
+			velY = (b2MulY(r, obx, oby) - pby);
+			m_velocityXBuffer[b] += strength * velX;
+			m_velocityYBuffer[b] += strength * velY;
+			velX = (b2MulX(r, ocx, ocy) - pcx);
+			velY = (b2MulY(r, ocx, ocy) - pcy);
+			m_velocityXBuffer[c] += strength * velX;
+			m_velocityYBuffer[c] += strength * velY;
 		}
 	}
 }
@@ -4564,13 +4988,12 @@ void b2ParticleSystem::SolveElastic(const b2TimeStep& step)
 void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
 {
 	float32 springStrength = step.inv_dt * m_def.springStrength;
-	for (int32 k = 0; k < m_pairBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		const b2ParticlePair& pair = m_pairBuffer[k];
-		if (pair.flags & b2_springParticle)
+		if (m_pairFlagsBuf[k] & b2_springParticle)
 		{
-			int32 a = pair.indexA;
-			int32 b = pair.indexB;
+			int32 a = m_pairIdxABuf[k];
+			int32 b = m_pairIdxBBuf[k];
 			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
 			b2Vec2 va = b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
@@ -4578,9 +5001,9 @@ void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
 			pa += step.dt * va;
 			pb += step.dt * vb;
 			b2Vec2 d = pb - pa;
-			float32 r0 = pair.distance;
+			float32 r0 = m_pairDistanceBuf[k];
 			float32 r1 = d.Length();
-			float32 strength = springStrength * pair.strength;
+			float32 strength = springStrength * m_pairStrengthBuf[k];
 			b2Vec2 f = strength * (r0 - r1) / r1 * d;
 			m_velocityXBuffer[a] -= f.x;
 			m_velocityYBuffer[a] -= f.y;
@@ -5042,7 +5465,8 @@ void b2ParticleSystem::SolveDestroyDead()
 	}
 }
 
-template <class T1, class UnaryPredicate> static void b2ParticleSystem::RemoveFromVectorIf(vector<T1>& v1,
+template <class T1, class UnaryPredicate> 
+static void b2ParticleSystem::RemoveFromVectorIf(vector<T1>& v1,
 	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
@@ -5059,7 +5483,8 @@ template <class T1, class UnaryPredicate> static void b2ParticleSystem::RemoveFr
 		size = newI;
 	}
 }
-template <class T1, class T2, class UnaryPredicate> static void b2ParticleSystem::RemoveFromVectorsIf(vector<T1>& v1, vector<T2>& v2,
+template <class T1, class T2, class UnaryPredicate>
+static void b2ParticleSystem::RemoveFromVectorsIf(vector<T1>& v1, vector<T2>& v2,
 	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
@@ -5077,7 +5502,8 @@ template <class T1, class T2, class UnaryPredicate> static void b2ParticleSystem
 		size = newI;
 	}
 }
-template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate> static void b2ParticleSystem::RemoveFromVectorsIf(
+template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate>
+static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7,
 	int32& size, UnaryPredicate pred, bool adjustSize)
 {
@@ -5101,7 +5527,8 @@ template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, 
 		size = newI;
 	}
 }
-template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate> static void b2ParticleSystem::RemoveFromVectorsIf(
+template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate>
+static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
 	int32& size, UnaryPredicate pred, bool adjustSize)
 {
@@ -5126,7 +5553,8 @@ template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, 
 		size = newI;
 	}
 }
-template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> static void b2ParticleSystem::RemoveFromVectorsIf(
+template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> 
+static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
 	int32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize)
 {
@@ -5276,14 +5704,6 @@ void b2ParticleSystem::SolveZombie()
 		{
 			return idx < 0;
 		}
-		static bool IsPairInvalid(const b2ParticlePair& pair)
-		{
-			return pair.indexA < 0 || pair.indexB < 0;
-		}
-		static bool IsTriadInvalid(const b2ParticleTriad& triad)
-		{
-			return triad.indexA < 0 || triad.indexB < 0 || triad.indexC < 0;
-		}
 	};
 
 	// update proxies
@@ -5318,23 +5738,54 @@ void b2ParticleSystem::SolveZombie()
 		m_bodyContactMassBuffer, m_bodyContactCount, Test::IsBodyContactInvalid, true);
 
 	// update pairs
-	for (int32 k = 0; k < m_pairBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		b2ParticlePair& pair = m_pairBuffer[k];
-		pair.indexA = newIndices[pair.indexA];
-		pair.indexB = newIndices[pair.indexB];
+		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
+		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
 	}
-	m_pairBuffer.RemoveIf(Test::IsPairInvalid);
+
+	auto IsPairValid = [this](int32 i) -> bool
+	{
+		return m_pairIdxABuf[i] >= 0 && m_pairIdxBBuf[i] >= 0;
+	};
+	vector<int32> idxs = GetValidIdxs(m_pairCount, IsPairValid);
+	reorder(m_pairIdxABuf, idxs);
+	reorder(m_pairIdxBBuf, idxs);
+	reorder(m_pairFlagsBuf, idxs);
+	reorder(m_pairStrengthBuf, idxs);
+	reorder(m_pairDistanceBuf, idxs);
+	m_pairCount = idxs.size();
 
 	// update triads
-	for (int32 k = 0; k < m_triadBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		b2ParticleTriad& triad = m_triadBuffer[k];
-		triad.indexA = newIndices[triad.indexA];
-		triad.indexB = newIndices[triad.indexB];
-		triad.indexC = newIndices[triad.indexC];
+		m_triadIdxABuf[k] = newIndices[m_triadIdxABuf[k]];
+		m_triadIdxBBuf[k] = newIndices[m_triadIdxBBuf[k]];
+		m_triadIdxCBuf[k] = newIndices[m_triadIdxCBuf[k]];
+
 	}
-	m_triadBuffer.RemoveIf(Test::IsTriadInvalid);
+
+	auto IsTriadValid = [this](int32 i) -> bool
+	{
+		return m_triadIdxABuf[i] >= 0 && m_triadIdxBBuf[i] >= 0 && m_triadIdxCBuf[i] >= 0;
+	};
+	idxs = GetValidIdxs(m_triadCount, IsTriadValid);
+	reorder(m_triadIdxABuf, idxs);
+	reorder(m_triadIdxBBuf, idxs);
+	reorder(m_triadIdxCBuf, idxs);
+	reorder(m_triadFlagsBuf, idxs);
+	reorder(m_triadStrengthBuf, idxs);
+	reorder(m_triadPAXBuf, idxs);
+	reorder(m_triadPAYBuf, idxs);
+	reorder(m_triadPBXBuf, idxs);
+	reorder(m_triadPBYBuf, idxs);
+	reorder(m_triadPCXBuf, idxs);
+	reorder(m_triadPCYBuf, idxs);
+	reorder(m_triadKABuf, idxs);
+	reorder(m_triadKBBuf, idxs);
+	reorder(m_triadKCBuf, idxs);
+	reorder(m_triadSBuf, idxs);
+	m_triadCount = idxs.size();
 
 	// Update lifetime indices.
 	if (m_indexByExpirationTimeBuffer.data)
@@ -5605,20 +6056,18 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 	}
 
 	// update pairs
-	for (int32 k = 0; k < m_pairBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		b2ParticlePair& pair = m_pairBuffer[k];
-		pair.indexA = newIndices[pair.indexA];
-		pair.indexB = newIndices[pair.indexB];
+		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
+		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
 	}
 
 	// update triads
-	for (int32 k = 0; k < m_triadBuffer.GetCount(); k++)
+	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		b2ParticleTriad& triad = m_triadBuffer[k];
-		triad.indexA = newIndices[triad.indexA];
-		triad.indexB = newIndices[triad.indexB];
-		triad.indexC = newIndices[triad.indexC];
+		m_triadIdxABuf[k] = newIndices[m_triadIdxABuf[k]];
+		m_triadIdxBBuf[k] = newIndices[m_triadIdxBBuf[k]];
+		m_triadIdxCBuf[k] = newIndices[m_triadIdxCBuf[k]];
 	}
 
 	// update groups
@@ -6004,6 +6453,35 @@ void b2ParticleSystem::QueryAABB(b2QueryCallback* callback,
 			{
 				break;
 			}
+		}
+	}
+}
+void b2ParticleSystem::AFQueryAABB(AFQueryCallback* callback,
+	const b2AABB& aabb) const
+{
+	if (afProxyIdxBuf.isempty())
+		return;
+
+	uint32 lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x,
+								 m_inverseDiameter * aabb.lowerBound.y);
+	uint32 upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x,
+								 m_inverseDiameter * aabb.upperBound.y);
+
+	af::array tagsBetweenIdxs = af::where(afProxyTagBuf >= lowerTag &&
+										  afProxyTagBuf <= upperTag);
+
+	af::array i = afProxyIdxBuf(tagsBetweenIdxs);
+	af::array px = afPosXBuf(i);
+	af::array py = afPosYBuf(i);
+
+	af::array condIdxs = af::where(aabb.lowerBound.x < px && px < aabb.upperBound.x &&
+								   aabb.lowerBound.y < py && py < aabb.upperBound.y);
+	if (!condIdxs.isempty())
+	{
+		condIdxs = af::where(callback->ReportParticle(this, condIdxs));
+		if (!condIdxs.isempty())
+		{
+			return;
 		}
 	}
 }

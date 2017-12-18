@@ -28,6 +28,7 @@
 #include <Box2D/Dynamics/b2TimeStep.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <Box2D/Particle/b2Material.h>
+#include <arrayfire.h>
 
 struct b2AABB;
 struct b2BodyDef;
@@ -145,6 +146,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
+	void AFQueryAABB(AFQueryCallback* callback, const b2AABB& aabb) const;
 
 	/// Query the world for all fixtures that potentially overlap the
 	/// provided shape's AABB. Calls QueryAABB internally.

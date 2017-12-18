@@ -212,6 +212,7 @@
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2RopeJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2WeldJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2WheelJoint.cpp" />
+    <ClCompile Include="..\Box2D\Particle\AFVoronoiDiagram.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2Particle.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2ParticleAssembly.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2ParticleGroup.cpp" />
@@ -274,6 +275,7 @@
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2RopeJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2WeldJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2WheelJoint.h" />
+    <ClInclude Include="..\Box2D\Particle\AFVoronoiDiagram.h" />
     <ClInclude Include="..\Box2D\Particle\b2Material.h" />
     <ClInclude Include="..\Box2D\Particle\b2Particle.h" />
     <ClInclude Include="..\Box2D\Particle\b2ParticleAssembly.h" />
