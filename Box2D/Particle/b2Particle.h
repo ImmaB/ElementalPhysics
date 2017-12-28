@@ -22,6 +22,8 @@
 #include <Box2D/Common/b2Settings.h>
 #include <Box2D/Common/b2IntrusiveList.h>
 
+#include <arrayfire.h>
+
 struct b2Color;
 class b2ParticleGroup;
 class b2ParticleMaterial;
@@ -100,7 +102,7 @@ enum b2CollisionLayerMask
 };
 
 /// Small color object for each particle
-class b2ParticleColor
+/*class b2ParticleColor
 {
 public:
 	b2ParticleColor() {}
@@ -232,7 +234,7 @@ public:
 	/// strength is 0..128 where 0 results in no color mixing and 128 results
 	/// in an equal mix of both colors.  strength 0..128 is analogous to an
 	/// alpha channel value between 0.0f..0.5f.
-	b2Inline void Mix(b2ParticleColor * const mixColor, const int32 strength)
+	b2Inline void Mix(int32 mixColor, const int32 strength)
 	{
 		MixColors(this, mixColor, strength);
 	}
@@ -242,9 +244,8 @@ public:
 	/// strength is 0..128 where 0 results in no color mixing and 128 results
 	/// in an equal mix of both colors.  strength 0..128 is analogous to an
 	/// alpha channel value between 0.0f..0.5f.
-	static b2Inline void MixColors(b2ParticleColor * const colorA,
-							 b2ParticleColor * const colorB,
-							 const int32 strength)
+	static b2Inline void MixColors(int32 colorA, int32 colorB,
+									const int32 strength)
 	{
 		const uint8 dr = (uint8)((strength * (colorB->r - colorA->r)) >>
 								 k_bitsPerComponent);
@@ -285,9 +286,9 @@ protected:
 	static const float32 k_inverseMaxValue;
 	/// Number of bits used to store each b2ParticleColor component.
 	static const uint8 k_bitsPerComponent;
-};
+};*/
 
-extern b2ParticleColor b2ParticleColor_zero;
+//extern b2ParticleColor b2ParticleColor_zero;
 
 /// A particle definition holds all the data needed to construct a particle.
 /// You can safely re-use these definitions.
@@ -301,7 +302,7 @@ struct b2ParticleDef
 		positionZ = 0.0f;
 		velocityX = 0.0f;
 		velocityY = 0.0f;
-		color = b2ParticleColor_zero;
+		color = 0;
 		lifetime = 0.0f;
 		userData = NULL;
 		groupIdx = b2_invalidGroupIndex;
@@ -335,7 +336,68 @@ struct b2ParticleDef
 	float32 velocityY;
 
 	/// The color of the particle.
-	b2ParticleColor color;
+	int32	color;
+
+	float32 heat;
+	float32 health;
+
+	/// Lifetime of the particle in seconds.  A value <= 0.0f indicates a
+	/// particle with infinite lifetime.
+	float32 lifetime;
+
+	/// Use this to store application-specific body data.
+	int32 userData;
+
+	/// An existing particle group to which the particle will be added.
+	int32 groupIdx;
+
+	int32 matIdx;
+};
+struct afParticleDef
+{
+	afParticleDef()
+	{
+		flags = 0;
+		//positionX = 0.0f;
+		//positionY = 0.0f;
+		positionZ = 0.0f;
+		//velocityX = 0.0f;
+		//velocityY = 0.0f;
+		color = 0;
+		lifetime = 0.0f;
+		userData = NULL;
+		groupIdx = b2_invalidGroupIndex;
+		matIdx = b2_invalidMaterialIndex;
+		heat = 0.0f;
+		health = 1.0f;
+	}
+
+#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
+	/// Set position with direct floats
+	void SetPosition(float32 x, float32 y);
+
+	/// Set color with direct ints.
+	void SetColor(int32 r, int32 g, int32 b, int32 a);
+#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
+
+	/// \brief Specifies the type of particle (see #b2ParticleFlag).
+	///
+	/// A particle may be more than one type.
+	/// Multiple types are chained by logical sums, for example:
+	/// pd.flags = b2_elasticParticle | b2_viscousParticle
+	uint32 flags;
+
+	/// The world position of the particle.
+	af::array positionX;
+	af::array positionY;
+	af::array positionZ;
+
+	/// The linear velocity of the particle in world co-ordinates.
+	af::array velocityX;
+	af::array velocityY;
+
+	/// The color of the particle.
+	af::array color;
 
 	float32 heat;
 	float32 health;

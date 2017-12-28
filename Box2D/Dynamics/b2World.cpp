@@ -1272,7 +1272,7 @@ void b2World::DrawParticleSystem(const b2ParticleSystem& system)
 		const float32* posYBuf = system.GetPositionYBuffer();
 		if (system.m_colorBuffer.data())
 		{
-			const b2ParticleColor* colorBuffer = system.GetColorBuffer();
+			const int32* colorBuffer = system.GetColorBuffer();
 			m_debugDraw->DrawParticles(posXBuf, posYBuf, radius, colorBuffer, particleCount);
 		}
 		else

@@ -24,7 +24,7 @@
 	((1U << B2PARTICLECOLOR_BITS_PER_COMPONENT) - 1)
 
 /// Number of bits used to store each b2ParticleColor component.
-const uint8 b2ParticleColor::k_bitsPerComponent =
+/*const uint8 b2ParticleColor::k_bitsPerComponent =
 	B2PARTICLECOLOR_BITS_PER_COMPONENT;
 const float32 b2ParticleColor::k_maxValue = (float)B2PARTICLECOLOR_MAX_VALUE;
 const float32 b2ParticleColor::k_inverseMaxValue =
@@ -50,7 +50,7 @@ void b2ParticleColor::Set(const b2Color& color)
 		(uint8)(k_maxValue * color.g),
 		(uint8)(k_maxValue * color.b),
 		B2PARTICLECOLOR_MAX_VALUE);
-}
+}*/
 
 int32 b2CalculateParticleIterations(
 	float32 gravity, float32 radius, float32 timeStep)

@@ -39,6 +39,14 @@ void b2PolygonShape::SetAsBox(float32 hx, float32 hy)
 	m_normals[1].Set(1.0f, 0.0f);
 	m_normals[2].Set(0.0f, 1.0f);
 	m_normals[3].Set(-1.0f, 0.0f);
+	m_normalsX[0] = 0.0f;
+	m_normalsX[1] = 1.0f;
+	m_normalsX[2] = 0.0f;
+	m_normalsX[3] = -1.0f;
+	m_normalsY[0] = -1.0f;
+	m_normalsY[1] = 0.0f;
+	m_normalsY[2] = 1.0f;
+	m_normalsY[3] = 0.0f;
 	m_centroid.SetZero();
 }
 
@@ -53,6 +61,14 @@ void b2PolygonShape::SetAsBox(float32 hx, float32 hy, const b2Vec2& center, floa
 	m_normals[1].Set(1.0f, 0.0f);
 	m_normals[2].Set(0.0f, 1.0f);
 	m_normals[3].Set(-1.0f, 0.0f);
+	m_normalsX[0] = 0.0f;
+	m_normalsX[1] = 1.0f;
+	m_normalsX[2] = 0.0f;
+	m_normalsX[3] = -1.0f;
+	m_normalsY[0] = -1.0f;
+	m_normalsY[1] = 0.0f;
+	m_normalsY[2] = 1.0f;
+	m_normalsY[3] = 0.0f;
 	m_centroid = center;
 
 	b2Transform xf;
@@ -64,6 +80,8 @@ void b2PolygonShape::SetAsBox(float32 hx, float32 hy, const b2Vec2& center, floa
 	{
 		m_vertices[i] = b2Mul(xf, m_vertices[i]);
 		m_normals[i] = b2Mul(xf.q, m_normals[i]);
+		m_normalsX[i] = m_normals[i].x;
+		m_normalsY[i] = m_normals[i].y;
 	}
 }
 
@@ -235,6 +253,8 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 		b2Assert(edge.LengthSquared() > b2_epsilon * b2_epsilon);
 		m_normals[i] = b2Cross(edge, 1.0f);
 		m_normals[i].Normalize();
+		m_normalsX[i] = m_normals[i].x;
+		m_normalsY[i] = m_normals[i].y;
 	}
 
 	// Compute the polygon centroid.
@@ -255,6 +275,21 @@ bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec2& p) const
 	}
 
 	return true;
+}
+af::array b2PolygonShape::AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const
+{
+	af::array pLocalX = b2MulTX(xf.q, px - xf.p.x, py - xf.p.y);
+	af::array pLocalY = b2MulTY(xf.q, px - xf.p.x, py - xf.p.y);
+
+	af::array ret = af::constant(1, px.elements());
+	for (int32 i = 0; i < m_count; ++i)
+	{
+		const b2Vec2& n = m_normals[i];
+		const b2Vec2& v = m_vertices[i];
+		af::array dot = b2Dot(n.x, n.y, pLocalX - v.x, pLocalY - v.y);
+		ret(af::where(dot > 0.0f)) = false;
+	}
+	return ret;
 }
 
 void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const
@@ -298,6 +333,83 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 	{
 		*distance = maxDistance;
 		*normal = b2Mul(xf.q, normalForMaxDistance);
+	}
+}
+void b2PolygonShape::AFComputeDistance(const b2Transform& xf, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const
+{
+	B2_NOT_USED(childIndex);
+	
+	af::array pLocalX = b2MulTX(xf.q, px - xf.p.x, py - xf.p.y);
+	af::array pLocalY = b2MulTY(xf.q, px - xf.p.x, py - xf.p.y);
+	af::array maxDistance = af::constant(-FLT_MAX, px.elements());
+	af::array normalForMaxDistanceX = pLocalX;
+	af::array normalForMaxDistanceY = pLocalY;
+
+	for (int32 i = 0; i < m_count; ++i)
+	{
+
+		af::array dot = b2Dot(m_normals[i].x, m_normals[i].y, pLocalX - m_vertices[i].x, pLocalY - m_vertices[i].y);
+		af::array condIdxs = af::where(dot > maxDistance);
+		if (!condIdxs.isempty())
+		{
+			maxDistance(condIdxs) = dot(condIdxs);
+			normalForMaxDistanceX(condIdxs) = m_normals[i].x;
+			normalForMaxDistanceY(condIdxs) = m_normals[i].y;
+		}
+	}
+	af::array cond = maxDistance > 0;
+	af::array condIdxs = af::where(cond);
+	if (!condIdxs.isempty())
+	{
+		pLocalX = pLocalY(condIdxs);
+		pLocalY = pLocalX(condIdxs);
+		af::array minDistanceX = normalForMaxDistanceX(condIdxs);
+		af::array minDistanceY = normalForMaxDistanceY(condIdxs);
+		af::array minDistance2 = maxDistance * maxDistance;
+		for (int32 i = 0; i < m_count; ++i)
+		{
+			af::array distanceX = pLocalX - m_vertices[i].x;
+			af::array distanceY = pLocalY - m_vertices[i].y;
+			af::array distance2 = distanceX * distanceX + distanceY * distanceY;
+			af::array cond2Idxs = af::where(minDistance2 > distance2);
+			if (!cond2Idxs.isempty())
+			{
+				af::array idxs = condIdxs(cond2Idxs);
+				minDistanceX(cond2Idxs) = distance(idxs);
+				minDistanceY(cond2Idxs) = distance(idxs);
+				minDistance2(cond2Idxs) = distance2(cond2Idxs);
+			}
+		}
+
+		distance(condIdxs) = af::sqrt(minDistance2);
+		normalX(condIdxs) = b2MulX(xf.q, minDistanceX, minDistanceY);
+		normalY(condIdxs) = b2MulY(xf.q, minDistanceX, minDistanceY);
+
+		//Normalize
+		af::array nx = normalX(condIdxs);
+		af::array ny = normalY(condIdxs);
+		af::array length = af::sqrt(nx * nx + ny * ny);
+		af::array toSmall = length < b2_epsilon;
+		af::array toSmallIdxs = af::where(toSmall);
+		if (!toSmallIdxs.isempty())
+			length(toSmallIdxs) = 0.0f;
+		af::array cond2Idxs = af::where(!toSmall);
+		if (!cond2Idxs.isempty())
+		{
+			condIdxs = condIdxs(cond2Idxs);
+			af::array invLength = 1.0f / length(cond2Idxs);
+			normalX(condIdxs) *= invLength;
+			normalY(condIdxs) *= invLength;
+		}
+	}
+	af::array elseIdxs = af::where(!cond);
+	if (!elseIdxs.isempty())
+	{
+		normalForMaxDistanceX = normalForMaxDistanceX(elseIdxs);
+		normalForMaxDistanceY = normalForMaxDistanceY(elseIdxs);
+		distance(elseIdxs) = maxDistance(elseIdxs);
+		normalX(elseIdxs) = b2MulX(xf.q, normalForMaxDistanceX, normalForMaxDistanceY);
+		normalY(elseIdxs) = b2MulY(xf.q, normalForMaxDistanceX, normalForMaxDistanceY);
 	}
 }
 
@@ -371,6 +483,94 @@ bool b2PolygonShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& inpu
 	}
 
 	return false;
+}
+af::array b2PolygonShape::AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
+	const b2Transform& xf, int32 childIndex) const
+{
+	B2_NOT_USED(childIndex);
+	/*
+	// Put the ray into the polygon's frame of reference.
+	af::array p1x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	af::array p1y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	af::array p2x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
+	af::array p2y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
+	af::array dx = p2x - p1x;
+	af::array dy = p2y - p1y;
+
+	int32 count = p1x.elements();
+	af::array lower = af::constant(0.0f, count),
+		      upper = af::constant(input.maxFraction, count);
+
+	af::array index = af::constant(-1, count);
+
+	for (int32 i = 0; i < m_count; ++i)
+	{
+		// p = p1 + a * d
+		// dot(normal, p - v) = 0
+		// dot(normal, p1 - v) + a * dot(normal, d) = 0
+		af::array numerator = b2Dot(m_normals[i].x, m_normals[i].y, m_vertices[i].x - p1x, m_vertices[i].y - p1y);
+		af::array denominator = b2Dot(m_normals[i].x, m_normals[i].y, dx, dy);
+
+		af::array condIdxs = af::where(!(denominator == 0.0f && numerator < 0.0f));
+		if (!condIdxs.isempty())
+		{
+			numerator = numerator(condIdxs);
+			denominator = denominator(condIdxs);
+		
+			// Note: we want this predicate without division:
+			// lower < numerator / denominator, where denominator < 0
+			// Since denominator < 0, we have to flip the inequality:
+			// lower < numerator / denominator <==> denominator * lower > numerator.
+			af::array cond = denominator < 0.0f && numerator < lower * denominator;
+			af::array ifIdxs = af::where(cond);
+			if (!ifIdxs.isempty())
+			{
+				// Increase lower.
+				// The segment enters this half-space.
+				af::array innerCondIdxs = condIdxs(ifIdxs);
+				lower(innerCondIdxs) = numerator(ifIdxs) / denominator(ifIdxs);
+				index(innerCondIdxs) = i;
+			}
+			af::array elseIfIdxs = af::where(!cond && 
+						denominator > 0.0f && numerator < upper * denominator);
+			if (!elseIfIdxs.isempty())
+			{
+				// Decrease upper.
+				// The segment exits this half-space.
+				af::array innerCondIdxs = condIdxs(elseIfIdxs);
+				upper(innerCondIdxs) = numerator(elseIfIdxs) / denominator(elseIfIdxs);
+			}
+		}
+
+		// The use of epsilon here causes the assert on lower to trip
+		// in some cases. Apparently the use of epsilon was to make edge
+		// shapes work, but now those are handled separately.
+		//if (upper < lower - b2_epsilon)
+		af::array validIdxs = af::where(upper >= lower);
+		lower = lower(validIdxs);
+		upper = upper(validIdxs);
+		index = index(validIdxs);
+		p1x = p1x(validIdxs);
+		p1y = p1y(validIdxs);
+		dx = dx(validIdxs);
+		dy = dy(validIdxs);
+	}
+
+	//b2Assert(0.0f <= lower && lower <= input.maxFraction);
+
+	af::array condIdxs = af::where(index >= 0);
+	if (!condIdxs.isempty())
+	{
+		output->fraction = lower(condIdxs);
+		index = index(condIdxs);
+		af::array normalsX(m_count, 1, m_normalsX);
+		af::array normalsY(m_count, 1, m_normalsY);
+
+		output->normalX = b2MulX(xf.q, normalsX(index), normalsY(index));
+		return condIdxs;
+	}
+	*/
+	return af::array();
 }
 
 void b2PolygonShape::ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childIndex) const

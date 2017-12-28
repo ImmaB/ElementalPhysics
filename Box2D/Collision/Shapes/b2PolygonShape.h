@@ -58,12 +58,16 @@ public:
 
 	/// @see b2Shape::TestPoint
 	bool TestPoint(const b2Transform& transform, const b2Vec2& p) const;
+	af::array AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const;
 
 	// @see b2Shape::ComputeDistance
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
+	void AFComputeDistance(const b2Transform& xf, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const;
 
 	/// Implement b2Shape.
 	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+					const b2Transform& transform, int32 childIndex) const;
+	af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
 					const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeAABB
@@ -99,6 +103,8 @@ public:
 	b2Vec2 m_centroid;
 	b2Vec2 m_vertices[b2_maxPolygonVertices];
 	b2Vec2 m_normals[b2_maxPolygonVertices];
+	float32 m_normalsX[b2_maxPolygonVertices];
+	float32 m_normalsY[b2_maxPolygonVertices];
 	int32 m_count;
 };
 

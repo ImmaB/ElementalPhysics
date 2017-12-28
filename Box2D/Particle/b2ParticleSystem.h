@@ -37,6 +37,8 @@
 #include <cstring>
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
+#define B2PARTICLECOLOR_BITS_PER_COMPONENT (sizeof(uint8) << 3)
+
 class b2World;
 class b2Body;
 class b2Shape;
@@ -322,16 +324,20 @@ public:
 		m_step = step;
 	}
 
+	void AFSolveInit();
+	void AFSolveIterationPart1(int32 iteration);
+	void AFSolveIterationPart2();
+	void AFSolveIterationPart3();
+	void AFSolveIterationPart4();
+	void AFSolveIterationPart5();
+	void AFSolveEnd();
+
 	void SolveInit();
-	void SolveIterationPart1(int32 iteration);
-	void SolveIterationPart2();
-	void SolveIterationPart3();
-	void SolveIterationPart4();
-	void SolveIterationPart5();
+	void SolveIteration(int32 iteration);
 	void SolveEnd();
 
 	template <class T>
-	void CopyFromAFarrayToVector(const int32& count, af::array& afArray, std::vector<T>& vec);
+	void CopyFromAFArrayToVector(const int32& count, const af::array& afArray, std::vector<T>& vec);
 
 	/// Create a particle whose properties have been defined.
 	/// No reference to the definition is retained.
@@ -341,8 +347,10 @@ public:
 	/// @warning This function is locked during callbacks.
 	/// @return the index of the particle.
 	int32 CreateParticle(const b2ParticleDef& def);
+	int32 AFCreateParticle(const afParticleDef& def);
 
 	const uint32 GetLayerMaskFromZ(float32 z);
+	const af::array AFGetLayerMaskFromZ(const af::array& z);
 
 	/// Retrieve a handle to the particle at the specified index.
 	/// Please see #b2ParticleHandle for why you might want a handle.
@@ -362,6 +370,7 @@ public:
 	/// @param Whether to call the destruction listener just before the
 	/// particle is destroyed.
 	void DestroyParticle(int32 index, bool callDestructionListener);
+	void AFDestroyParticles(af::array idxs, bool callDestructionListener = false);
 
 	/// Destroy the Nth oldest particle in the system.
 	/// The particle is removed after the next b2World::Step().
@@ -410,6 +419,7 @@ public:
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
 	int32 CreateParticleGroup(const b2ParticleGroupDef& def);
+	int32 AFCreateParticleGroup(const b2ParticleGroupDef& def);
 
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
@@ -591,8 +601,8 @@ public:
 	/// Get the color of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle colors array.
-	vector<b2ParticleColor> GetColorBuffer();
-	const b2ParticleColor* GetColorBuffer() const;
+	int32* GetColorBuffer();
+	const int32* GetColorBuffer() const;
 
 	/// Get the particle-group of each particle.
 	/// Array is length GetParticleCount()
@@ -634,6 +644,7 @@ public:
 
 	/// Set flags for a particle. See the b2ParticleFlag enum.
 	void SetParticleFlags(int32 index, uint32 flags);
+	void AFSetParticleFlags(const af::array& idxs, uint32 flags);
 	void AddParticleFlags(int32 index, uint32 flags);
 	/// Get flags for a particle. See the b2ParticleFlag enum.
 	uint32 GetParticleFlags(const int32 index);
@@ -653,7 +664,7 @@ public:
 	void SetFlagsBuffer(uint32* buffer, int32 capacity);
 	void SetPositionBuffer(float* bufferX, float* bufferY, int32 capacity);
 	void SetVelocityBuffer(float* bufferX, float* bufferY, int32 capacity);
-	void SetColorBuffer(b2ParticleColor* buffer, int32 capacity);
+	void SetColorBuffer(int32* buffer, int32 capacity);
 	void SetUserDataBuffer(int32* buffer, int32 capacity);
 
 	/// Get contacts between particles
@@ -713,6 +724,7 @@ public:
 	/// multiple bodies before it is considered a candidate for being
 	/// "stuck". Setting to zero or less disables.
 	void SetStuckThreshold(int32 iterations);
+	void AFSetStuckThreshold(int32 iterations);
 
 	/// Get potentially stuck particles from the last step; the user must
 	/// decide if they are stuck or not, and if so, delete or move them
@@ -758,9 +770,6 @@ public:
 	/// when the maximum number of particles are present in the system.
 	bool GetDestructionByAge() const;
 
-	/// Get the array of particle expiration times indexed by particle index.
-	/// GetParticleCount() items are in the returned array.
-	const int32* GetExpirationTimeBuffer();
 	/// Convert a expiration time value in returned by
 	/// GetExpirationTimeBuffer() to a time in seconds relative to the
 	/// current simulation time.
@@ -773,7 +782,7 @@ public:
 	/// ExpirationTimeToLifetime(GetExpirationTimeBuffer()[index])
 	/// is equivalent to GetParticleLifetime(index).
 	/// GetParticleCount() items are in the returned array.
-	const int32* GetIndexByExpirationTimeBuffer();
+	vector<int32> GetIndexByExpirationTimeBuffer();
 
 
 	float32 GetParticleMass() const;
@@ -804,6 +813,7 @@ public:
 	/// @param index the particle that will be modified.
 	/// @param force the world force vector, usually in Newtons (N).
 	void ParticleApplyForce(int32 index, float32 forceX, float32 forceY);
+	void AFParticleApplyForce(const af::array& idxs, const af::array& forceX, const af::array& forceY);
 
 	/// Distribute a force across several particles. The particles must not be
 	/// wall particles. Note that the force is distributed across all the
@@ -813,6 +823,7 @@ public:
 	/// @param lastIndex the last particle to be modified.
 	/// @param force the world force vector, usually in Newtons (N).
 	void ApplyForce(int32 firstIndex, int32 lastIndex, float32 forceX, float32 forceY);
+	void AFApplyForce(int32 firstIndex, int32 lastIndex, float32 forceX, float32 forceY);
 
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();
@@ -849,6 +860,7 @@ public:
 	/// within this particle system.
 	/// @param aabb Returns the axis-aligned bounding box of the system.
 	void ComputeAABB(b2AABB* const aabb) const;
+	void AFComputeAABB(b2AABB* const aabb) const;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -1065,6 +1077,7 @@ private:
 		UserOverridableBuffer<T>* buffer, int32 oldCapacity, int32 newCapacity,
 		bool deferred);
 	template <typename T> T* RequestBuffer(T* buffer);
+	void AFRequestBuffer(af::array& buf, bool& hasBuf);
 
 	/// Reallocate the handle / index map and schedule the allocation of a new
 	/// pool for handle allocation.
@@ -1080,19 +1093,37 @@ private:
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const b2Vec2& position);
+	int32 AFCreateParticleForGroup(
+		const b2ParticleGroupDef& groupDef,
+		const b2Transform& xf, const af::array& positionX, const af::array& positionY);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const b2Vec2& position, const float32 height, const b2ParticleColor& color);
+		const b2Transform& xf, const b2Vec2& position, const float32 height, int32 color);
+	int32 AFCreateParticleForGroup(
+		const b2ParticleGroupDef& groupDef,
+		const b2Transform& xf, const af::array& positionX, const af::array& positionY, const af::array& positionZ, const af::array& color);
 	void CreateParticlesStrokeShapeForGroup(
+		const b2Shape* shape,
+		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
+	void AFCreateParticlesStrokeShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	void CreateParticlesFillShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
+	void AFCreateParticlesFillShapeForGroup(
+		const b2Shape* shape,
+		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	void CreateParticlesWithShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
+	void AFCreateParticlesWithShapeForGroup(
+		const b2Shape* shape,
+		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	void CreateParticlesWithShapesForGroup(
+		const b2Shape* const* shapes, int32 shapeCount,
+		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
+	void AFCreateParticlesWithShapesForGroup(
 		const b2Shape* const* shapes, int32 shapeCount,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	int32 CloneParticle(int32 index, int32 groupIdx);
@@ -1127,6 +1158,7 @@ private:
 	void AFComputeDepth();
 
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
+	af::array AFGetInsideBoundsEnumerator(const b2AABB& aabb) const;
 
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
@@ -1134,23 +1166,18 @@ private:
 	bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const;
 	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
 	af::array b2ParticleSystem::AFShouldCollide(const af::array& a, const af::array& b) const;
-	void b2ParticleSystem::AFAddContacts(af::array& a, af::array& b);
-	af::array afB2InvSqrt(af::array x);
-	void ReorderForFindContact(FindContactInput* reordered,
-		                       int alignedCount) const;
-	void GatherChecksOneParticle(
-		const uint32 bound,
-		const int startIndex,
-		const int particleIndex,
-		int* nextUncheckedIndex,
-		b2GrowableBuffer<FindContactCheck>& checks) const;
-	void GatherChecks(b2GrowableBuffer<FindContactCheck>& checks) const;
+	af::array b2ParticleSystem::AFShouldCollide(const af::array& a, b2Fixture* f) const;
+	void b2ParticleSystem::AFAddContacts(const af::array& a, const af::array& b);
+	af::array afInvSqrt(af::array x);
 	void FindContacts(int32& contactCount);
-	void AFFindContacts(int32& contactCount);
+	void AFFindContacts();
 	void AFFindContactsbyTags(vector<int32>& aIdxs, vector<int32>& bIdxs);
 	void UpdateProxies();
-	void AFUpdateProxies();
 	void SortProxies();
+	void AFSort(af::array& keys, af::array& array, bool ascending);
+	void AFSort(af::array& keys, vector<af::array>& arrays);
+	void AFReorder(af::array& idxs, vector<af::array>& arrays);
+	void AFJoin(af::array& array, const af::array& newArray, af::dtype type = af::dtype::f32);
 	template <class UnaryPredicate>
 	static vector<int32> GetValidIdxs(int32 vSize, UnaryPredicate isValidFunc);
 	template <class UnaryPredicate>
@@ -1164,13 +1191,12 @@ private:
 	af::array AFGetUniqueTriadIdxs();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
-	void AFSortProxies(af::array& proxyIdxsOut, af::array& proxyTagsOut, const af::array& proxyIdxsIn, const af::array& proxyTagsIn) const;
 	void FilterContacts();
 	void NotifyContactListenerPreContact(
 		b2ParticlePairSet* particlePairs) const;
 	void NotifyContactListenerPostContact(b2ParticlePairSet& particlePairs);
 	void UpdateContacts(bool exceptZombie);
-	void AFUpdateContacts();
+	void AFUpdateContacts(bool exceptZombie);
 	void NotifyBodyContactListenerPreContact(
 		FixtureParticleSet* fixtureSet) const;
 	void NotifyBodyContactListenerPostContact(FixtureParticleSet& fixtureSet);
@@ -1194,11 +1220,14 @@ private:
 	void AFSolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
+	void AFSolveGravity(const b2TimeStep& step);
 	void SolveBarrier(const b2TimeStep& step);
 	void SolveStaticPressure(const b2TimeStep& step);
+	void AFSolveStaticPressure(const b2TimeStep& step);
 	void ComputeWeight();
 	void AFComputeWeight();
 	void SolvePressure(const b2TimeStep& step);
+	void AFSolvePressure(const b2TimeStep& step);
 	void SolveDamping(const b2TimeStep& step); 
 	void SolveSlowDown(const b2TimeStep& step);
 	void AFSolveSlowDown(const b2TimeStep& step);
@@ -1208,9 +1237,12 @@ private:
 	void SolveRigid(const b2TimeStep& step);
 	void AFSolveRigid(const b2TimeStep& step);
 	void SolveElastic(const b2TimeStep& step);
+	void AFSolveElastic(const b2TimeStep& step);
 	void SolveSpring(const b2TimeStep& step);
 	void SolveTensile(const b2TimeStep& step);
+	void AFSolveTensile(const b2TimeStep& step);
 	void SolveViscous();
+	void AFSolveViscous();
 	void SolveRepulsive(const b2TimeStep& step);
 	void SolvePowder(const b2TimeStep& step);
 	void SolveSolid(const b2TimeStep& step);
@@ -1228,12 +1260,15 @@ private:
 	void SolveFreeze();
 	void SolveDestroyDead();
 	void SolveZombie();
+	void AFSolveZombie();
 	void SolveFalling(const b2TimeStep& step);
 	void SolveRising(const b2TimeStep& step);
 	/// Destroy all particles which have outlived their lifetimes set by
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
+	void AFSolveLifetimes(const b2TimeStep& step);
 	void RotateBuffer(int32 start, int32 mid, int32 end);
+	void AFRotateBuffer(int32 start, int32 mid, int32 end);
 
 	template <class T1, class UnaryPredicate>
 	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
@@ -1286,6 +1321,7 @@ private:
 								   const b2ParticleBodyContact& rhs);
 
 	void DetectStuckParticle(int32 particle);
+	void AFDetectStuckParticle(const af::array& particles);
 
 	/// Determine whether a particle index is valid.
 	bool ValidateParticleIndex(const int32 index) const;
@@ -1296,7 +1332,9 @@ private:
 	int64 LifetimeToExpirationTime(const float32 lifetime) const;
 
 	bool ForceCanBeApplied(uint32 flags) const;
+	af::array AFForceCanBeApplied(const af::array& flags) const;
 	void PrepareForceBuffer();
+	void AFPrepareForceBuffer();
 
 	bool IsRigidGroup(int32 groupIdx) const;
 	b2Vec2 GetLinearVelocity(
@@ -1355,6 +1393,19 @@ private:
 	int32 m_triadCount;
 	int32 m_triadBufferSize;
 
+	bool afHasColorBuf,
+		 afHasUserDataBuf,
+		 afHasHandleIdxBuf,
+		 afHasStaticPresBuf,
+		 afHasExpireTimeBuf,
+		 afHasIdxByExpireTimeBuf,
+		 afHasAccumulation2XBuf,
+		 afHasAccumulation2YBuf,
+		 afHasDepthBuf,
+		 afHasLastBodyContactBuf,
+		 afHasBodyContactCountBuf,
+		 afHasConsecutiveContactStepsBuf;
+
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
@@ -1371,7 +1422,7 @@ private:
 					m_healthBuffer,
 					m_forceXBuffer,
 					m_forceYBuffer;
-	vector<b2ParticleColor> m_colorBuffer;
+	vector<int32>	m_colorBuffer;
 
 	vector<int32>	m_partMatIdxBuffer;
 	vector<int32>   m_groupIdxBuffer;
@@ -1428,75 +1479,90 @@ private:
 	vector<float32> m_depthBuffer;
 	vector<int32> m_userDataBuffer;
 
-	af::array	afPosXBuf, afPosYBuf, afPosZBuf,
-				afFlagBuf,
-				afColLayBuf,
-				afVelXBuf, afVelYBuf,
-				afForceXBuf, afForceYBuf,
-				afWeightBuf,
-				afHeatBuf,
-				afHealthBuf,
-				afColorBuf,
-				afGroupIdxBuf,
-				afPartMatIdxBuf,
+	af::array	
+		afPosXBuf, afPosYBuf, afPosZBuf,
+		afFlagBuf,
+		afColLayBuf,
+		afVelXBuf, afVelYBuf,
+		afForceXBuf, afForceYBuf,
+		afWeightBuf,
+		afHeatBuf,
+		afHealthBuf,
+		afColorBuf,
+		afUserDataBuf, //TODO add to copy
+		afGroupIdxBuf,
+		afPartMatIdxBuf,
 
-				afAccumulationBuf,
-				afDepthBuf,
+		afAccumulationBuf,
+		afAccumulation2XBuf,
+		afAccumulation2YBuf,
+		afStaticPressureBuf,
+		afDepthBuf,
 
-				afProxyIdxBuf, 
-				afProxyTagBuf,
-				
-				//afFreeGroupIdxBuffer,
-				afRealGroupIdxBuf,
-				
-				afGroupFirstIdxBuf, afGroupLastIdxBuf,
-				afGroupFlagsBuf,
-				afGroupColGroupBuf,
-				afGroupStrengthBuf,
-				afGroupMatIdxBuf,
-				afGroupTimestampBuf,
-				afGroupMassBuf,
-				afGroupInertiaBuf,
-				afGroupCenterXBuf, afGroupCenterYBuf,
-				afGroupLinVelXBuf, afGroupLinVelYBuf,
-				afGroupAngVelBuf,
-				afGroupTransformBuf,
-				afGroupUserDataBuf,
+		afExpireTimeBuf,
+		afIdxByExpireTimeBuf,
+		afHandleIdxBuf,
+		
+		afLastBodyContactStepBuf,
+		afBodyContactCountBuf,
+		afConsecutiveContactStepsBuf,
+		afStuckParticleBuf,
 
-				afContactIdxABuf, afContactIdxBBuf,
-				afContactWeightBuf, afContactMassBuf,
-				afContactNormalXBuf, afContactNormalYBuf,
-				afContactFlagsBuf, afContactMatFlagsBuf,
+		afProxyIdxBuf,
+		afProxyTagBuf,
 
-				afBodyContactIdxBuf,
-				afBodyContactBodyBuf,
-				afBodyContactFixtureBuf,
-				afBodyContactWeightBuf,
-				afBodyContactNormalXBuf, afBodyContactNormalYBuf,
-				afBodyContactMassBuf,
+		//afFreeGroupIdxBuffer,
+		afRealGroupIdxBuf,
 
-				afPartMatFlagsBuf,
-				afPartMatMassBuf, afPartMatInvMassBuf,
-				afPartMatStabilityBuf,
-				afPartMatInvStabilityBuf,
-				afPartMatExtinguishingPointBuf,
-				afPartMatMeltingPointBuf,
-				afPartMatBoilingPointBuf,
-				afPartMatIgnitionPointBuf,
-				afPartMatHeatConductivityBuf,
+		afGroupFirstIdxBuf, afGroupLastIdxBuf,
+		afGroupFlagsBuf,
+		afGroupColGroupBuf,
+		afGroupStrengthBuf,
+		afGroupMatIdxBuf,
+		afGroupTimestampBuf,
+		afGroupMassBuf,
+		afGroupInertiaBuf,
+		afGroupCenterXBuf, afGroupCenterYBuf,
+		afGroupLinVelXBuf, afGroupLinVelYBuf,
+		afGroupAngVelBuf,
+		afGroupTransformBuf,
+		afGroupUserDataBuf,
 
-				afPairIdxABuf, afPairIdxBBuf,
-				afPairFlagsBuf,
-				afPairStrengthBuf,
-				afPairDistanceBuf,
+		afContactIdxABuf, afContactIdxBBuf,
+		afContactWeightBuf, afContactMassBuf,
+		afContactNormalXBuf, afContactNormalYBuf,
+		afContactFlagsBuf, afContactMatFlagsBuf,
 
-				afTriadIdxABuf, afTriadIdxBBuf, afTriadIdxCBuf,
-				afTriadFlagsBuf,	
-				afTriadStrengthBuf,	
-				afTriadPAXBuf, afTriadPAYBuf,
-				afTriadPBXBuf, afTriadPBYBuf,
-				afTriadPCXBuf, afTriadPCYBuf,
-				afTriadKABuf, afTriadKBBuf, afTriadKCBuf, afTriadSBuf;
+		afBodyContactIdxBuf,
+		afBodyContactBodyIdxBuf,
+		afBodyContactFixtIdxBuf,
+		afBodyContactWeightBuf,
+		afBodyContactNormalXBuf, afBodyContactNormalYBuf,
+		afBodyContactMassBuf,
+
+		afPartMatFlagsBuf,
+		afPartMatMassBuf, afPartMatInvMassBuf,
+		afPartMatStabilityBuf,
+		afPartMatInvStabilityBuf,
+		afPartMatExtgshPntBuf,
+		afPartMatMeltingPntBuf,
+		afPartMatBoilingPntBuf,
+		afPartMatIgnitPntBuf,
+		afPartMatHeatCondBuf,
+
+		afPairIdxABuf, afPairIdxBBuf,
+		afPairFlagsBuf,
+		afPairStrengthBuf,
+		afPairDistanceBuf,
+
+		afTriadIdxABuf, afTriadIdxBBuf, afTriadIdxCBuf,
+		afTriadFlagsBuf,
+		afTriadStrengthBuf,
+		afTriadPAXBuf, afTriadPAYBuf,
+		afTriadPBXBuf, afTriadPBYBuf,
+		afTriadPCXBuf, afTriadPCYBuf,
+		afTriadKABuf, afTriadKBBuf, afTriadKCBuf, afTriadSBuf;
+
 
 
 
@@ -1545,26 +1611,16 @@ private:
 	vector<uint32>  m_triadFlagsBuf;		/// The logical sum of the particle flags. See the b2ParticleFlag enum.
 	vector<float32> m_triadStrengthBuf;		/// The strength of cohesion among the particles.
 	vector<float32> m_triadPAXBuf, m_triadPAYBuf, 	/// Values used for calculation.
-				   m_triadPBXBuf, m_triadPBYBuf,
-				   m_triadPCXBuf, m_triadPCYBuf;
+				    m_triadPBXBuf, m_triadPBYBuf,
+				    m_triadPCXBuf, m_triadPCYBuf;
 	vector<float32> m_triadKABuf, m_triadKBBuf, m_triadKCBuf, m_triadSBuf;
-
-	
-	uint32 flags;
-
-	
-	float32 strength;
-
-	
-	b2Vec2 pa, pb, pc;
-	float32 ka, kb, kc, s;
 
 	/// Time each particle should be destroyed relative to the last time
 	/// m_timeElapsed was initialized.  Each unit of time corresponds to
 	/// b2ParticleSystemDef::lifetimeGranularity seconds.
-	UserOverridableBuffer<int32> m_expirationTimeBuffer;
+	vector<int32> m_expireTimeBuf;
 	/// List of particle indices sorted by expiration time.
-	UserOverridableBuffer<int32> m_indexByExpirationTimeBuffer;
+	vector<int32> m_idxByExpireTimeBuf;
 	/// Time elapsed in 32:32 fixed point.  Each non-fractional unit of time
 	/// corresponds to b2ParticleSystemDef::lifetimeGranularity seconds.
 	int64 m_timeElapsed;
@@ -1939,9 +1995,9 @@ inline uint32* b2ParticleSystem::GetCollisionLayerBuffer()
 	return m_collisionLayerBuffer.data();
 }
 
-inline const b2ParticleColor* b2ParticleSystem::GetColorBuffer() const
+inline const int32* b2ParticleSystem::GetColorBuffer() const
 {
-	return ((b2ParticleSystem*) this)->GetColorBuffer().data();
+	return m_colorBuffer.data();
 }
 
 inline const int32* b2ParticleSystem::GetGroupIdxBuffer() const

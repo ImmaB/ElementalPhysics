@@ -39,6 +39,14 @@ bool b2CircleShape::TestPoint(const b2Transform& transform, const b2Vec2& p) con
 	b2Vec2 d = p - center;
 	return b2Dot(d, d) <= m_radius * m_radius;
 }
+af::array b2CircleShape::AFTestPoints(const b2Transform& transform, const af::array& px, const af::array& py) const
+{
+	float32 centerX = transform.p.x + b2MulX(transform.q, m_p.x, m_p.y);
+	float32 centerY = transform.p.y + b2MulY(transform.q, m_p.x, m_p.y);
+	af::array dx = px - centerX;
+	af::array dy = py - centerY;
+	return b2Dot(dx, dy, dx, dy) <= m_radius * m_radius;
+}
 
 void b2CircleShape::ComputeDistance(const b2Transform& transform, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const
 {
@@ -49,6 +57,19 @@ void b2CircleShape::ComputeDistance(const b2Transform& transform, const b2Vec2& 
 	float32 d1 = d.Length();
 	*distance = d1 - m_radius;
 	*normal = 1 / d1 * d;
+}
+void b2CircleShape::AFComputeDistance(const b2Transform& transform, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const
+{
+	B2_NOT_USED(childIndex);
+
+	b2Vec2 center = transform.p + b2Mul(transform.q, m_p);
+	af::array dx = px - center.x;
+	af::array dy = px - center.y;
+
+	af::array d1 = af::sqrt(dx * dx + dy * dy);
+	distance = d1 - m_radius;
+	normalX = 1 / d1 * dx;
+	normalY = 1 / d1 * dy;
 }
 
 // Collision Detection in Interactive 3D Environments by Gino van den Bergen
@@ -90,6 +111,64 @@ bool b2CircleShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input
 	}
 
 	return false;
+}
+
+af::array b2CircleShape::AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
+	const b2Transform& transform, int32 childIndex) const
+{
+	B2_NOT_USED(childIndex);
+	
+	b2Vec2 position = transform.p + b2Mul(transform.q, m_p);
+	af::array sx = input.p1x - position.x;
+	af::array sy = input.p1y - position.y;
+	af::array b = b2Dot(sx, sy, sx, sy) - m_radius * m_radius;
+
+	// Solve quadratic equation.
+	af::array rx = input.p2x - input.p1x;
+	af::array ry = input.p2y - input.p1y;
+	af::array c = b2Dot(sx, sy, rx, ry);
+	af::array rr = b2Dot(rx, ry, rx, ry);
+	af::array sigma = c * c - rr * b;
+
+	// Check for negative discriminant and short segment.
+	af::array cond = sigma < 0.0f || rr < b2_epsilon;
+	af::array remainIdxs = af::where(!cond);
+	if (!remainIdxs.isempty())
+	{
+
+
+		// Find the point of intersection of the line with the circle.
+		af::array a = -(c + af::sqrt(sigma(remainIdxs)));
+
+		// Is the intersection point on the segment?
+		af::array condIdxs = af::where(!(0.0f <= a && a <= input.maxFraction * rr));
+		if (!condIdxs.isempty())
+		{
+			remainIdxs = remainIdxs(condIdxs);
+			a = a(condIdxs) / rr(remainIdxs);
+			rx = rx(remainIdxs);
+			ry = ry(remainIdxs);
+			output->fraction = a;
+			output->normalX = sx + a * rx;
+			output->normalY = sy + a * ry;
+			
+			// Normalize
+			af::array nx = output->normalX;
+			af::array ny = output->normalY;
+			af::array length = af::sqrt(nx * nx + ny * ny);
+			af::array toShort = length < b2_epsilon;
+			length(af::where(toShort)) = 0.0f;
+			af::array validIdxs = af::where(!toShort);
+			if (!validIdxs.isempty())
+			{
+				af::array invLength = 1.0f / length(validIdxs);
+				output->normalX(validIdxs) *= invLength;
+				output->normalY(validIdxs) *= invLength;
+			}
+			return remainIdxs;
+		}
+	}
+	return af::array();
 }
 
 void b2CircleShape::ComputeAABB(b2AABB* aabb, const b2Transform& transform, int32 childIndex) const

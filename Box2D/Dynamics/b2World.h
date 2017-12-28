@@ -335,6 +335,7 @@ private:
 	bool m_allowSleep;
 
 	b2DestructionListener* m_destructionListener;
+	AFDestructionListener* afDestructionListener;
 	b2Draw* m_debugDraw;
 
 	// This is used to compute the time step ratio to

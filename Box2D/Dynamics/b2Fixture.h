@@ -168,11 +168,13 @@ public:
 	/// Compute the distance from this fixture.
 	/// @param p a point in world coordinates.
 	void ComputeDistance(const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
+	void AFComputeDistance(const af::array& px, const af::array& py, af::array& d, af::array& nx, af::array& ny, int32 childIndex) const;
 
 	/// Cast a ray against this shape.
 	/// @param output the ray-cast results.
 	/// @param input the ray-cast input parameters.
 	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input, int32 childIndex) const;
+	af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input, int32 childIndex) const;
 
 	/// Get the mass data for this fixture. The mass data is based on the density and
 	/// the shape. The rotational inertia is about the shape's origin. This operation
@@ -345,10 +347,18 @@ inline void b2Fixture::ComputeDistance(const b2Vec2& p, float32* d, b2Vec2* n, i
 {
 	m_shape->ComputeDistance(m_body->GetTransform(), p, d, n, childIndex);
 }
+inline void b2Fixture::AFComputeDistance(const af::array& px, const af::array& py, af::array& d, af::array& nx, af::array& ny, int32 childIndex) const
+{
+	m_shape->AFComputeDistance(m_body->GetTransform(), px, py, d, nx, ny, childIndex);
+}
 
 inline bool b2Fixture::RayCast(b2RayCastOutput* output, const b2RayCastInput& input, int32 childIndex) const
 {
 	return m_shape->RayCast(output, input, m_body->GetTransform(), childIndex);
+}
+inline af::array b2Fixture::AFRayCast(afRayCastOutput* output, const afRayCastInput& input, int32 childIndex) const
+{
+	return m_shape->AFRayCast(output, input, m_body->GetTransform(), childIndex);
 }
 
 inline void b2Fixture::GetMassData(b2MassData* massData) const

@@ -63,14 +63,17 @@ struct b2ParticleGroupDef
 		angle = 0;
 		linearVelocity = b2Vec2_zero;
 		angularVelocity = 0;
-		color = b2ParticleColor_zero;
+		color = 0;
 		strength = 1;
 		shape = NULL;
 		shapes = NULL;
 		shapeCount = 0;
 		stride = 0;
 		particleCount = 0;
-		positionData = NULL;
+		positionDataX = NULL;
+		positionDataY = NULL;
+		positionDataZ = NULL;
+		colorData = NULL;
 		lifetime = 0.0f;
 		userData = 0;
 		groupIdx = b2_invalidGroupIndex;
@@ -116,7 +119,7 @@ struct b2ParticleGroupDef
 	float32 angularVelocity;
 
 	/// The color of all particles in the group.
-	b2ParticleColor color;
+	int32 color;
 
 	/// The strength of cohesion among the particles in a group with flag
 	/// b2_elasticParticle or b2_springParticle.
@@ -139,8 +142,11 @@ struct b2ParticleGroupDef
 	int32 particleCount;
 
 	/// The initial positions of the particleCount particles.
-	b2Vec3* positionData;
-	b2ParticleColor* colorData;
+	float32* positionDataX;
+	float32* positionDataY;
+	float32* positionDataZ;
+
+	int* colorData;
 
 	/// Lifetime of the particle group in seconds.  A value <= 0.0f indicates a
 	/// particle group with infinite lifetime.

@@ -83,6 +83,48 @@ public:
 		B2_NOT_USED(index);
 	}
 };
+class AFDestructionListener
+{
+public:
+	virtual ~AFDestructionListener() {}
+
+	/// Called when any joint is about to be destroyed due
+	/// to the destruction of one of its attached bodies.
+	virtual void SayGoodbye(b2Joint* joint) = 0;
+
+	/// Called when any fixture is about to be destroyed due
+	/// to the destruction of its parent body.
+	virtual void SayGoodbye(b2Fixture* fixture) = 0;
+
+	/// Called when any particle group is about to be destroyed.
+	virtual void SayGoodbye(int32 groupIdx)
+	{
+		B2_NOT_USED(groupIdx);
+	}
+
+	/// Called when any particle material is about to be destroyed.
+	virtual void SayGoodbye(b2ParticleMaterial* mat)
+	{
+		B2_NOT_USED(mat);
+	}
+	/// Called when any fixture material is about to be destroyed.
+	virtual void SayGoodbye(b2BodyMaterial* mat)
+	{
+		B2_NOT_USED(mat);
+	}
+
+
+	/// Called when a particle is about to be destroyed.
+	/// The index can be used in conjunction with
+	/// b2ParticleSystem::GetUserDataBuffer() or
+	/// b2ParticleSystem::GetParticleHandleFromIndex() to determine which
+	/// particle has been destroyed.
+	virtual void SayGoodbye(b2ParticleSystem* particleSystem, af::array idxs)
+	{
+		B2_NOT_USED(particleSystem);
+		B2_NOT_USED(idxs);
+	}
+};
 
 /// Implement this class to provide collision filtering. In other words, you can implement
 /// this class if you want finer control over contact creation.

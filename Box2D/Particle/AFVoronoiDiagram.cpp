@@ -197,7 +197,7 @@ void AFVoronoiDiagram::Generate(float32 radius, float32 margin)
 	y = af::seq(0, m_countY - 1);
 	x = af::tile(x, m_countY - 1);
 	y = af::tile(y, 1, m_countX);
-	y = af::transpose(x);
+	y = af::transpose(y);
 	y = af::flat(y);
 	i = x + y * m_countX;
 	a = afGenIdxDiagram(i);
@@ -307,7 +307,7 @@ void AFVoronoiDiagram::GetNodes(NodeCallback& callback) const
 	af::array y = af::seq(0, m_countY - 1);
 	x = af::tile(x, m_countY - 1);
 	y = af::tile(y, 1, m_countX - 1);
-	y = af::transpose(x);
+	y = af::transpose(y);
 	y = af::flat(y);
 	af::array i = x + y * m_countX;
 

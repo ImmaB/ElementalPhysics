@@ -149,6 +149,11 @@ struct b2RayCastInput
 	b2Vec2 p1, p2;
 	float32 maxFraction;
 };
+struct afRayCastInput
+{
+	af::array p1x, p1y, p2x, p2y;
+	float32 maxFraction;
+};
 
 /// Ray-cast output data. The ray hits at p1 + fraction * (p2 - p1), where p1 and p2
 /// come from b2RayCastInput.
@@ -156,6 +161,12 @@ struct b2RayCastOutput
 {
 	b2Vec2 normal;
 	float32 fraction;
+};
+struct afRayCastOutput
+{
+	af::array normalX;
+	af::array normalY;
+	af::array fraction;
 };
 
 /// An axis aligned bounding box.

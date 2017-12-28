@@ -76,7 +76,7 @@ public:
 	virtual void DrawSolidCircle(const b2Vec2& center, float32 radius, const b2Vec2& axis, const b2Color& color) = 0;
 
 	/// Draw a particle array
-	virtual void DrawParticles(const float32 *centersX, const float32 *centersY, float32 radius, const b2ParticleColor *colors, int32 count) = 0;
+	virtual void DrawParticles(const float32 *centersX, const float32 *centersY, float32 radius, const int32 *colors, int32 count) = 0;
 
 	/// Draw a line segment.
 	virtual void DrawSegment(const b2Vec2& p1, const b2Vec2& p2, const b2Color& color) = 0;

@@ -484,11 +484,15 @@ inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b)
 {
 	return a.x * b.x + a.y * b.y;
 }
-inline float32 b2Dot(const float& ax, const float& ay, const float& bx, const float& by)
+inline float32 b2Dot(const float32& ax, const float32& ay, const float32& bx, const float32& by)
 {
 	return ax * bx + ay * by;
 }
 inline af::array b2Dot(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
+{
+	return ax * bx + ay * by;
+}
+inline af::array b2Dot(const float32& ax, const float32& ay, const af::array& bx, const af::array& by)
 {
 	return ax * bx + ay * by;
 }
@@ -498,7 +502,7 @@ inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b)
 {
 	return a.x * b.y - a.y * b.x;
 }
-inline float32 b2Cross(const float& ax, const float& ay, const float& bx, const float& by)
+inline float32 b2Cross(const float32& ax, const float32& ay, const float32& bx, const float32& by)
 {
 	return ax * by - ay * bx;
 }
@@ -519,6 +523,14 @@ inline b2Vec2 b2Cross(const b2Vec2& a, float32 s)
 inline b2Vec2 b2Cross(float32 s, const b2Vec2& a)
 {
 	return b2Vec2(-s * a.y, s * a.x);
+}
+inline af::array b2CrossX(float32 s, const af::array& y)
+{
+	return -s * y;
+}
+inline af::array b2CrossY(float32 s, const af::array& x)
+{
+	return s * x;
 }
 
 /// Multiply a matrix times a vector. If a rotation matrix is provided,
@@ -679,11 +691,35 @@ inline float32 b2MulY(const b2Rot& q, float32 x, float32 y)
 {
 	return q.s * x + q.c * y;
 }
+inline af::array b2MulX(const b2Rot& q, const af::array x, const af::array y)
+{
+	return q.c * x - q.s * y;
+}
+inline af::array b2MulY(const b2Rot& q, const af::array x, const af::array y)
+{
+	return q.s * x + q.c * y;
+}
+inline af::array b2MulX(const af::array& rotS, const af::array& rotC, const af::array x, const af::array y)
+{
+	return rotC * x - rotS * y;
+}
+inline af::array b2MulY(const af::array& rotS, const af::array& rotC, const af::array x, const af::array y)
+{
+	return rotS * x + rotC * y;
+}
 
 /// Inverse rotate a vector
 inline b2Vec2 b2MulT(const b2Rot& q, const b2Vec2& v)
 {
 	return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y);
+}
+inline af::array b2MulTX(const b2Rot& q, const af::array& vx, const af::array& vy)
+{
+	return q.c * vx + q.s * vy;
+}
+inline af::array b2MulTY(const b2Rot& q, const af::array& vx, const af::array& vy)
+{
+	return -q.s * vx + q.c * vy;
 }
 
 inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec2& v)
@@ -718,6 +754,14 @@ inline b2Vec2 b2MulT(const b2Transform& T, const b2Vec2& v)
 	float32 y = (-T.q.s * px + T.q.c * py);
 
 	return b2Vec2(x, y);
+}
+inline af::array b2MulTX(const b2Transform& T, const af::array& x, const af::array& y)
+{
+	return (T.q.c * (x - T.p.x) + T.q.s * (y - T.p.y));
+}
+inline af::array b2MulTY(const b2Transform& T, const af::array& x, const af::array& y)
+{
+	return (-T.q.s * (x - T.p.x) + T.q.c * (y - T.p.y));
 }
 
 // v2 = A.q.Rot(B.q.Rot(v1) + B.p) + A.p

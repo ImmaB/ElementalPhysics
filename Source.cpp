@@ -274,35 +274,47 @@ extern "C" __declspec(dllexport)  int32 GetParticleIterations(float32 gravity, f
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
 }
 
+extern "C" __declspec(dllexport) void AFStepParticleInit(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveInit();
+}
+extern "C" __declspec(dllexport) void AFStepParticleIterationPart1(void* partSysPtr, int32 iteration) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveIterationPart1(iteration);
+}
+extern "C" __declspec(dllexport) void AFStepParticleIterationPart2(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveIterationPart2();
+}
+extern "C" __declspec(dllexport) void AFStepParticleIterationPart3(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveIterationPart3();
+}
+extern "C" __declspec(dllexport) void AFStepParticleIterationPart4(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveIterationPart4();
+}
+extern "C" __declspec(dllexport) void AFStepParticleIterationPart5(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveIterationPart5();
+}
+extern "C" __declspec(dllexport) void AFStepParticleEnd(void* partSysPtr) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->AFSolveEnd();
+}
+
 extern "C" __declspec(dllexport) void StepParticleInit(void* partSysPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->SolveInit();
 }
-extern "C" __declspec(dllexport) void StepParticleIterationPart1(void* partSysPtr, int32 iteration) {
+extern "C" __declspec(dllexport) void StepParticleIteration(void* partSysPtr, int32 iteration) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIterationPart1(iteration);
-}
-extern "C" __declspec(dllexport) void StepParticleIterationPart2(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIterationPart2();
-}
-extern "C" __declspec(dllexport) void StepParticleIterationPart3(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIterationPart3();
-}
-extern "C" __declspec(dllexport) void StepParticleIterationPart4(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIterationPart4();
-}
-extern "C" __declspec(dllexport) void StepParticleIterationPart5(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIterationPart5();
+	partSys->SolveIteration(iteration);
 }
 extern "C" __declspec(dllexport) void StepParticleEnd(void* partSysPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->SolveEnd();
 }
-
 
 extern "C" __declspec(dllexport)  void SetStaticPressureIterations(void* systemPointer,int iterations)
 {
@@ -378,38 +390,7 @@ extern "C" __declspec(dllexport)  int* GetParticlesInShape(void* systemPointer, 
     
     return returnArray;
 }
-extern "C" __declspec(dllexport)  float* GetParticlePositionsAndColors(void* partSysPtr) {
-    
-    if (positionArray != NULL)
-    {
-        delete positionArray;
-    }
-    
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    
-    int numberOfParticles = partSys->GetParticleCount();
-    positionArray = new float[(numberOfParticles * 7) + 1];
-    positionArray[0] = (float)numberOfParticles;
-    float32* particlePositionXBuffer = partSys->GetPositionXBuffer();
-	float32* particlePositionYBuffer = partSys->GetPositionYBuffer();
-	float32* particlePositionZBuffer = partSys->GetPositionZBuffer();
 
-    b2ParticleColor* particleColorBuffer = partSys->GetColorBuffer().data();
-    
-    int j = 1;
-    for (int i = 0; i < numberOfParticles; ++i)
-    {
-		positionArray[j] = particlePositionXBuffer[i];
-        positionArray[j + 1] = particlePositionYBuffer[i];
-		positionArray[j + 2] = particlePositionZBuffer[i];
-        positionArray[j + 3] = particleColorBuffer[i].r;
-        positionArray[j + 4] = particleColorBuffer[i].g;
-        positionArray[j + 5] = particleColorBuffer[i].b;
-        positionArray[j + 6] = particleColorBuffer[i].a;
-        j += 7;
-    }
-    return positionArray;
-}
 
 extern "C" __declspec(dllexport)  void DeleteParticleSystem(void* worldPointer, void* partSysPtr) {
     b2World* world = static_cast<b2World*>(worldPointer);
@@ -507,7 +488,7 @@ extern "C" __declspec(dllexport)  int GetMaxParticleCount(void* partSysPtr) {
 #pragma endregion
 
 #pragma region API Particles
-extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointer, int flags, float posX, float posY, float posZ, float velX, float velY, int r, int g, int b, int a, float lifetime, float health) {
+extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointer, int flags, float posX, float posY, float posZ, float velX, float velY, int col, float lifetime, float health) {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
     b2ParticleDef pd;
     pd.flags = static_cast<b2ParticleFlag>(flags);
@@ -518,10 +499,10 @@ extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointe
 	pd.velocityY = velY;
     pd.lifetime = lifetime;
 	pd.health = health;
-    pd.color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
+    pd.color = col;
     parts->CreateParticle(pd);
 }
-extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer, int groupIdx, int flags, float posX, float posY, float posZ, float velX, float velY, int r, int g, int b, int a, float lifetime, float health, float heat, int userdata) {
+extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer, int groupIdx, int flags, float posX, float posY, float posZ, float velX, float velY, int col, float lifetime, float health, float heat, int userdata) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
 	b2ParticleDef pd;
 	pd.flags = flags;
@@ -530,7 +511,7 @@ extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer
 	pd.positionZ = posZ;
 	pd.velocityX = velX;
 	pd.velocityY = velY;
-	pd.color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
+	pd.color = col;
 	pd.lifetime = lifetime;
 	pd.heat = heat;
 	pd.health = health;
@@ -580,18 +561,6 @@ extern "C" __declspec(dllexport)  void AddParticleFlagsInShape(void* systemPoint
 	}
 }
 
-extern "C" __declspec(dllexport)  void SetSelectedParticleColor(void* partSysPtr, int* indexArray, int r, int g, int b, int a) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleColor* colours = partSys->GetColorBuffer().data();
-
-	for (int i = 1; i < indexArray[0] + 1; ++i)
-	{
-		colours[indexArray[i]].r = r;
-		colours[indexArray[i]].g = g;
-		colours[indexArray[i]].b = b;
-		colours[indexArray[i]].a = a;
-	}
-}
 extern "C" __declspec(dllexport)  void SetSelectedParticleUserData(void* partSysPtr, int* indexArray, int ud) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	int32* datas = partSys->GetUserDataBuffer();
@@ -707,17 +676,7 @@ extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int
 	}
 	if (whichDataMask & GetColors)
 	{
-		b2ParticleColor* colorBuffer = partSys->GetColorBuffer().data();
-		uint32* c = new uint32[partNum];
-		for (int i = 0; i < partNum; i++)
-		{
-			c[i] = colorBuffer[i].r  
-				 | colorBuffer[i].g << 8
-				 | colorBuffer[i].b << 16
-				 | colorBuffer[i].a << 24;
-		}
-		memcpy(*partColorPtr, c, intArraySize);
-		delete c;
+		memcpy(*partColorPtr, partSys->GetColorBuffer(), intArraySize);
 	}
 	if (whichDataMask & GetLifeTimes)
 	{
@@ -753,30 +712,8 @@ extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int
 #pragma endregion
 
 #pragma region ParticleGroups
-/*
-extern "C" __declspec(dllexport)  void* CreateParticleGroup(void* partSysPtr, int particleTypes, int groupTypes, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int r, int g, int b, int a, float stride, float lifetime, int userData) {
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
-    b2Shape* m_shape = static_cast<b2Shape*>(shape);
-    b2ParticleGroupFlag bgf;
-    bgf = static_cast<b2ParticleGroupFlag>(groupTypes);
-    b2ParticleFlag bf;
-    bf = static_cast<b2ParticleFlag>(particleTypes);
-    b2ParticleGroupDef pd;
-    pd.flags = bf;
-    pd.groupFlags = bgf;
-    pd.shape = m_shape;
-    pd.angle = angle;
-    pd.strength = strength;
-    pd.angularVelocity = angVel;
-    pd.linearVelocity = b2Vec2(linVelX, linVelY);
-    pd.stride = stride;
-    pd.lifetime = lifetime;
-    pd.color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
-    pd.userData = (void*)userData;
-    b2ParticleGroup* particleGroup = parts->CreateParticleGroup(pd);
-    return static_cast<void*>(particleGroup);
-}*/
-extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, int layer, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int r, int g, int b, int a, float stride, float lifetime, float health, float heat, int userData) {
+
+extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, int layer, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape* m_shape = static_cast<b2Shape*>(shape);
 	b2ParticleGroupFlag bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
@@ -795,13 +732,37 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.stride = stride;
 	pd.lifetime = lifetime;
 	pd.health = health;
-	pd.color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
+	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	int32 particleGroup = parts->CreateParticleGroup(pd);
-	return particleGroup;
+	return parts->CreateParticleGroup(pd);
 }
-extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* r, int* g, int* b, int* a, float lifetime, float health, float heat, int userData) {
+extern "C" __declspec(dllexport)  int AFCreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, int layer, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
+	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2Shape* m_shape = static_cast<b2Shape*>(shape);
+	b2ParticleGroupFlag bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
+	b2ParticleFlag bf = static_cast<b2ParticleFlag>(partFlags);
+	b2ParticleGroupDef pd;
+	pd.flags = bf;
+	pd.groupFlags = bgf;
+	pd.matIdx = matIdx;
+	pd.collisionGroup = collisionGroup;
+	pd.layer = layer;
+	pd.shape = m_shape;
+	pd.angle = angle;
+	pd.strength = strength;
+	pd.angularVelocity = angVel;
+	pd.linearVelocity = b2Vec2(linVelX, linVelY);
+	pd.stride = stride;
+	pd.lifetime = lifetime;
+	pd.health = health;
+	pd.color = color;
+	pd.userData = userData;
+	pd.heat = heat;
+	int ret = parts->AFCreateParticleGroup(pd);
+	return ret;
+}
+extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2ParticleGroupFlag bgf;
 	bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
@@ -819,15 +780,35 @@ extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount,
 	pd.userData = userData;
 	pd.heat = heat;
 	pd.particleCount = partCount;
-	pd.positionData = new b2Vec3[partCount];
-	pd.colorData = new b2ParticleColor[partCount];
-	for (int32 i = 0; i < partCount; i++)
-	{
-		pd.positionData[i].Set(posX[i], posY[i], posZ[i]);
-		pd.colorData[i].Set((uint8)r[i], (uint8)g[i], (uint8)b[i], (uint8)a[i]);
-	}
-	int32 particleGroup = parts->CreateParticleGroup(pd);
-	return particleGroup;
+	pd.positionDataX = posX;
+	pd.positionDataY = posY;
+	pd.positionDataZ = posZ;
+	pd.colorData = col;
+	return parts->CreateParticleGroup(pd);
+}
+extern "C" __declspec(dllexport)  int AFCreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
+	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleGroupFlag bgf;
+	bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
+	b2ParticleFlag bf;
+	bf = static_cast<b2ParticleFlag>(partFlags);
+	b2ParticleGroupDef pd;
+	pd.flags = bf;
+	pd.groupFlags = bgf;
+	pd.matIdx = matIdx;
+	pd.collisionGroup = collisionGroup;
+	pd.strength = strength;
+	pd.linearVelocity = b2Vec2(velX, velY);
+	pd.lifetime = lifetime;
+	pd.health = health;
+	pd.userData = userData;
+	pd.heat = heat;
+	pd.particleCount = partCount;
+	pd.positionDataX = posX;
+	pd.positionDataY = posZ;
+	pd.positionDataZ = posY;
+	pd.colorData = col;
+	return parts->AFCreateParticleGroup(pd);
 }
 extern "C" __declspec(dllexport)  void JoinParticleGroups(void* partSysPtr, int groupAIdx, int groupBIdx)
 {
