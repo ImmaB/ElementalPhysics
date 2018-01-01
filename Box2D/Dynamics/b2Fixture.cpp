@@ -31,14 +31,13 @@ b2Fixture::b2Fixture()
 {
 	m_userData = NULL;
 	m_body = NULL;
-	m_next = NULL;
 	m_proxies = NULL;
 	m_proxyCount = 0;
 	m_shape = NULL;
 	m_density = 0.0f;
 }
 
-void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, const b2FixtureDef* def)
+void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx, const b2FixtureDef* def)
 {
 	m_userData = def->userData;
 	m_friction = def->friction;
@@ -46,7 +45,7 @@ void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, const b2Fixtur
 	m_collisionLayers = def->collisionLayers;
 
 	m_body = body;
-	m_next = NULL;
+	m_bodyIdx = bodyIdx;
 
 	m_filter = def->filter;
 
@@ -60,6 +59,7 @@ void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, const b2Fixtur
 	for (int32 i = 0; i < childCount; ++i)
 	{
 		m_proxies[i].fixture = NULL;
+		m_proxies[i].fixtureIdx = b2_invalidFixtureIndex;
 		m_proxies[i].proxyId = b2BroadPhase::e_nullProxy;
 	}
 	m_proxyCount = 0;
@@ -133,6 +133,7 @@ void b2Fixture::CreateProxies(b2BroadPhase* broadPhase, const b2Transform& xf)
 		m_shape->ComputeAABB(&proxy->aabb, xf, i);
 		proxy->proxyId = broadPhase->CreateProxy(proxy->aabb, proxy);
 		proxy->fixture = this;
+		proxy->fixtureIdx = m_idx;
 		proxy->childIndex = i;
 	}
 }

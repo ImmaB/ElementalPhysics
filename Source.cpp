@@ -85,14 +85,18 @@ public:
         //}
     }
     virtual void BeginContact(b2ParticleSystem* partSys,
-                              b2ParticleBodyContact* particleBodyContact) {
+                              int32 particleBodyContactIdx) {
         ++mixedContacts;
-        mixedArray.push_back(partSys->MyIndex);
-        mixedArray.push_back(particleBodyContact->index);
-        mixedArray.push_back((int64)particleBodyContact->body->GetUserData());
-        mixedArray.push_back((int64)particleBodyContact->fixture->GetUserData());
-        mixedArray.push_back(particleBodyContact->normal.x);
-        mixedArray.push_back(particleBodyContact->normal.y);
+        mixedArray.push_back(partSys->MyIndex); 
+        mixedArray.push_back(partSys->GetBodyContactIdxs()[particleBodyContactIdx]);
+		int32 bodyIdx = partSys->GetBodyContactBodyIdxs()[particleBodyContactIdx];
+		b2Body* body = partSys->GetBodyBuffer()[bodyIdx];
+		mixedArray.push_back((int64)body->GetUserData());
+		int32 fixtureIdx = partSys->GetBodyContactFixtureIdxs()[particleBodyContactIdx];
+		b2Fixture* fixture = partSys->GetFixtureBuffer()[bodyIdx];
+        mixedArray.push_back((int64)fixture->GetUserData());
+        mixedArray.push_back(partSys->GetBodyContactNormalXs()[particleBodyContactIdx]);
+        mixedArray.push_back(partSys->GetBodyContactNormalYs()[particleBodyContactIdx]);
     }
     virtual void BeginContact(b2ParticleSystem* partSys,
                               b2ParticleContact* particleContact) {
@@ -408,7 +412,6 @@ extern "C" __declspec(dllexport)  void SetAllParticleFlags(void* partSysPtr, int
     for (int i = 0; i < numParts; ++i) {
         partSys->SetParticleFlags(i, flags);
     }
-    //partSys->LiquidFunUpdatePairsAndTriads(partSys->GetParticleCount() - 1); HACK
 }
 extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPtr) {
     
@@ -434,7 +437,7 @@ extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPt
     }
     return returnArray;
 }
-extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* partSysPtr) {
+/*extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* partSysPtr) {
     
     if (positionArray != NULL)
     {
@@ -445,8 +448,8 @@ extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* par
     
     int count = partSys->GetBodyContactCount();
     const int32* contactIdxs		  = partSys->GetBodyContactIdxs();
-	b2Body** contactBodys		  = partSys->GetBodyContactBodys();
-	b2Fixture** contactFixtures = partSys->GetBodyContactFixtures();
+	b2Body** contactBodys			  = partSys->GetBodyContactBodys();
+	b2Fixture** contactFixtures		  = partSys->GetBodyContactFixtures();
 	const float32* contactNormalXs	  = partSys->GetBodyContactNormalXs();
 	const float32* contactNormalYs	  = partSys->GetBodyContactNormalYs();
 	const float32* contactWeights	  = partSys->GetBodyContactWeights();
@@ -467,7 +470,7 @@ extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* par
     }
     
     return positionArray;
-}
+}*/
 extern "C" __declspec(dllexport)  int GetStuckCandidateCount(void* partSysPtr) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     return partSys->GetStuckCandidateCount();
@@ -532,7 +535,6 @@ extern "C" __declspec(dllexport)  void SetSelectedParticleFlags(void* partSysPtr
 	for (int i = 1; i < indexArray[0] + 1; ++i) {
 		partSys->SetParticleFlags(indexArray[i], flags);
 	}
-	//partSys->LiquidFunUpdatePairsAndTriads(partSys->GetParticleCount() - 1); HACK
 }
 extern "C" __declspec(dllexport)  void AddSelectedParticleFlags(void* systemPointer, int* indexArray, int flags) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
@@ -833,7 +835,6 @@ extern "C" __declspec(dllexport)  void SetParticleFlagsInGroup(void* partSysPtr,
             system->SetParticleFlags(i, flags);
         }
     }
-    //system->LiquidFunUpdatePairsAndTriads(system->GetParticleCount() - 1); HACK
 }
 extern "C" __declspec(dllexport)  void SetParticleLifetimesInGroup(void* partSysPtr, void* groupPointer, int lifetime) {
     b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
@@ -946,7 +947,6 @@ extern "C" __declspec(dllexport)  void SetParticleFlagsUpToLimit(void* partSysPt
     for (int i = 0; i < limit; ++i) {
         partSys->SetParticleFlags(i, flags);
     }
-    //partSys->LiquidFunUpdatePairsAndTriads(partSys->GetParticleCount() - 1); HACK
 }
 
 extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticles(void* partSysPtr, int first, int last, float impulseX, float impulseY) {
@@ -1086,7 +1086,7 @@ extern "C" __declspec(dllexport)  float* GetPolyShapeCentroid(void* shapePointer
 
 #pragma region Body
 
-extern "C" __declspec(dllexport)  void* CreateBody(void* worldPointer, int type, float xPosition, float yPosition, float angle, float linearDamping, float angularDamping, void* materialPointer, float heat, float health, int flags, float gravityScale, int userData) {
+extern "C" __declspec(dllexport)  int CreateBody(void* worldPointer, int type, float xPosition, float yPosition, float angle, float linearDamping, float angularDamping, void* materialPointer, float heat, float health, int flags, float gravityScale, int userData) {
 	b2World* world = static_cast<b2World*>(worldPointer);
 	b2BodyMaterial* material = static_cast<b2BodyMaterial*>(materialPointer);
     b2Vec2 position = b2Vec2(xPosition, yPosition);
@@ -1115,8 +1115,8 @@ extern "C" __declspec(dllexport)  void* CreateBody(void* worldPointer, int type,
 	bd.gravityScale = gravityScale;
     bd.userData = (void*)userData;
 
-    b2Body* m_body = world->CreateBody(&bd);
-    return static_cast<void*>(m_body);
+    int bodyIdx = world->CreateBody(&bd);
+    return bodyIdx;
 }
 extern "C" __declspec(dllexport)  float* GetBodyInfo(void* bodyPointer) {
     
@@ -1136,8 +1136,9 @@ extern "C" __declspec(dllexport)  float* GetBodyInfo(void* bodyPointer) {
     
     return positionArray;
 }
-extern "C" __declspec(dllexport)  float* GetAllBodyInfo(void** bodPointers, int numbodies)
+extern "C" __declspec(dllexport)  float* GetAllBodyInfo(void* worldPtr, int* bodyIdxs, int numbodies)
 {
+	b2World* world = static_cast<b2World*>(worldPtr);
     if (positionArray != NULL)
     {
         delete positionArray;
@@ -1145,9 +1146,10 @@ extern "C" __declspec(dllexport)  float* GetAllBodyInfo(void** bodPointers, int 
     
     positionArray = new float[numbodies*6];
     
+	const std::vector<b2Body*>& bodies = world->GetBodyBuffer();
     for (int i = 0; i < numbodies; i++)
     {
-        b2Body* m_body = static_cast<b2Body*>(bodPointers[i]);
+		b2Body* m_body = bodies[bodyIdxs[i]];
         positionArray[i*6] = m_body->GetPosition().x;
         positionArray[(i*6) + 1] = m_body->GetPosition().y;
         positionArray[(i*6) + 2] = m_body->GetAngle();
@@ -1246,8 +1248,14 @@ extern "C" __declspec(dllexport)  void** GetBodyFixtures(void* bodyPointer) {
     b2Body* m_body = static_cast<b2Body*>(bodyPointer);
     std::vector<void*> fixturesVec;
     fixturesVec.clear();
-    for (b2Fixture* f = m_body->GetFixtureList(); f; f = f->GetNext()) {
-        fixturesVec.push_back(static_cast<void*>(f));
+	std::vector<int32>& fixtureIdxs = m_body->GetFixtureIdxBuffer();
+	std::vector<b2Fixture*>& fixtures = m_body->GetFixtureBuffer();
+    for each (int32 fIdx in fixtureIdxs)
+	{
+		if (fIdx != b2_invalidFixtureIndex)
+		{
+			fixturesVec.push_back(static_cast<void*>(fixtures[fIdx]));
+		}
     }
     void** fixturesArray = &fixturesVec[0];
     return fixturesArray;
@@ -1255,9 +1263,15 @@ extern "C" __declspec(dllexport)  void** GetBodyFixtures(void* bodyPointer) {
 extern "C" __declspec(dllexport)  int GetBodyFixturesCount(void* bodyPointer) {
     b2Body* m_body = static_cast<b2Body*>(bodyPointer);
     int i = 0;
-    for (b2Fixture* f = m_body->GetFixtureList(); f; f = f->GetNext()) {
-        ++i;
-    }
+	std::vector<int32>& fixtureIdxs = m_body->GetFixtureIdxBuffer();
+	std::vector<b2Fixture*>& fixtures = m_body->GetFixtureBuffer();
+	for each (int32 fIdx in fixtureIdxs)
+	{
+		if (fIdx != b2_invalidFixtureIndex)
+		{
+			++i;
+		}
+	}
     return i;
 }
 extern "C" __declspec(dllexport)  int GetBodyUserData(void* bodyPointer) {
@@ -1273,22 +1287,21 @@ extern "C" __declspec(dllexport)  void SetBodyRotation(void* bodyPointer, float 
     b2Body* m_body = static_cast<b2Body*>(bodyPointer);
     m_body->SetTransform(m_body->GetPosition(), rotation);
 }
-extern "C" __declspec(dllexport)  void SetBodyLinearVelocity(void* bodyPointer, float x, float y) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+extern "C" __declspec(dllexport)  void SetBodyLinearVelocity(void* worldPtr, int idx, float x, float y) {
+    b2World* world = static_cast<b2World*>(worldPtr);
+	b2Body* body = world->GetBodyBuffer()[idx];
     b2Vec2 vel = b2Vec2(x, y);
-    m_body->SetLinearVelocity(vel);
+	body->SetLinearVelocity(vel);
 }
-extern "C" __declspec(dllexport)  float* GetBodyLinearVelocity(void* bodyPointer) {
-    
+extern "C" __declspec(dllexport)  float* GetBodyLinearVelocity(void* worldPtr, int idx) {
+	b2World* world = static_cast<b2World*>(worldPtr);
+	b2Body* body = world->GetBodyBuffer()[idx];
     if (positionArray != NULL)
-    {
         delete positionArray;
-    }
     
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
     positionArray = new float[2];
-    positionArray[0] = m_body->GetLinearVelocity().x;
-    positionArray[1] = m_body->GetLinearVelocity().y;
+    positionArray[0] = body->GetLinearVelocity().x;
+    positionArray[1] = body->GetLinearVelocity().y;
     return positionArray;
 }
 extern "C" __declspec(dllexport)  void SetBodyLinearDamping(void* bodyPointer, float lD) {
@@ -1375,54 +1388,54 @@ extern "C" __declspec(dllexport)  void SetBodyTransform(void* bodyPointer, float
     m_body->SetTransform(pos, angle);
 }
 
-extern "C" __declspec(dllexport)  void DeleteBody(void* worldPointer, void* bodyPointer) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* body = static_cast<b2Body*>(bodyPointer);
-    world->DestroyBody(body);
+extern "C" __declspec(dllexport)  void DeleteBody(void* worldPtr, int idx) {
+    b2World* world = static_cast<b2World*>(worldPtr);
+    world->DestroyBody(idx);
 }
 
 #pragma endregion
 
 #pragma region Fixture
 
-extern "C" __declspec(dllexport)  void* AddFixture(void* bodyPointer, int shapeType, void* shapePointer, int collisionLayers, bool isSensor, int userData) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+extern "C" __declspec(dllexport)  int AddFixture(void* worldPtr, int bodyIdx, int shapeType, void* shapePointer, int collisionLayers, bool isSensor, int userData) {
+	b2World* world = static_cast<b2World*>(worldPtr);
+	b2Body* body = world->GetBodyBuffer()[bodyIdx];
 	b2CollisionLayerMask clm;
 	clm = static_cast<b2CollisionLayerMask>(collisionLayers);
     b2FixtureDef fd;
-	m_body->GetMaterial()->m_density;
-	m_body->GetMaterial()->m_friction;
+	body->GetMaterial()->m_density;
+	body->GetMaterial()->m_friction;
 	fd.isSensor = isSensor;
-	m_body->GetMaterial()->m_bounciness;
+	body->GetMaterial()->m_bounciness;
     fd.userData = (void*)userData;
 	fd.collisionLayers = clm;
     if (shapeType == 0) {
         b2PolygonShape* aShape = static_cast<b2PolygonShape*>(shapePointer);
         b2PolygonShape shape = *aShape;
         fd.shape = &shape;
-        b2Fixture* m_fixture = m_body->CreateFixture(&fd);
-        return static_cast<void*>(m_fixture);
+        int idx = body->CreateFixture(&fd);
+        return idx;
     }
     else if (shapeType == 1) {
         b2CircleShape* aShape = static_cast<b2CircleShape*>(shapePointer);
         b2CircleShape shape = *aShape;
         fd.shape = &shape;
-        b2Fixture* m_fixture = m_body->CreateFixture(&fd);
-        return static_cast<void*>(m_fixture);
+		int idx = body->CreateFixture(&fd);
+        return idx;
     }
     else if (shapeType == 2) {
         b2EdgeShape* aShape = static_cast<b2EdgeShape*>(shapePointer);
         b2EdgeShape shape = *aShape;
         fd.shape = &shape;
-        b2Fixture* m_fixture = m_body->CreateFixture(&fd);
-        return static_cast<void*>(m_fixture);
+		int idx = body->CreateFixture(&fd);
+        return idx;
     }
     else {
         b2ChainShape* aShape = static_cast<b2ChainShape*>(shapePointer);
         b2ChainShape shape = *aShape;
         fd.shape = &shape;
-        b2Fixture* m_fixture = m_body->CreateFixture(&fd);
-        return static_cast<void*>(m_fixture);
+		int idx = body->CreateFixture(&fd);
+        return idx;
     }
     
 }
@@ -1454,13 +1467,14 @@ extern "C" __declspec(dllexport)  bool TestPoint(void* fixturePointer, float x, 
     return m_fixture->TestPoint(pos);
 }
 
-extern "C" __declspec(dllexport)  void SetFixtureFilterData(void* fixturePointer, int32 groupIndex, uint16 categoryBits, uint16 maskBits) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
+extern "C" __declspec(dllexport)  void SetFixtureFilterData(void* WorldPtr, int idx, int32 groupIndex, uint16 categoryBits, uint16 maskBits) {
+	b2World* world = static_cast<b2World*>(WorldPtr);
     b2Filter filter = b2Filter();
     filter.groupIndex = groupIndex;
     filter.maskBits = maskBits;
     filter.categoryBits = categoryBits;
-    m_fixture->SetFilterData(filter);
+	b2Fixture* fixture = static_cast<b2Fixture*>(world->GetFixtureBuffer()[idx]);
+	fixture->SetFilterData(filter);
 }
 extern "C" __declspec(dllexport)  uint16 GetFixtureGroupIndex(void* fixturePointer) {
     b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
@@ -1511,10 +1525,9 @@ extern "C" __declspec(dllexport)  void SetFixtureRestitution(void* fixturePointe
     m_fixture->SetRestitution(restitution);
 }
 
-extern "C" __declspec(dllexport)  void DeleteFixture(void* bodyPointer, void* fixturePointer) {
-    b2Fixture* fixture = static_cast<b2Fixture*>(fixturePointer);
-    b2Body* body = static_cast<b2Body*>(bodyPointer);
-    body->DestroyFixture(fixture);
+extern "C" __declspec(dllexport)  void DeleteFixture(void* bodyPtr, int idx) {
+    b2Body* body = static_cast<b2Body*>(bodyPtr);
+    body->DestroyFixture(idx);
 }
 #pragma endregion
 

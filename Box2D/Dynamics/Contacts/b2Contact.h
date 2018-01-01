@@ -111,6 +111,12 @@ public:
 	/// Get fixture B in this contact.
 	b2Fixture* GetFixtureB();
 	const b2Fixture* GetFixtureB() const;
+	/*
+	inline int32 GetFixtureIdxA();
+	inline const int32 GetFixtureIdxA() const;
+	inline int32 GetFixtureIdxB();
+	inline const int32 GetFixtureIdxB() const;
+	*/
 
 	/// Get the child primitive index for fixture B.
 	int32 GetChildIndexB() const;
@@ -205,6 +211,9 @@ protected:
 	b2Fixture* m_fixtureA;
 	b2Fixture* m_fixtureB;
 
+	//int32 m_fixtureIdxA;
+	//int32 m_fixtureIdxB;
+
 	int32 m_indexA;
 	int32 m_indexB;
 
@@ -285,6 +294,23 @@ inline b2Fixture* b2Contact::GetFixtureB()
 {
 	return m_fixtureB;
 }
+/*
+inline int32 b2Contact::GetFixtureIdxA()
+{
+	return m_fixtureIdxA;
+}
+inline const int32 b2Contact::GetFixtureIdxA() const
+{
+	return m_fixtureIdxA;
+}
+inline int32 b2Contact::GetFixtureIdxB()
+{
+	return m_fixtureIdxB;
+}
+inline const int32 b2Contact::GetFixtureIdxB() const
+{
+	return m_fixtureIdxB;
+}*/
 
 inline int32 b2Contact::GetChildIndexA() const
 {

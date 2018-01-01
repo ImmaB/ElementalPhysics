@@ -99,6 +99,7 @@ struct b2FixtureProxy
 {
 	b2AABB aabb;
 	b2Fixture* fixture;
+	int32 fixtureIdx;
 	int32 childIndex;
 	int32 proxyId;
 };
@@ -111,6 +112,7 @@ struct b2FixtureProxy
 class b2Fixture
 {
 public:
+	void b2Fixture::SetIdx(int32 idx);
 	/// Get the type of the child shape. You can use this to down cast to the concrete shape.
 	/// @return the shape type.
 	b2Shape::Type GetType() const;
@@ -143,6 +145,9 @@ public:
 	/// @return the parent body.
 	b2Body* GetBody();
 	const b2Body* GetBody() const;
+
+	int32 GetBodyIdx();
+	const int32 GetBodyIdx() const;
 
 	/// Get the next fixture in the parent body's fixture list.
 	/// @return the next shape.
@@ -221,7 +226,7 @@ protected:
 
 	// We need separation create/destroy functions from the constructor/destructor because
 	// the destructor cannot access the allocator (no destructor arguments allowed by C++).
-	void Create(b2BlockAllocator* allocator, b2Body* body, const b2FixtureDef* def);
+	void Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx, const b2FixtureDef* def);
 	void Destroy(b2BlockAllocator* allocator);
 
 	// These support body activation/deactivation.
@@ -230,10 +235,12 @@ protected:
 
 	void Synchronize(b2BroadPhase* broadPhase, const b2Transform& xf1, const b2Transform& xf2);
 
+	int32 m_idx;
+
 	float32 m_density;
 
-	b2Fixture* m_next;
 	b2Body* m_body;
+	int32 m_bodyIdx;
 
 	b2Shape* m_shape;
 
@@ -251,6 +258,11 @@ protected:
 
 	uint32 m_collisionLayers;
 };
+
+inline void b2Fixture::SetIdx(int32 idx)
+{
+	m_idx = idx;
+}
 
 inline b2Shape::Type b2Fixture::GetType() const
 {
@@ -287,24 +299,22 @@ inline void b2Fixture::SetUserData(void* data)
 	m_userData = data;
 }
 
+inline int32 b2Fixture::GetBodyIdx()
+{
+	return m_bodyIdx;
+}
+inline const int32 b2Fixture::GetBodyIdx() const
+{
+	return m_bodyIdx;
+}
+
 inline b2Body* b2Fixture::GetBody()
 {
 	return m_body;
 }
-
 inline const b2Body* b2Fixture::GetBody() const
 {
 	return m_body;
-}
-
-inline b2Fixture* b2Fixture::GetNext()
-{
-	return m_next;
-}
-
-inline const b2Fixture* b2Fixture::GetNext() const
-{
-	return m_next;
 }
 
 inline void b2Fixture::SetDensity(float32 density)

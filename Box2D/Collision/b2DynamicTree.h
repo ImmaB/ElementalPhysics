@@ -90,6 +90,8 @@ public:
 	/// is called for each proxy that overlaps the supplied AABB.
 	template <typename T>
 	void Query(T* callback, const b2AABB& aabb) const;
+	template <typename T>
+	void AFQuery(T* callback, const b2AABB& aabb) const;
 
 	/// Ray-cast against the proxies in the tree. This relies on the callback
 	/// to perform a exact ray-cast in the case were the proxy contains a shape.
@@ -186,6 +188,40 @@ inline void b2DynamicTree::Query(T* callback, const b2AABB& aabb) const
 			if (node->IsLeaf())
 			{
 				bool proceed = callback->QueryCallback(nodeId);
+				if (proceed == false)
+				{
+					return;
+				}
+			}
+			else
+			{
+				stack.Push(node->child1);
+				stack.Push(node->child2);
+			}
+		}
+	}
+}
+template <typename T>
+inline void b2DynamicTree::AFQuery(T* callback, const b2AABB& aabb) const
+{
+	b2GrowableStack<int32, 256> stack;
+	stack.Push(m_root);
+
+	while (stack.GetCount() > 0)
+	{
+		int32 nodeId = stack.Pop();
+		if (nodeId == b2_nullNode)
+		{
+			continue;
+		}
+
+		const b2TreeNode* node = m_nodes + nodeId;
+
+		if (b2TestOverlap(node->aabb, aabb))
+		{
+			if (node->IsLeaf())
+			{
+				bool proceed = callback->AFQueryCallback(nodeId);
 				if (proceed == false)
 				{
 					return;

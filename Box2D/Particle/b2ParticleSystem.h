@@ -47,7 +47,7 @@ class b2ParticleMaterial;
 class b2BlockAllocator;
 class b2StackAllocator;
 class b2QueryCallback;
-class AFQueryCallback;
+class afQueryCallback;
 class b2RayCastCallback;
 class b2Fixture;
 class b2ContactFilter;
@@ -116,7 +116,7 @@ public:
 	bool ApproximatelyEqual(const b2ParticleContact& rhs) const;
 };
 
-struct b2ParticleBodyContact
+/*struct b2ParticleBodyContact
 {
 	/// Index of the particle making contact.
 	int32 index;
@@ -135,10 +135,10 @@ struct b2ParticleBodyContact
 
 	/// The effective mass used in calculating force.
 	float32 mass;
-};
+};*/
 
 /// Connection between two particles
-struct b2ParticlePair
+/*struct b2ParticlePair
 {
 	/// Indices of the respective particles making pair.
 	int32 indexA, indexB;
@@ -151,10 +151,10 @@ struct b2ParticlePair
 
 	/// The initial distance of the particles.
 	float32 distance;
-};
+};*/
 
 /// Connection between three particles
-struct b2ParticleTriad
+/*struct b2ParticleTriad
 {
 	/// Indices of the respective particles making triad.
 	int32 indexA, indexB, indexC;
@@ -168,7 +168,7 @@ struct b2ParticleTriad
 	/// Values used for calculation.
 	b2Vec2 pa, pb, pc;
 	float32 ka, kb, kc, s;
-};
+};*/
 
 struct b2ParticleSystemDef
 {
@@ -674,12 +674,15 @@ public:
 	const int32* GetContactIdxBs() const;
 	const int32 GetContactCount() const;
 
+	b2Body** GetBodyBuffer();
+	b2Fixture** GetFixtureBuffer();
+
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
 	const int32* GetBodyContactIdxs() const;
-	b2Body** GetBodyContactBodys();
-	b2Fixture** GetBodyContactFixtures();
+	const int32* GetBodyContactBodyIdxs() const;
+	const int32* GetBodyContactFixtureIdxs() const;
 	const float32* GetBodyContactNormalXs() const;
 	const float32* GetBodyContactNormalYs() const;
 	const float32* GetBodyContactWeights() const;
@@ -699,8 +702,8 @@ public:
 	/// Essentially, this is an array of spring or barrier particles that
 	/// are interacting. The array is sorted by b2ParticlePair's indexA,
 	/// and then indexB. There are no duplicate entries.
-	const b2ParticlePair* GetPairs() const;
-	int32 GetPairCount() const;
+	//const b2ParticlePair* GetPairs() const;
+	//int32 GetPairCount() const;
 
 	/// Get array of particle triads. The particles in a triad:
 	///   (1) are in the same particle group,
@@ -716,8 +719,8 @@ public:
 	/// Essentially, this is an array of elastic particles that are
 	/// interacting. The array is sorted by b2ParticleTriad's indexA,
 	/// then indexB, then indexC. There are no duplicate entries.
-	const b2ParticleTriad* GetTriads() const;
-	int32 GetTriadCount() const;
+	//const b2ParticleTriad* GetTriads() const;
+	//int32 GetTriadCount() const;
 
 	/// Set an optional threshold for the maximum number of
 	/// consecutive particle iterations that a particle may contact
@@ -835,7 +838,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
-	void AFQueryAABB(AFQueryCallback* callback, const b2AABB& aabb) const;
+	void AFQueryAABB(afQueryCallback* callback, const b2AABB& aabb) const;
 
 	/// Query the particle system for all particles that potentially overlap
 	/// the provided shape's AABB. Calls QueryAABB internally.
@@ -909,7 +912,7 @@ private:
 	friend class b2ParticleGroup;
 	friend class b2ParticleBodyContactRemovePredicate;
 	friend class b2FixtureParticleQueryCallback;
-	friend class AFFixtureParticleQueryCallback;
+	friend class afFixtureParticleQueryCallback;
 #ifdef LIQUIDFUN_UNIT_TESTS
 	FRIEND_TEST(FunctionTests, GetParticleMass);
 	FRIEND_TEST(FunctionTests, AreProxyBuffersTheSame);
@@ -1027,8 +1030,6 @@ private:
 		/// The lower and upper bound of y component in the tag.
 		uint32 m_yLower, m_yUpper;
 		/// The range of proxies.
-		//const Proxy* m_first;
-		//const Proxy* m_last;
 		int32 m_firstPos;
 		int32 m_lastPos;
 	};
@@ -1062,7 +1063,9 @@ private:
 	static const int32 k_extraDampingFlags =
 		b2_staticPressureParticle;
 
-	b2ParticleSystem(const b2ParticleSystemDef* def, b2World* world);
+	b2ParticleSystem(const b2ParticleSystemDef* def, b2World* world,
+					vector<b2Body*>& bodyBuffer,
+					vector<b2Fixture*>& fixtureBuffer);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -1076,7 +1079,7 @@ private:
 	template <typename T> T* ReallocateBuffer(
 		UserOverridableBuffer<T>* buffer, int32 oldCapacity, int32 newCapacity,
 		bool deferred);
-	template <typename T> T* RequestBuffer(T* buffer);
+	template <typename T> void RequestBuffer(vector<T>& buf, bool& hasBuf);
 	void AFRequestBuffer(af::array& buf, bool& hasBuf);
 
 	/// Reallocate the handle / index map and schedule the allocation of a new
@@ -1161,6 +1164,7 @@ private:
 	af::array AFGetInsideBoundsEnumerator(const b2AABB& aabb) const;
 
 	void UpdateAllParticleFlags();
+	void AFUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
 	bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const;
@@ -1181,7 +1185,7 @@ private:
 	template <class UnaryPredicate>
 	static vector<int32> GetValidIdxs(int32 vSize, UnaryPredicate isValidFunc);
 	template <class UnaryPredicate>
-	vector<int32> GetSortedIdxs(int32 vSize, const UnaryPredicate compFunc);
+	vector<int32> GetSortedIdxs(int32 vSize, const UnaryPredicate& compFunc);
 	af::array AFGetSortedPairIdxs() const;
 	template <class UnaryPredicate>
 	vector<int32> GetStableSortedIdxs(int32 vSize, const UnaryPredicate compFunc);
@@ -1215,6 +1219,7 @@ private:
 	void CopyContactsToCPU();
 	void CopyBodyContactsToGPU();
 	void CopyBodyContactsToCPU();
+	void CopyBodiesToGPU();
 
 	void SolveCollision(const b2TimeStep& step);
 	void AFSolveCollision(const b2TimeStep& step);
@@ -1244,8 +1249,11 @@ private:
 	void SolveViscous();
 	void AFSolveViscous();
 	void SolveRepulsive(const b2TimeStep& step);
+	void AFSolveRepulsive(const b2TimeStep& step);
 	void SolvePowder(const b2TimeStep& step);
+	void AFSolvePowder(const b2TimeStep& step);
 	void SolveSolid(const b2TimeStep& step);
+	void AFSolveSolid(const b2TimeStep& step);
 	void SolveForce(const b2TimeStep& step);
 	void AFSolveForce(const b2TimeStep& step);
 	void SolveColorMixing();
@@ -1317,8 +1325,7 @@ private:
 	void AFSetGroupFlags(const af::array& afGroupIdxs, af::array& afNewFlags);
 
 	void RemoveSpuriousBodyContacts();
-	static bool BodyContactCompare(const b2ParticleBodyContact& lhs,
-								   const b2ParticleBodyContact& rhs);
+	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
 
 	void DetectStuckParticle(int32 particle);
 	void AFDetectStuckParticle(const af::array& particles);
@@ -1356,6 +1363,9 @@ private:
 		float32 invMass, float32 invInertia, float32 tangentDistance,
 		bool isRigidGroup, int32 groupIdx, int32 particleIndex,
 		float32 impulse, float32 normalX, float32 normalY);
+
+	vector<b2Body*>& m_bodyBuffer;
+	vector<b2Fixture*>& m_fixtureBuffer;
 
 	bool m_paused;
 	int32 m_timestamp;
@@ -1409,7 +1419,8 @@ private:
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
-	UserOverridableBuffer<b2ParticleHandle*> m_handleIndexBuffer;
+	bool hasHandleIndexBuffer;
+	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer,
 					m_collisionLayerBuffer;
 	vector<float32> m_positionXBuffer,
@@ -1463,15 +1474,17 @@ private:
 	/// m_staticPressureBuffer is first allocated and used in
 	/// SolveStaticPressure() and SolvePressure().  It will be reallocated on
 	/// subsequent CreateParticle() calls.
-	float32* m_staticPressureBuffer;
+	bool hasStaticPressureBuf;
+	vector<float32> m_staticPressureBuf;
 	/// m_accumulationBuffer is used in many functions as a temporary buffer
 	/// for scalar values.
-	float32* m_accumulationBuffer;
+	vector<float32> m_accumulationBuf;
 	/// When any particles have the flag b2_tensileParticle,
 	/// m_accumulation2Buffer is first allocated and used in SolveTensile()
 	/// as a temporary buffer for vector values.  It will be reallocated on
 	/// subsequent CreateParticle() calls.
-	b2Vec2* m_accumulation2Buffer;
+	bool hasAccumulation2Buf;
+	vector<b2Vec2> m_accumulation2Buf;
 	/// When any particle groups have the flag b2_solidParticleGroup,
 	/// m_depthBuffer is first allocated and populated in ComputeDepth() and
 	/// used in SolveSolid(). It will be reallocated on subsequent
@@ -1573,10 +1586,14 @@ private:
 
 	/// Stuck particle detection parameters and record keeping
 	int32 m_stuckThreshold;
-	UserOverridableBuffer<int32> m_lastBodyContactStepBuffer;
-	UserOverridableBuffer<int32> m_bodyContactCountBuffer;
-	UserOverridableBuffer<int32> m_consecutiveContactStepsBuffer;
-	b2GrowableBuffer<int32> m_stuckParticleBuffer;
+	int32 m_stuckParticleCount;
+	bool hasLastBodyContactStepBuffer;
+	bool hasBodyContactCountBuffer;
+	bool hasConsecutiveContactStepsBuffer;
+	vector<int32> m_lastBodyContactStepBuffer;
+	vector<int32> m_bodyContactCountBuffer;
+	vector<int32> m_consecutiveContactStepsBuffer;
+	vector<int32> m_stuckParticleBuffer;
 
 	vector<int32> m_proxyIdxBuffer;
 	vector<uint32> m_proxyTagBuffer;
@@ -1590,13 +1607,13 @@ private:
 	vector<uint32>	m_contactFlagsBuffer;
 	vector<uint32>	m_contactMatFlagsBuffer;
 
-	vector<int32>	   m_bodyContactIdxBuffer;
-	vector<b2Body*>	   m_bodyContactBodyBuffer;
-	vector<b2Fixture*> m_bodyContactFixtureBuffer;
-	vector<float32>	   m_bodyContactWeightBuffer;
-	vector<float32>	   m_bodyContactNormalXBuffer;
-	vector<float32>	   m_bodyContactNormalYBuffer;
-	vector<float32>	   m_bodyContactMassBuffer;
+	vector<int32>	m_bodyContactIdxBuffer;
+	vector<int32>	m_bodyContactBodyIdxBuffer;
+	vector<int32>	m_bodyContactFixtureIdxBuffer;
+	vector<float32>	m_bodyContactWeightBuffer;
+	vector<float32>	m_bodyContactNormalXBuffer;
+	vector<float32>	m_bodyContactNormalYBuffer;
+	vector<float32>	m_bodyContactMassBuffer;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
@@ -1701,17 +1718,26 @@ inline const int32 b2ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
+inline b2Body** b2ParticleSystem::GetBodyBuffer()
+{
+	return m_bodyBuffer.data();
+}
+inline b2Fixture** b2ParticleSystem::GetFixtureBuffer()
+{
+	return m_fixtureBuffer.data();
+}
+
 inline const int32* b2ParticleSystem::GetBodyContactIdxs() const
 {
 	return m_bodyContactIdxBuffer.data();
 }
-inline b2Body** b2ParticleSystem::GetBodyContactBodys()
+inline const int32* b2ParticleSystem::GetBodyContactBodyIdxs() const
 {
-	return m_bodyContactBodyBuffer.data();
+	return m_bodyContactBodyIdxBuffer.data();
 }
-inline b2Fixture** b2ParticleSystem::GetBodyContactFixtures()
+inline const int32* b2ParticleSystem::GetBodyContactFixtureIdxs()const
 {
-	return m_bodyContactFixtureBuffer.data();
+	return m_bodyContactFixtureIdxBuffer.data();
 }
 inline const float32* b2ParticleSystem::GetBodyContactNormalXs() const
 {
@@ -1754,12 +1780,12 @@ inline const b2ParticleSystem* b2ParticleSystem::GetNext() const
 
 inline const int32* b2ParticleSystem::GetStuckCandidates() const
 {
-	return m_stuckParticleBuffer.Data();
+	return m_stuckParticleBuffer.data();
 }
 
 inline int32 b2ParticleSystem::GetStuckCandidateCount() const
 {
-	return m_stuckParticleBuffer.GetCount();
+	return m_stuckParticleCount;
 }
 
 inline void b2ParticleSystem::SetStrictContactCheck(bool enabled)

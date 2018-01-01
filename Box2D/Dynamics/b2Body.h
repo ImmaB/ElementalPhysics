@@ -168,7 +168,7 @@ public:
 	/// Contacts are not created until the next time step.
 	/// @param def the fixture definition.
 	/// @warning This function is locked during callbacks.
-	b2Fixture* CreateFixture(const b2FixtureDef* def);
+	int32 CreateFixture(const b2FixtureDef* def);
 
 	/// Creates a fixture from a shape and attach it to this body.
 	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
@@ -177,7 +177,7 @@ public:
 	/// @param shape the shape to be cloned.
 	/// @param density the shape density (set to zero for static bodies).
 	/// @warning This function is locked during callbacks.
-	b2Fixture* CreateFixture(const b2Shape* shape, float32 density);
+	int32 CreateFixture(const b2Shape* shape, float32 density);
 
 	/// Destroy a fixture. This removes the fixture from the broad-phase and
 	/// destroys all contacts associated with this fixture. This will
@@ -186,7 +186,7 @@ public:
 	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
 	/// @param fixture the fixture to be removed.
 	/// @warning This function is locked during callbacks.
-	void DestroyFixture(b2Fixture* fixture);
+	void DestroyFixture(int32 idx);
 
 	/// Set the position of the body's origin and rotation.
 	/// Manipulating a body's transform may cause non-physical behavior.
@@ -398,10 +398,6 @@ public:
 	void AddFlags(uint16 flags);
 	void RemFlags(uint16 flags);
 
-	/// Get the list of all fixtures attached to this body.
-	b2Fixture* GetFixtureList();
-	const b2Fixture* GetFixtureList() const;
-
 	/// Get the list of all joints attached to this body.
 	b2JointEdge* GetJointList();
 	const b2JointEdge* GetJointList() const;
@@ -412,10 +408,6 @@ public:
 	b2ContactEdge* GetContactList();
 	const b2ContactEdge* GetContactList() const;
 
-	/// Get the next body in the world's body list.
-	b2Body* GetNext();
-	const b2Body* GetNext() const;
-
 	/// Get the user data pointer that was provided in the body definition.
 	void* GetUserData() const;
 
@@ -425,6 +417,12 @@ public:
 	/// Get the parent world of this body.
 	b2World* GetWorld();
 	const b2World* GetWorld() const;
+
+	std::vector<int32> GetFixtureIdxBuffer();
+	const std::vector<int32> GetFixtureIdxBuffer() const;
+
+	std::vector<b2Fixture*> GetFixtureBuffer();
+	const std::vector<b2Fixture*> GetFixtureBuffer() const;
 
 	b2BodyMaterial* GetMaterial();
 	const b2BodyMaterial* GetMaterial() const;
@@ -481,7 +479,8 @@ private:
 	e_toiFlag			= 0x0040
 	};*/
 
-	b2Body(const b2BodyDef* bd, b2World* world);
+	b2Body(const b2BodyDef* bd, b2World* world, 
+			std::vector<b2Fixture*>& fixtureBuffer);
 	~b2Body();
 
 	void SynchronizeFixtures();
@@ -491,9 +490,16 @@ private:
 	// It may lie, depending on the collideConnected flag.
 	bool ShouldCollide(const b2Body* other) const;
 
+
 	void Advance(float32 t);
 
 	b2BodyType m_type;
+
+	int32 m_idx;
+	inline void SetIdx(int32 idx)
+	{
+		m_idx = idx;
+	}
 
 	uint16 m_flags;
 
@@ -510,10 +516,10 @@ private:
 	float32 m_torque;
 
 	b2World* m_world;
-	b2Body* m_prev;
-	b2Body* m_next;
 
-	b2Fixture* m_fixtureList;
+	std::vector<b2Fixture*>& m_fixtureBuffer;
+	std::vector<int32> m_fixtureIdxBuffer;
+	std::vector<int32> m_fixtureIdxFreeSlots;
 	int32 m_fixtureCount;
 
 	b2JointEdge* m_jointList;
@@ -538,6 +544,23 @@ private:
 	float32 m_health;
 };
 
+inline std::vector<int32> b2Body::GetFixtureIdxBuffer()
+{
+	return m_fixtureIdxBuffer;
+}
+inline const  std::vector<int32> b2Body::GetFixtureIdxBuffer() const
+{
+	return m_fixtureIdxBuffer;
+}
+
+inline std::vector<b2Fixture*> b2Body::GetFixtureBuffer()
+{
+	return m_fixtureBuffer;
+}
+inline const  std::vector<b2Fixture*> b2Body::GetFixtureBuffer() const
+{
+	return m_fixtureBuffer;
+}
 
 inline b2BodyMaterial* b2Body::GetMaterial()
 {
@@ -790,15 +813,6 @@ inline bool b2Body::IsSleepingAllowed() const
 	return (m_flags & b2_autoSleepBody) == b2_autoSleepBody;
 }
 
-inline b2Fixture* b2Body::GetFixtureList()
-{
-	return m_fixtureList;
-}
-inline const b2Fixture* b2Body::GetFixtureList() const
-{
-	return m_fixtureList;
-}
-
 inline b2JointEdge* b2Body::GetJointList()
 {
 	return m_jointList;
@@ -815,15 +829,6 @@ inline b2ContactEdge* b2Body::GetContactList()
 inline const b2ContactEdge* b2Body::GetContactList() const
 {
 	return m_contactList;
-}
-
-inline b2Body* b2Body::GetNext()
-{
-	return m_next;
-}
-inline const b2Body* b2Body::GetNext() const
-{
-	return m_next;
 }
 
 inline void b2Body::SetUserData(void* data)

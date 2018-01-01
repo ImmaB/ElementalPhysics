@@ -74,13 +74,15 @@ public:
 	/// Create a rigid body given a definition. No reference to the definition
 	/// is retained.
 	/// @warning This function is locked during callbacks.
-	b2Body* CreateBody(const b2BodyDef* def);
+	int32 CreateBody(const b2BodyDef* def);
 
 	/// Destroy a rigid body.
 	/// This function is locked during callbacks.
 	/// @warning This automatically deletes all associated shapes and joints.
 	/// @warning This function is locked during callbacks.
-	void DestroyBody(b2Body* body);
+	void DestroyBody(int32 idx);
+
+	int32 AppendFixture(b2Fixture* fixture);
 
 	/// Create a joint to constrain bodies together. No reference to the definition
 	/// is retained. This may cause the connected bodies to cease colliding.
@@ -146,7 +148,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
-	void AFQueryAABB(AFQueryCallback* callback, const b2AABB& aabb) const;
+	void AFQueryAABB(afQueryCallback* callback, const b2AABB& aabb) const;
 
 	/// Query the world for all fixtures that potentially overlap the
 	/// provided shape's AABB. Calls QueryAABB internally.
@@ -164,12 +166,12 @@ public:
 	/// @param point2 the ray ending point
 	void RayCast(b2RayCastCallback* callback, const b2Vec2& point1, const b2Vec2& point2) const;
 
-	/// Get the world body list. With the returned body, use b2Body::GetNext to get
-	/// the next body in the world list. A NULL body indicates the end of the list.
-	/// @return the head of the world body list.
-	b2Body* GetBodyList();
-	const b2Body* GetBodyList() const;
+	std::vector<b2Body*> GetBodyBuffer();
+	const std::vector<b2Body*> GetBodyBuffer() const;
 
+	std::vector<b2Fixture*> GetFixtureBuffer();
+	const std::vector<b2Fixture*> GetFixtureBuffer() const;
+	
 	/// Get the world joint list. With the returned joint, use b2Joint::GetNext to get
 	/// the next joint in the world list. A NULL joint indicates the end of the list.
 	/// @return the head of the world joint list.
@@ -324,7 +326,10 @@ private:
 
 	b2ContactManager m_contactManager;
 
-	b2Body* m_bodyList;
+	vector<b2Body*> m_bodyBuffer;
+	std::vector<int32> m_freeBodySlots;
+	std::vector<b2Fixture*> m_fixtureBuffer;
+	std::vector<int32> m_freeFixtureSlots;
 	b2Joint* m_jointList;
 	b2ParticleSystem* m_particleSystemList;
 
@@ -356,14 +361,22 @@ private:
 	const char *m_liquidFunVersionString;
 };
 
-inline b2Body* b2World::GetBodyList()
+inline std::vector<b2Body*> b2World::GetBodyBuffer()
 {
-	return m_bodyList;
+	return m_bodyBuffer;
+}
+inline const std::vector<b2Body*> b2World::GetBodyBuffer() const
+{
+	return m_bodyBuffer;
 }
 
-inline const b2Body* b2World::GetBodyList() const
+inline std::vector<b2Fixture*> b2World::GetFixtureBuffer()
 {
-	return m_bodyList;
+	return m_fixtureBuffer;
+}
+inline const std::vector<b2Fixture*> b2World::GetFixtureBuffer() const
+{
+	return m_fixtureBuffer;
 }
 
 inline b2Joint* b2World::GetJointList()
