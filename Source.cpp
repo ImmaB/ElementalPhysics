@@ -737,31 +737,8 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	return parts->CreateParticleGroup(pd);
-}
-extern "C" __declspec(dllexport)  int AFCreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, int layer, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2Shape* m_shape = static_cast<b2Shape*>(shape);
-	b2ParticleGroupFlag bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
-	b2ParticleFlag bf = static_cast<b2ParticleFlag>(partFlags);
-	b2ParticleGroupDef pd;
-	pd.flags = bf;
-	pd.groupFlags = bgf;
-	pd.matIdx = matIdx;
-	pd.collisionGroup = collisionGroup;
-	pd.layer = layer;
-	pd.shape = m_shape;
-	pd.angle = angle;
-	pd.strength = strength;
-	pd.angularVelocity = angVel;
-	pd.linearVelocity = b2Vec2(linVelX, linVelY);
-	pd.stride = stride;
-	pd.lifetime = lifetime;
-	pd.health = health;
-	pd.color = color;
-	pd.userData = userData;
-	pd.heat = heat;
 	int ret = parts->AFCreateParticleGroup(pd);
+	//int ret = parts->CreateParticleGroup(pd);
 	return ret;
 }
 extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
@@ -786,31 +763,9 @@ extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount,
 	pd.positionDataY = posY;
 	pd.positionDataZ = posZ;
 	pd.colorData = col;
-	return parts->CreateParticleGroup(pd);
-}
-extern "C" __declspec(dllexport)  int AFCreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleGroupFlag bgf;
-	bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
-	b2ParticleFlag bf;
-	bf = static_cast<b2ParticleFlag>(partFlags);
-	b2ParticleGroupDef pd;
-	pd.flags = bf;
-	pd.groupFlags = bgf;
-	pd.matIdx = matIdx;
-	pd.collisionGroup = collisionGroup;
-	pd.strength = strength;
-	pd.linearVelocity = b2Vec2(velX, velY);
-	pd.lifetime = lifetime;
-	pd.health = health;
-	pd.userData = userData;
-	pd.heat = heat;
-	pd.particleCount = partCount;
-	pd.positionDataX = posX;
-	pd.positionDataY = posZ;
-	pd.positionDataZ = posY;
-	pd.colorData = col;
-	return parts->AFCreateParticleGroup(pd);
+	//int ret = parts->CreateParticleGroup(pd);
+	int ret = parts->AFCreateParticleGroup(pd);
+	return ret;
 }
 extern "C" __declspec(dllexport)  void JoinParticleGroups(void* partSysPtr, int groupAIdx, int groupBIdx)
 {

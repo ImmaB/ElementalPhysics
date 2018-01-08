@@ -25,6 +25,7 @@
 #include <Box2D/Particle/AFVoronoiDiagram.h>
 #include <vector>
 #include <numeric>
+#include <process.h>
 
 #include <arrayfire.h>
 #include <af/compatible.h>
@@ -36,8 +37,6 @@
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 #include <cstring>
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-#define B2PARTICLECOLOR_BITS_PER_COMPONENT (sizeof(uint8) << 3)
 
 class b2World;
 class b2Body;
@@ -315,6 +314,16 @@ private:
 	b2TimeStep m_step;
 	b2TimeStep subStep;
 
+	HANDLE findBodyContactsThread;
+
+	static DWORD StartBodyContactThread(LPVOID* param) {
+		b2ParticleSystem *sys = (b2ParticleSystem*)param;
+		sys->UpdateBodyContacts();
+		return 0;
+	}
+
+
+
 public:
 	int MyIndex;
 	void SetIndex(int ind);
@@ -336,8 +345,16 @@ public:
 	void SolveIteration(int32 iteration);
 	void SolveEnd();
 
+private:
 	template <class T>
-	void CopyFromAFArrayToVector(const int32& count, const af::array& afArray, std::vector<T>& vec);
+	void AFtoCPP(const int32& count, const af::array& arr, vector<T>& vec);
+	template <class T>
+	void CPPtoAF(const int32& count, const vector<T>& vec, af::array& arr);
+	template <class T>
+	void CPPtoAF(const int32& count, const T* vec, af::array& arr);
+
+public:
+	vector<af::array> AFSeperateToUniqueIdxBufs(const af::array& a);
 
 	/// Create a particle whose properties have been defined.
 	/// No reference to the definition is retained.
@@ -1173,13 +1190,13 @@ private:
 	af::array b2ParticleSystem::AFShouldCollide(const af::array& a, b2Fixture* f) const;
 	void b2ParticleSystem::AFAddContacts(const af::array& a, const af::array& b);
 	af::array afInvSqrt(af::array x);
-	void FindContacts(int32& contactCount);
+	void FindContacts();
 	void AFFindContacts();
 	void AFFindContactsbyTags(vector<int32>& aIdxs, vector<int32>& bIdxs);
 	void UpdateProxies();
 	void SortProxies();
-	void AFSort(af::array& keys, af::array& array, bool ascending);
-	void AFSort(af::array& keys, vector<af::array>& arrays);
+	void AFSort(af::array& compareArray, af::array& array, bool ascending);
+	void AFSort(af::array& compareArray, vector<af::array>& arrays);
 	void AFReorder(af::array& idxs, vector<af::array>& arrays);
 	void AFJoin(af::array& array, const af::array& newArray, af::dtype type = af::dtype::f32);
 	template <class UnaryPredicate>
@@ -1195,6 +1212,8 @@ private:
 	af::array AFGetUniqueTriadIdxs();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
+	template<class T1, class T2>
+	void reorder(vector<T1>& v1, vector<T2>& v2, const vector<int32>& order);
 	void FilterContacts();
 	void NotifyContactListenerPreContact(
 		b2ParticlePairSet* particlePairs) const;
@@ -1224,6 +1243,7 @@ private:
 	void SolveCollision(const b2TimeStep& step);
 	void AFSolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
+	void AFLimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
 	void AFSolveGravity(const b2TimeStep& step);
 	void SolveBarrier(const b2TimeStep& step);
@@ -1233,17 +1253,21 @@ private:
 	void AFComputeWeight();
 	void SolvePressure(const b2TimeStep& step);
 	void AFSolvePressure(const b2TimeStep& step);
-	void SolveDamping(const b2TimeStep& step); 
+	void SolveDamping(const b2TimeStep& step);
+	void AFSolveDamping(const b2TimeStep& step);
 	void SolveSlowDown(const b2TimeStep& step);
 	void AFSolveSlowDown(const b2TimeStep& step);
 	void SolveRigidDamping();
 	void SolveExtraDamping();
+	void AFSolveExtraDamping();
 	void SolveWall();
+	void AFSolveWall();
 	void SolveRigid(const b2TimeStep& step);
 	void AFSolveRigid(const b2TimeStep& step);
 	void SolveElastic(const b2TimeStep& step);
 	void AFSolveElastic(const b2TimeStep& step);
 	void SolveSpring(const b2TimeStep& step);
+	void AFSolveSpring(const b2TimeStep& step);
 	void SolveTensile(const b2TimeStep& step);
 	void AFSolveTensile(const b2TimeStep& step);
 	void SolveViscous();
@@ -1270,7 +1294,9 @@ private:
 	void SolveZombie();
 	void AFSolveZombie();
 	void SolveFalling(const b2TimeStep& step);
+	void AFSolveFalling(const b2TimeStep& step);
 	void SolveRising(const b2TimeStep& step);
+	void AFSolveRising(const b2TimeStep& step);
 	/// Destroy all particles which have outlived their lifetimes set by
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
@@ -1327,6 +1353,11 @@ private:
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
 
+	//AF Body functions
+	af::array AFBodyGetLinVelXFromWorldPoint(const af::array& bodyIdxs, const af::array& y);
+	af::array AFBodyGetLinVelYFromWorldPoint(const af::array& bodyIdxs, const af::array& x);
+
+
 	void DetectStuckParticle(int32 particle);
 	void AFDetectStuckParticle(const af::array& particles);
 
@@ -1365,6 +1396,7 @@ private:
 		float32 impulse, float32 normalX, float32 normalY);
 
 	vector<b2Body*>& m_bodyBuffer;
+	int32 m_bodyCount;
 	vector<b2Fixture*>& m_fixtureBuffer;
 
 	bool m_paused;
@@ -1492,7 +1524,8 @@ private:
 	vector<float32> m_depthBuffer;
 	vector<int32> m_userDataBuffer;
 
-	af::array	
+	vector<af::array> afPartBufs;
+	af::array
 		afPosXBuf, afPosYBuf, afPosZBuf,
 		afFlagBuf,
 		afColLayBuf,
@@ -1504,8 +1537,10 @@ private:
 		afColorBuf,
 		afUserDataBuf, //TODO add to copy
 		afGroupIdxBuf,
-		afPartMatIdxBuf,
+		afPartMatIdxBuf;
 
+	vector<af::array> afPartExtraBufs;
+	af::array
 		afAccumulationBuf,
 		afAccumulation2XBuf,
 		afAccumulation2YBuf,
@@ -1515,18 +1550,22 @@ private:
 		afExpireTimeBuf,
 		afIdxByExpireTimeBuf,
 		afHandleIdxBuf,
-		
+
 		afLastBodyContactStepBuf,
 		afBodyContactCountBuf,
 		afConsecutiveContactStepsBuf,
-		afStuckParticleBuf,
+		afStuckParticleBuf;
 
+	vector<af::array> afProxyBufs;
+	af::array
 		afProxyIdxBuf,
 		afProxyTagBuf,
 
 		//afFreeGroupIdxBuffer,
-		afRealGroupIdxBuf,
+		afRealGroupIdxBuf;
 
+	vector<af::array> afGroupBufs;
+	af::array
 		afGroupFirstIdxBuf, afGroupLastIdxBuf,
 		afGroupFlagsBuf,
 		afGroupColGroupBuf,
@@ -1539,20 +1578,36 @@ private:
 		afGroupLinVelXBuf, afGroupLinVelYBuf,
 		afGroupAngVelBuf,
 		afGroupTransformBuf,
-		afGroupUserDataBuf,
+		afGroupUserDataBuf;
 
+	vector<af::array> afContactBufs;
+	af::array
 		afContactIdxABuf, afContactIdxBBuf,
 		afContactWeightBuf, afContactMassBuf,
 		afContactNormalXBuf, afContactNormalYBuf,
-		afContactFlagsBuf, afContactMatFlagsBuf,
+		afContactFlagsBuf, afContactMatFlagsBuf;
+	vector<af::array> afContactIdxASplits;		//indezes overlap in array
+	vector<af::array> afContactIdxBSplits;		//so they haave to be seperated
 
+	vector<af::array> afBodyContactBufs;
+	af::array
 		afBodyContactIdxBuf,
 		afBodyContactBodyIdxBuf,
 		afBodyContactFixtIdxBuf,
 		afBodyContactWeightBuf,
 		afBodyContactNormalXBuf, afBodyContactNormalYBuf,
-		afBodyContactMassBuf,
+		afBodyContactMassBuf;
 
+	vector<af::array> afBodyBufs;
+	af::array
+		afBodyVelXBuf,
+		afBodyVelYBuf,
+		afBodyAngVelBuf,
+		afBodySweepCX,
+		afBodySweepCY;
+
+	vector<af::array> afPartMatBufs;
+	af::array
 		afPartMatFlagsBuf,
 		afPartMatMassBuf, afPartMatInvMassBuf,
 		afPartMatStabilityBuf,
@@ -1561,13 +1616,17 @@ private:
 		afPartMatMeltingPntBuf,
 		afPartMatBoilingPntBuf,
 		afPartMatIgnitPntBuf,
-		afPartMatHeatCondBuf,
+		afPartMatHeatCondBuf;
 
+	vector<af::array> afPairBufs;
+	af::array
 		afPairIdxABuf, afPairIdxBBuf,
 		afPairFlagsBuf,
 		afPairStrengthBuf,
-		afPairDistanceBuf,
+		afPairDistanceBuf;
 
+	vector<af::array> afTriadBufs;
+	af::array
 		afTriadIdxABuf, afTriadIdxBBuf, afTriadIdxCBuf,
 		afTriadFlagsBuf,
 		afTriadStrengthBuf,

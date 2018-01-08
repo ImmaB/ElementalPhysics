@@ -488,57 +488,61 @@ af::array b2PolygonShape::AFRayCast(afRayCastOutput* output, const afRayCastInpu
 	const b2Transform& xf, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
-	/*
+	
 	// Put the ray into the polygon's frame of reference.
-	af::array p1x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
-	af::array p1y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
-	af::array p2x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
-	af::array p2y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
-	af::array dx = p2x - p1x;
-	af::array dy = p2y - p1y;
+	const af::array& p1x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	const af::array& p1y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	const af::array& p2x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
+	const af::array& p2y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p2y - xf.p.y);
+	const af::array& dx = p2x - p1x;
+	const af::array& dy = p2y - p1y;
 
 	int32 count = p1x.elements();
 	af::array lower = af::constant(0.0f, count),
 		      upper = af::constant(input.maxFraction, count);
 
-	af::array index = af::constant(-1, count);
+	af::array index = af::constant(-1, count, af::dtype::s32);
+
+	af::array ret = af::constant(true, count, af::dtype::b8);
 
 	for (int32 i = 0; i < m_count; ++i)
 	{
 		// p = p1 + a * d
 		// dot(normal, p - v) = 0
 		// dot(normal, p1 - v) + a * dot(normal, d) = 0
-		af::array numerator = b2Dot(m_normals[i].x, m_normals[i].y, m_vertices[i].x - p1x, m_vertices[i].y - p1y);
-		af::array denominator = b2Dot(m_normals[i].x, m_normals[i].y, dx, dy);
+		const af::array& numerator = b2Dot(m_normals[i].x, m_normals[i].y, m_vertices[i].x - p1x, m_vertices[i].y - p1y);
+		const af::array& denominator = b2Dot(m_normals[i].x, m_normals[i].y, dx, dy);
 
-		af::array condIdxs = af::where(!(denominator == 0.0f && numerator < 0.0f));
-		if (!condIdxs.isempty())
+		const af::array& cond = denominator == 0.0f;
+		const af::array& k = af::where(cond);
+		const af::array& nk = af::where(!cond);
+		if (!k.isempty())
 		{
-			numerator = numerator(condIdxs);
-			denominator = denominator(condIdxs);
-		
+			ret((af::array)k(af::where(numerator < 0.0f))) = false;
+		}
+		if (!nk.isempty())
+		{
 			// Note: we want this predicate without division:
 			// lower < numerator / denominator, where denominator < 0
 			// Since denominator < 0, we have to flip the inequality:
 			// lower < numerator / denominator <==> denominator * lower > numerator.
-			af::array cond = denominator < 0.0f && numerator < lower * denominator;
-			af::array ifIdxs = af::where(cond);
-			if (!ifIdxs.isempty())
+			const af::array& cond = denominator < 0.0f && numerator < lower * denominator;
+			const af::array& k2 = af::where(cond);
+			const af::array& k2else = af::where(!cond && denominator > 0.0f && numerator < upper * denominator);
+			if (!k2.isempty())
 			{
 				// Increase lower.
 				// The segment enters this half-space.
-				af::array innerCondIdxs = condIdxs(ifIdxs);
-				lower(innerCondIdxs) = numerator(ifIdxs) / denominator(ifIdxs);
-				index(innerCondIdxs) = i;
+				const af::array& k = nk(k2);
+				lower(k) = numerator(k) / denominator(k);
+				index(k) = i;
 			}
-			af::array elseIfIdxs = af::where(!cond && 
-						denominator > 0.0f && numerator < upper * denominator);
-			if (!elseIfIdxs.isempty())
+			if (!k2else.isempty())
 			{
 				// Decrease upper.
 				// The segment exits this half-space.
-				af::array innerCondIdxs = condIdxs(elseIfIdxs);
-				upper(innerCondIdxs) = numerator(elseIfIdxs) / denominator(elseIfIdxs);
+				const af::array& k = nk(k2else);
+				upper(k) = numerator(k) / denominator(k);
 			}
 		}
 
@@ -546,31 +550,28 @@ af::array b2PolygonShape::AFRayCast(afRayCastOutput* output, const afRayCastInpu
 		// in some cases. Apparently the use of epsilon was to make edge
 		// shapes work, but now those are handled separately.
 		//if (upper < lower - b2_epsilon)
-		af::array validIdxs = af::where(upper >= lower);
-		lower = lower(validIdxs);
-		upper = upper(validIdxs);
-		index = index(validIdxs);
-		p1x = p1x(validIdxs);
-		p1y = p1y(validIdxs);
-		dx = dx(validIdxs);
-		dy = dy(validIdxs);
+		ret(af::where(upper < lower)) = false;
 	}
 
 	//b2Assert(0.0f <= lower && lower <= input.maxFraction);
 
-	af::array condIdxs = af::where(index >= 0);
-	if (!condIdxs.isempty())
+	const af::array validIndex = index >= 0;
+	ret(af::where(!validIndex)) = false;
+	
+	const af::array k = af::where(validIndex);
+	if (!k.isempty())
 	{
-		output->fraction = lower(condIdxs);
-		index = index(condIdxs);
-		af::array normalsX(m_count, 1, m_normalsX);
-		af::array normalsY(m_count, 1, m_normalsY);
-
-		output->normalX = b2MulX(xf.q, normalsX(index), normalsY(index));
-		return condIdxs;
+		output->fraction(k) = lower(k);
+		index = index(k);
+		af::array normalsX(m_count, m_normalsX, af::source::afHost);
+		af::array normalsY(m_count, m_normalsY, af::source::afHost);
+		normalsX = normalsX(index);
+		normalsY = normalsY(index);
+		output->normalX(k) = b2MulX(xf.q, normalsX, normalsY);
+		output->normalY(k) = b2MulY(xf.q, normalsX, normalsY);
 	}
-	*/
-	return af::array();
+	
+	return ret;
 }
 
 void b2PolygonShape::ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childIndex) const

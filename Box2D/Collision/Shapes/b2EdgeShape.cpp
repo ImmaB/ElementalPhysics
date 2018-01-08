@@ -193,14 +193,14 @@ af::array b2EdgeShape::AFRayCast(afRayCastOutput* output, const afRayCastInput& 
 	B2_NOT_USED(childIndex);
 	
 	// Put the ray into the edge's frame of reference.
-	af::array p1x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
-	af::array p1y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
-
-	af::array p2x = b2MulTX(xf.q, input.p2x - xf.p.x, input.p2y - xf.p.y);
-	af::array p2y = b2MulTY(xf.q, input.p2x - xf.p.x, input.p2y - xf.p.y);
-
-	af::array dx =  p2x - p1x;
-	af::array dy =  p2y - p1y;
+	const af::array& p1x = b2MulTX(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	const af::array& p1y = b2MulTY(xf.q, input.p1x - xf.p.x, input.p1y - xf.p.y);
+	 			   
+	const af::array& p2x = b2MulTX(xf.q, input.p2x - xf.p.x, input.p2y - xf.p.y);
+	const af::array& p2y = b2MulTY(xf.q, input.p2x - xf.p.x, input.p2y - xf.p.y);
+	 			   
+	const af::array& dx =  p2x - p1x;
+	const af::array& dy =  p2y - p1y;
 
 	b2Vec2 v1 = m_vertex1;
 	b2Vec2 v2 = m_vertex2;
@@ -211,58 +211,37 @@ af::array b2EdgeShape::AFRayCast(afRayCastOutput* output, const afRayCastInput& 
 	// q = p1 + t * d
 	// dot(normal, q - v1) = 0
 	// dot(normal, p1 - v1) + t * dot(normal, d) = 0
-	af::array numerator = b2Dot(normal.x, normal.y, v1.x - p1x, v1.y - p1y);
-	af::array denominator = b2Dot(normal.x, normal.y, v1.x - p1x, v1.y - p1y);
+	const af::array& numerator = b2Dot(normal.x, normal.y, v1.x - p1x, v1.y - p1y);
+	const af::array& denominator = b2Dot(normal.x, normal.y, dx, dy);
 
-	af::array remainIdxs = af::where(!(denominator == 0.0f));
-	if (!remainIdxs.isempty())
-	{
-		numerator = numerator(remainIdxs);
-		denominator = denominator(remainIdxs);
-		af::array t = numerator / denominator;
+	af::array ret = af::constant(true, p1x.elements(), af::dtype::b8);
 
-		af::array remain2Idxs = af::where(!(t < 0.0f || input.maxFraction < t));
-		if (!remain2Idxs.isempty())
-		{
-			remainIdxs = remainIdxs(remain2Idxs);
-			t = t(remain2Idxs);
-			numerator = numerator(remain2Idxs);
+	ret(af::where(denominator == 0.0f)) = false;
 
-			af::array qx = p1x(remainIdxs) + t(remain2Idxs) * dx(remainIdxs);
-			af::array qy = p1y(remainIdxs) + t(remain2Idxs) * dy(remainIdxs);
+	const af::array& t = numerator / denominator;
+	ret(af::where(t < 0.0f || input.maxFraction < t)) = false;
 
-			// q = v1 + s * r
-			// s = dot(q - v1, r) / dot(r, r)
-			b2Vec2 r = v2 - v1;
-			float32 rr = b2Dot(r, r);
-			if (rr == 0.0f)
-			{
-				return remainIdxs;
-			}
-			else
-			{
-				af::array s = b2Dot(qx - v1.x, qy - v1.y, r.x, r.y) / rr;
+	af::array qx = p1x + t * dx;
+	af::array qy = p1y + t * dy;
 
-				af::array remain3Idxs = af::where(!(s < 0.0f || 1.0f < s));
-				if (!remain3Idxs.isempty())
-				{
-					t = t(remain3Idxs);
-					numerator = numerator(remain3Idxs);
-					remainIdxs = remainIdxs(remain3Idxs);
+	// q = v1 + s * r
+	// s = dot(q - v1, r) / dot(r, r)
+	b2Vec2 r = v2 - v1;
+	float32 rr = b2Dot(r, r);
+	if (rr == 0.0f)
+		return ret;
+	
+	const af::array& s = b2Dot(qx - v1.x, qy - v1.y, r.x, r.y) / rr;
+	ret(af::where(s < 0.0f || 1.0f < s)) = false;
 
-					output->fraction = t;
-					af::array cond = numerator > 0.0f;
-					output->normalX(af::where(cond))  = -b2MulX(xf.q, normal.x, normal.y);
-					output->normalY(af::where(cond)) = -b2MulY(xf.q, normal.x, normal.y);
-					output->normalX(af::where(!cond)) = b2MulX(xf.q, normal.x, normal.y);
-					output->normalY(af::where(!cond)) = b2MulY(xf.q, normal.x, normal.y);
-					
-					return remainIdxs;
-				}
-			}
-		}
-	}
-	return af::array();
+	output->fraction = t;
+	const af::array& k = numerator > 0.0f;
+	output->normalX(af::where(k))  = -b2MulX(xf.q, normal.x, normal.y);
+	output->normalY(af::where(k))  = -b2MulY(xf.q, normal.x, normal.y);
+	output->normalX(af::where(!k)) = b2MulX(xf.q, normal.x, normal.y);
+	output->normalY(af::where(!k)) = b2MulY(xf.q, normal.x, normal.y);
+	
+	return ret;
 }
 
 void b2EdgeShape::ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childIndex) const
