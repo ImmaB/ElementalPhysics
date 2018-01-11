@@ -24,11 +24,15 @@
 #include <Box2D/Dynamics/b2TimeStep.h>
 #include <Box2D/Particle/AFVoronoiDiagram.h>
 #include <vector>
+#include <array> 
 #include <numeric>
 #include <process.h>
 
 #include <arrayfire.h>
 #include <af/compatible.h>
+#include <ctime>
+
+static const int32  MAX_CONTACTS_PER_PARTICLE = 10;
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -58,6 +62,7 @@ struct b2Vec2;
 struct b2AABB;
 struct FindContactInput;
 struct FindContactCheck;
+struct FindContactContacts;
 
 using namespace std;
 
@@ -135,6 +140,10 @@ public:
 	/// The effective mass used in calculating force.
 	float32 mass;
 };*/
+struct b2ParticleBodyContact
+{
+	int32* contacts[MAX_CONTACTS_PER_PARTICLE];
+};
 
 /// Connection between two particles
 /*struct b2ParticlePair
@@ -1192,7 +1201,6 @@ private:
 	af::array afInvSqrt(af::array x);
 	void FindContacts();
 	void AFFindContacts();
-	void AFFindContactsbyTags(vector<int32>& aIdxs, vector<int32>& bIdxs);
 	void UpdateProxies();
 	void SortProxies();
 	void AFSort(af::array& compareArray, af::array& array, bool ascending);
@@ -1649,12 +1657,19 @@ private:
 	bool hasLastBodyContactStepBuffer;
 	bool hasBodyContactCountBuffer;
 	bool hasConsecutiveContactStepsBuffer;
-	vector<int32> m_lastBodyContactStepBuffer;
-	vector<int32> m_bodyContactCountBuffer;
-	vector<int32> m_consecutiveContactStepsBuffer;
-	vector<int32> m_stuckParticleBuffer;
+	vector<int32>  m_lastBodyContactStepBuffer;
+	vector<int32>  m_bodyContactCountBuffer;
+	vector<int32>  m_consecutiveContactStepsBuffer;
+	vector<int32>  m_stuckParticleBuffer;
 
-	vector<int32> m_proxyIdxBuffer;
+	vector<int32>  m_findContactCountBuf;
+	vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxABuf;
+	vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxBBuf;
+	vector<int32>  m_findContactRightTagBuf;
+	vector<int32>  m_findContactBottomLeftTagBuf;
+	vector<int32>  m_findContactBottomRightTagBuf;
+
+	vector<int32>  m_proxyIdxBuffer;
 	vector<uint32> m_proxyTagBuffer;
 
 	vector<int32>	m_contactIdxABuffer;
