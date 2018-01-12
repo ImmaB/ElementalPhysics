@@ -342,15 +342,8 @@ public:
 		m_step = step;
 	}
 
-	void AFSolveInit();
-	void AFSolveIterationPart1(int32 iteration);
-	void AFSolveIterationPart2();
-	void AFSolveIterationPart3();
-	void AFSolveIterationPart4();
-	void AFSolveIterationPart5();
-	void AFSolveEnd();
-
 	void SolveInit();
+	void UpdateContacts(bool exceptZombie);
 	void SolveIteration(int32 iteration);
 	void SolveEnd();
 
@@ -1226,7 +1219,6 @@ private:
 	void NotifyContactListenerPreContact(
 		b2ParticlePairSet* particlePairs) const;
 	void NotifyContactListenerPostContact(b2ParticlePairSet& particlePairs);
-	void UpdateContacts(bool exceptZombie);
 	void AFUpdateContacts(bool exceptZombie);
 	void NotifyBodyContactListenerPreContact(
 		FixtureParticleSet* fixtureSet) const;

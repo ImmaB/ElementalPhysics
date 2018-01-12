@@ -278,33 +278,22 @@ extern "C" __declspec(dllexport)  int32 GetParticleIterations(float32 gravity, f
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
 }
 
-extern "C" __declspec(dllexport) void AFStepParticleInit(void* partSysPtr) {
+
+extern "C" __declspec(dllexport) void SolveInit(void* partSysPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveInit();
+	partSys->SolveInit();
 }
-extern "C" __declspec(dllexport) void AFStepParticleIterationPart1(void* partSysPtr, int32 iteration) {
+extern "C" __declspec(dllexport) void UpdateContacts(void* partSysPtr, int32 iteration) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveIterationPart1(iteration);
+	partSys->UpdateContacts(false);
 }
-extern "C" __declspec(dllexport) void AFStepParticleIterationPart2(void* partSysPtr) {
+extern "C" __declspec(dllexport) void SolveIteration(void* partSysPtr, int32 iteration) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveIterationPart2();
+	partSys->SolveIteration(iteration);
 }
-extern "C" __declspec(dllexport) void AFStepParticleIterationPart3(void* partSysPtr) {
+extern "C" __declspec(dllexport) void SolveEnd(void* partSysPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveIterationPart3();
-}
-extern "C" __declspec(dllexport) void AFStepParticleIterationPart4(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveIterationPart4();
-}
-extern "C" __declspec(dllexport) void AFStepParticleIterationPart5(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveIterationPart5();
-}
-extern "C" __declspec(dllexport) void AFStepParticleEnd(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->AFSolveEnd();
+	partSys->SolveEnd();
 }
 
 extern "C" __declspec(dllexport) void StepParticleInit(void* partSysPtr) {
@@ -737,8 +726,8 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	int ret = parts->AFCreateParticleGroup(pd);
-	//int ret = parts->CreateParticleGroup(pd);
+	//int ret = parts->AFCreateParticleGroup(pd);
+	int ret = parts->CreateParticleGroup(pd);
 	return ret;
 }
 extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
@@ -763,8 +752,8 @@ extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount,
 	pd.positionDataY = posY;
 	pd.positionDataZ = posZ;
 	pd.colorData = col;
-	//int ret = parts->CreateParticleGroup(pd);
-	int ret = parts->AFCreateParticleGroup(pd);
+	//int ret = parts->AFCreateParticleGroup(pd);
+	int ret = parts->CreateParticleGroup(pd);
 	return ret;
 }
 extern "C" __declspec(dllexport)  void JoinParticleGroups(void* partSysPtr, int groupAIdx, int groupBIdx)

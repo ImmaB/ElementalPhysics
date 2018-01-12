@@ -1738,6 +1738,8 @@ void b2ParticleSystem::AFCreateParticlesWithShapesForGroup(
 int32 b2ParticleSystem::CreateParticleGroup(
 	const b2ParticleGroupDef& groupDef)
 {
+	clock_t clockCreateGroup = clock();
+
 	b2Assert(m_world->IsLocked() == false);
 	if (m_world->IsLocked())
 	{
@@ -1799,8 +1801,10 @@ int32 b2ParticleSystem::CreateParticleGroup(
 
 	// Create pairs and triads between particles in the group.
 	ConnectionFilter filter;
-	UpdateContacts(true);
-	UpdatePairsAndTriads(firstIndex, lastIndex, filter);
+	//UpdateContacts(true);
+	//UpdatePairsAndTriads(firstIndex, lastIndex, filter);
+
+	cout << "CreateGroup " << (clock() - clockCreateGroup) * 1000 / CLOCKS_PER_SEC << "ms\n";
 
 	return groupIdx;
 
@@ -1877,7 +1881,6 @@ int32 b2ParticleSystem::AFCreateParticleGroup(
 	// Create pairs and triads between particles in the group.
 	AFConnectionFilter filter;
 	
-	CopyGroupsToGPU();
 	//AFUpdateContacts(true);
 	//AFUpdatePairsAndTriads(firstIndex, lastIndex, filter);
 
@@ -3427,48 +3430,11 @@ void b2ParticleSystem::NotifyContactListenerPostContact(
 	}*/
 }
 
-void b2ParticleSystem::UpdateContacts(bool exceptZombie)
-{
-	if (afProxyIdxBuf.isempty()) return;
-
-	// Update Proxy Tags
-	afProxyTagBuf = afComputeTag(m_inverseDiameter * afPosXBuf(afProxyIdxBuf),
-		m_inverseDiameter * afPosYBuf(afProxyIdxBuf));
-
-
-	// Sort Proxies by Tag
-	//clock_t clockSort = clock();
-	AFSort(afProxyTagBuf, afProxyIdxBuf, true);
-	CopyProxiesToCPU();
-	//cout << "SortProxies " << (clock() - clockSort) * 1000 / CLOCKS_PER_SEC << "ms\n";
-	//SortProxies();
-
-	//find Body COntacts in seperate Thread
-	//clock_t clockfindBodyContacts = clock();
-	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
-
-	// While findBodyContactsThread is running
-	//clock_t clockPartContacts = clock();
-	FindContacts();
-	//CopyContactsToGPU();
-	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
-
-	WaitForSingleObject(findBodyContactsThread, INFINITE);
-	//cout << "FindBodyContacts " << (clock() - clockfindBodyContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
-
-	if (exceptZombie)
-	{
-		RemoveFromVectorsIf(m_contactFlagsBuffer, m_contactIdxABuffer, m_contactIdxBBuffer,
-			m_contactWeightBuffer, m_contactMassBuffer, 
-			m_contactNormalXBuffer,	m_contactNormalYBuffer, 
-			m_contactMatFlagsBuffer,
-			m_contactCount, b2ParticleContactIsZombie, true);
-	}
-	
-}
 void b2ParticleSystem::AFUpdateContacts(bool exceptZombie)
 {
 	if (afProxyIdxBuf.isempty()) return;
+
+	CopyProxiesToGPU();
 
 	// Update Proxy Tags
 	afProxyTagBuf = afComputeTag(m_inverseDiameter * afPosXBuf(afProxyIdxBuf),
@@ -4196,8 +4162,6 @@ void b2ParticleSystem::UpdateBodyContacts()
 	}
 
 	NotifyBodyContactListenerPostContact(fixtureSet);
-
-	CopyBodyContactsToGPU();
 }
 
 void b2ParticleSystem::AFUpdateBodyContacts()
@@ -4692,74 +4656,81 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 
 
 
-void b2ParticleSystem::AFSolveInit() 
+void b2ParticleSystem::SolveInit() 
 {
 	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
 		return;
 
-	//CopyBodiesToGPU();
-	CopyParticlesToCPU();
-
-	//if (!m_expireTimeBuf.empty())
-	//	SolveLifetimes(m_step);
+	if (!m_expireTimeBuf.empty())
+		SolveLifetimes(m_step);
 	if (m_allParticleFlags & b2_zombieParticle)
-		//AFSolveZombie();
 		SolveZombie();
 	if (m_needsUpdateAllParticleFlags)
-		//AFUpdateAllParticleFlags();
 		UpdateAllParticleFlags();
 	if (m_needsUpdateAllGroupFlags)
 		UpdateAllGroupFlags();
-	//AFFilterRealGroups();
 	FilterRealGroups();
 
 }
 
-void b2ParticleSystem::AFSolveIterationPart1(int32 iteration)
+void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 {
 	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
 		return;
 	if (m_paused)
 		return;
 
+	// Update Proxy Tags
+	UpdateProxies();
+	//afProxyTagBuf = afComputeTag(m_inverseDiameter * afPosXBuf(afProxyIdxBuf),
+	//	m_inverseDiameter * afPosYBuf(afProxyIdxBuf));
+
+	// Sort Proxies by Tag
+	clock_t clockSort = clock();
+	CopyProxiesToGPU();
+	AFSort(afProxyTagBuf, afProxyIdxBuf, true);
+	CopyProxiesToCPU();
+	cout << "SortProxies " << (clock() - clockSort) * 1000 / CLOCKS_PER_SEC << "ms\n";
+
+	//find Body COntacts in seperate Thread
+	clock_t clockfindBodyContacts = clock();
+	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
+
+	// While findBodyContactsThread is running
+	clock_t clockPartContacts = clock();
+	FindContacts();
+	cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
+
+	WaitForSingleObject(findBodyContactsThread, INFINITE);
+	cout << "FindBodyContacts " << (clock() - clockfindBodyContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
+
+	if (exceptZombie)
+	{
+		RemoveFromVectorsIf(m_contactFlagsBuffer, m_contactIdxABuffer, m_contactIdxBBuffer,
+			m_contactWeightBuffer, m_contactMassBuffer,
+			m_contactNormalXBuffer, m_contactNormalYBuffer,
+			m_contactMatFlagsBuffer,
+			m_contactCount, b2ParticleContactIsZombie, true);
+	}
+}
+
+void b2ParticleSystem::SolveIteration(int32 iteration)
+{
 	m_iterationIndex = iteration;
 	++m_timestamp;
 	subStep = m_step;
 	subStep.dt /= m_step.particleIterations;
-	subStep.inv_dt *= m_step.particleIterations; 
-
-	AFUpdateContacts(false);		// <-- THIS ... 50% of calculation time
-
-}
-
-void b2ParticleSystem::AFSolveIterationPart2()
-{
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
-		return;
-	if (m_paused)
-		return;
-
-}
-
-void b2ParticleSystem::AFSolveIterationPart3()
-{
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
-		return;
-	if (m_paused)
-		return;
+	subStep.inv_dt *= m_step.particleIterations;
 
 	//clock_t clockSolve = clock();
 
-	//AFComputeWeight();
 	ComputeWeight();
 
 	//CopyParticlesToCPU();
 
 	if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-		//AFComputeDepth();
 		ComputeDepth();
 	if (m_allParticleFlags & b2_reactiveParticle)
-		//AFUpdatePairsAndTriadsWithReactiveParticles();
 		UpdatePairsAndTriadsWithReactiveParticles();
 	if (m_hasForce)
 		SolveForce(subStep);
@@ -4829,163 +4800,11 @@ void b2ParticleSystem::AFSolveIterationPart3()
 		SolveSpring(subStep);
 
 	LimitVelocity(subStep);
-	//if (m_allGroupFlags & b2_rigidParticleGroup)
-	//	SolveRigidDamping();
-	//if (m_allParticleFlags & b2_barrierParticle)
-	//	SolveBarrier(subStep);
-
-
-	// SolveCollision, SolveRigid and SolveWall should be called after
-	// other force functions because they may require particles to have
-	// specific velocities.
-	SolveCollision(subStep);
-
-	CopyParticlesToGPU();
-
-	if (m_allGroupFlags & b2_rigidParticleGroup)
-		AFSolveRigid(subStep);
-	if (m_allParticleFlags & b2_wallParticle)
-		AFSolveWall();
-
-
-	if (m_allParticleFlags & b2_fallingParticle)
-		AFSolveFalling(subStep);
-	if (m_allParticleFlags & b2_risingParticle)
-		AFSolveRising(subStep);
-
-	// The particle positions can be updated only at the end of substep.
-	afPosXBuf += subStep.dt * afVelXBuf;
-	afPosYBuf += subStep.dt * afVelYBuf;
-	//for (int32 i = 0; i < m_count; i++)
-	//{
-	//	m_positionXBuffer[i] += subStep.dt * m_velocityXBuffer[i];
-	//	m_positionYBuffer[i] += subStep.dt * m_velocityYBuffer[i];
-	//}
-	//cout << "Solve " << (clock() - clockSolve) * 1000 / CLOCKS_PER_SEC << "ms\n";
-}
-
-void b2ParticleSystem::AFSolveIterationPart4()
-{
-
-}
-
-void b2ParticleSystem::AFSolveIterationPart5()
-{
-}
-
-void b2ParticleSystem::AFSolveEnd() 
-{
-	//CopyParticlesToCPU();
-	//CopyGroupsToCPU();
-}
-
-
-
-
-void b2ParticleSystem::SolveInit()
-{
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
-		return;
-
-	if (!m_expireTimeBuf.empty())
-		SolveLifetimes(m_step);
-	if (m_allParticleFlags & b2_zombieParticle)
-		SolveZombie();
-	if (m_needsUpdateAllParticleFlags)
-		UpdateAllParticleFlags();
-	FilterRealGroups();
-	if (m_needsUpdateAllGroupFlags)
-		UpdateAllGroupFlags();
-}
-
-void b2ParticleSystem::SolveIteration(int32 iteration)
-{
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
-		return;
-	if (m_paused)
-		return;
-
-	m_iterationIndex = iteration;
-	++m_timestamp;
-	subStep = m_step;
-	subStep.dt /= m_step.particleIterations;
-	subStep.inv_dt *= m_step.particleIterations;
-	UpdateContacts(false);		// <-- THIS ... 50% of calculation time
-	UpdateBodyContacts();
-
-	ComputeWeight();
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
-		return;
-	if (m_paused)
-		return;
-
-	if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-		ComputeDepth();
-	if (m_allParticleFlags & b2_reactiveParticle)
-		UpdatePairsAndTriadsWithReactiveParticles();
-	if (m_hasForce)
-		SolveForce(subStep);
-	if (m_allParticleFlags & b2_viscousParticle)
-		SolveViscous();
-	if (m_allParticleFlags & b2_repulsiveParticle)
-		SolveRepulsive(subStep);
-	if (m_allParticleFlags & b2_powderParticle)
-		SolvePowder(subStep);
-	if (m_allParticleFlags & b2_tensileParticle)
-		SolveTensile(subStep);
-	if (m_allGroupFlags & b2_solidParticleGroup)
-		SolveSolid(subStep);
-	if (m_allParticleFlags & b2_colorMixingParticle)
-		SolveColorMixing();
-
-	// HEAT MANAGEMENT
-	if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
-		SolveHeatConduct(subStep);
-	if (m_allParticleFlags & b2_heatLoosingParticle)
-		SolveLooseHeat(subStep);
-
-	// FIRE
-	if (m_allParticleFlags & b2_flameParticle)
-	{
-		SolveFlame(subStep);
-		if (m_world->m_allMaterialFlags & b2_flammableMaterial)
-			SolveIgnite();
-		if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
-			SolveExtinguish();
-	}
-	if (m_allParticleFlags & b2_burningParticle)
-		SolveBurning(subStep);
-
-	// WATER
-	if (m_allParticleFlags & b2_waterParticle)
-		SolveWater();
-	if (m_world->m_allMaterialFlags & b2_boilingMaterial)
-		SolveEvaporate();
-	SolveFreeze();
-
-	SolveDestroyDead();
-
-	SolveGravity(subStep);
-	if (m_allParticleFlags & b2_staticPressureParticle)
-		SolveStaticPressure(subStep);
-
-	SolvePressure(subStep);
-	SolveDamping(subStep);
-	SolveSlowDown(subStep);
-	if (m_allParticleFlags & k_extraDampingFlags)
-		SolveExtraDamping();
-
-	// SolveElastic and SolveSpring refer the current velocities for
-	// numerical stability, they should be called as late as possible.
-	if (m_allParticleFlags & b2_elasticParticle)
-		SolveElastic(subStep);
-	if (m_allParticleFlags & b2_springParticle)
-		SolveSpring(subStep);
-	LimitVelocity(subStep);
 	if (m_allGroupFlags & b2_rigidParticleGroup)
 		SolveRigidDamping();
 	if (m_allParticleFlags & b2_barrierParticle)
 		SolveBarrier(subStep);
+
 
 	// SolveCollision, SolveRigid and SolveWall should be called after
 	// other force functions because they may require particles to have
@@ -4996,24 +4815,27 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	if (m_allParticleFlags & b2_wallParticle)
 		SolveWall();
 
+
+	// The particle positions can be updated only at the end of substep.
+	//afPosXBuf += subStep.dt * afVelXBuf;
+	//afPosYBuf += subStep.dt * afVelYBuf;
 	if (m_allParticleFlags & b2_fallingParticle)
 		SolveFalling(subStep);
 	if (m_allParticleFlags & b2_risingParticle)
 		SolveRising(subStep);
-
-	// The particle positions can be updated only at the end of substep.
 	for (int32 i = 0; i < m_count; i++)
 	{
 		m_positionXBuffer[i] += subStep.dt * m_velocityXBuffer[i];
 		m_positionYBuffer[i] += subStep.dt * m_velocityYBuffer[i];
 	}
+	//cout << "Solve " << (clock() - clockSolve) * 1000 / CLOCKS_PER_SEC << "ms\n";
 }
 
-void b2ParticleSystem::SolveEnd()
+void b2ParticleSystem::SolveEnd() 
 {
-
+	//CopyParticlesToCPU();
+	//CopyGroupsToCPU();
 }
-
 
 void b2ParticleSystem::CopyParticlesToGPU()
 {
@@ -5219,8 +5041,8 @@ template <class T>
 inline void b2ParticleSystem::AFtoCPP(const int32& count, const af::array& arr, vector<T>& vec)
 {
 	T* buf = arr.host<T>();
-	vec = vector<T>(buf, buf + count);
-	//copy(arr, arr + count, vec.begin());
+	//vec = vector<T>(buf, buf + count);
+	copy(buf, buf + count, vec.begin());
 }
 template <class T>
 inline void b2ParticleSystem::CPPtoAF(const int32& count, const vector<T>& vec, af::array& arr)
