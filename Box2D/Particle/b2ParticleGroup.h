@@ -76,8 +76,8 @@ struct b2ParticleGroupDef
 		colorData = NULL;
 		lifetime = 0.0f;
 		userData = 0;
-		groupIdx = b2_invalidGroupIndex;
-		matIdx = b2_invalidMaterialIndex;
+		groupIdx = b2_invalidIndex;
+		matIdx = b2_invalidIndex;
 		collisionGroup = 0;
 		heat = 0.0f;
 		health = 1.0f;
@@ -215,7 +215,7 @@ public:
 
 	/// Does this group contain the particle.
 	bool ContainsParticle(int32 index) const;
-
+	
 	/// Get the logical sum of particle flags.
 	uint32 GetAllParticleFlags() const;
 
@@ -223,9 +223,26 @@ public:
 	uint32 GetGroupFlags() const;
 
 	/// Set the construction flags for the group.
-	//void SetGroupFlags(uint32 flags);
+	void SetGroupFlags(uint32 flags);
 
-	b2ParticleMaterial* GetMaterial() const;
+	void UpdateStatistics() const;
+
+	int32 GetMaterialIdx() const;
+
+	/// Get the total mass of the group: the sum of all particles in it.
+	float32 GetMass() const;
+
+	/// Get the moment of inertia for the group.
+	float32 GetInertia() const;
+
+	/// Get the center of gravity for the group.
+	b2Vec2 GetCenter() const;
+
+	/// Get the linear velocity of the group.
+	b2Vec2 GetLinearVelocity() const;
+
+	/// Get the angular velocity of the group.
+	float32 GetAngularVelocity() const;
 
 	/// Get the position of the group's origin and rotation.
 	/// Used only with groups of rigid particles.
@@ -238,6 +255,12 @@ public:
 	/// Get the rotational angle of the particle group as a whole.
 	/// Used only with groups of rigid particles.
 	float32 GetAngle() const;
+
+	/// Get the world linear velocity of a world point, from the average linear
+	/// and angular velocities of the particle group.
+	/// @param a point in world coordinates.
+	/// @return the world velocity of a point.
+	b2Vec2 GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const;
 
 	/// Get the user data pointer that was provided in the group definition.
 	int32 GetUserData() const;
@@ -273,7 +296,7 @@ private:
 	int32 m_firstIndex, m_lastIndex;
 	uint32 m_groupFlags;
 	float32 m_strength;
-	b2ParticleMaterial* m_material;
+	int32 m_matIdx;
 	int32 m_collisionGroup;
 
 	b2ParticleGroup* m_prev;
@@ -348,9 +371,39 @@ inline uint32 b2ParticleGroup::GetGroupFlags() const
 	return m_groupFlags & ~b2_particleGroupInternalMask;
 }
 
-inline b2ParticleMaterial* b2ParticleGroup::GetMaterial() const
+inline int32 b2ParticleGroup::GetMaterialIdx() const
 {
-	return m_material;
+	return m_matIdx;
+}
+
+inline float32 b2ParticleGroup::GetMass() const
+{
+	UpdateStatistics();
+	return m_mass;
+}
+
+inline float32 b2ParticleGroup::GetInertia() const
+{
+	UpdateStatistics();
+	return m_inertia;
+}
+
+inline b2Vec2 b2ParticleGroup::GetCenter() const
+{
+	UpdateStatistics();
+	return m_center;
+}
+
+inline b2Vec2 b2ParticleGroup::GetLinearVelocity() const
+{
+	UpdateStatistics();
+	return m_linearVelocity;
+}
+
+inline float32 b2ParticleGroup::GetAngularVelocity() const
+{
+	UpdateStatistics();
+	return m_angularVelocity;
 }
 
 inline const b2Transform& b2ParticleGroup::GetTransform() const
@@ -366,6 +419,14 @@ inline const b2Vec2& b2ParticleGroup::GetPosition() const
 inline float32 b2ParticleGroup::GetAngle() const
 {
 	return m_transform.q.GetAngle();
+}
+
+
+inline b2Vec2 b2ParticleGroup::GetLinearVelocityFromWorldPoint(
+	const b2Vec2& worldPoint) const
+{
+	UpdateStatistics();
+	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_center);
 }
 
 inline int32 b2ParticleGroup::GetUserData() const

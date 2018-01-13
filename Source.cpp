@@ -59,7 +59,7 @@ private:
     std::vector<float> lengthsArray;
     std::vector<float> returnArray;
 };
-
+/*
 class b2NewContactListener : public b2ContactListener {
 public:
     b2NewContactListener() : fixtureContacts(0), mixedContacts(0), particleContacts(0) {}
@@ -143,7 +143,7 @@ private:
     std::vector<float> particleArray;
     std::vector<float> lengthsArray;
     std::vector<float> returnArray;
-};
+};*/
 
 
 #pragma region GlobalVariables
@@ -237,7 +237,7 @@ extern "C" __declspec(dllexport) void* GetDebug() {
 
 
 
-
+/*
 extern "C" __declspec(dllexport)  void* SetContactListener(void* worldPointer) {
 	b2World* world = static_cast<b2World*>(worldPointer);
 	b2NewContactListener* cL = new b2NewContactListener();
@@ -247,7 +247,7 @@ extern "C" __declspec(dllexport)  void* SetContactListener(void* worldPointer) {
 extern "C" __declspec(dllexport)  float* UpdateContactListener(void* contactPointer) {
 	b2NewContactListener* cL = static_cast<b2NewContactListener*>(contactPointer);
 	return cL->GetData();
-}
+}*/
 #pragma endregion
 
 #pragma region API Particle Systems
@@ -402,7 +402,7 @@ extern "C" __declspec(dllexport)  void SetAllParticleFlags(void* partSysPtr, int
         partSys->SetParticleFlags(i, flags);
     }
 }
-extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPtr) {
+/*extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPtr) {
     
     if (returnArray != NULL)
     {
@@ -425,7 +425,7 @@ extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPt
         returnArray[(i * 4) + 4] = (int64)(userdata[contactIdxBList[i]]);
     }
     return returnArray;
-}
+}*/
 /*extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* partSysPtr) {
     
     if (positionArray != NULL)
@@ -496,6 +496,7 @@ extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointe
 }
 extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer, int groupIdx, int flags, float posX, float posY, float posZ, float velX, float velY, int col, float lifetime, float health, float heat, int userdata) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
+	b2ParticleGroup* group = parts->GetParticleGroups()[groupIdx];
 	b2ParticleDef pd;
 	pd.flags = flags;
 	pd.positionX = posX;
@@ -508,8 +509,8 @@ extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer
 	pd.heat = heat;
 	pd.health = health;
 	pd.groupIdx = groupIdx;
-	pd.matIdx = parts->GetGroupMaterialIdx(groupIdx);
-	pd.userData = parts->GetGroupUserData(groupIdx);
+	pd.matIdx = group->GetMaterialIdx();
+	pd.userData = group->GetUserData();
 	parts->CreateParticle(pd);
 }
 extern "C" __declspec(dllexport)  void DestroySelectedParticles(void* partSysPtr, int* indexArray) {
@@ -726,7 +727,6 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	//int ret = parts->AFCreateParticleGroup(pd);
 	int ret = parts->CreateParticleGroup(pd);
 	return ret;
 }
@@ -752,7 +752,6 @@ extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount,
 	pd.positionDataY = posY;
 	pd.positionDataZ = posZ;
 	pd.colorData = col;
-	//int ret = parts->AFCreateParticleGroup(pd);
 	int ret = parts->CreateParticleGroup(pd);
 	return ret;
 }
@@ -1196,7 +1195,7 @@ extern "C" __declspec(dllexport)  void** GetBodyFixtures(void* bodyPointer) {
 	std::vector<b2Fixture*>& fixtures = m_body->GetFixtureBuffer();
     for each (int32 fIdx in fixtureIdxs)
 	{
-		if (fIdx != b2_invalidFixtureIndex)
+		if (fIdx != b2_invalidIndex)
 		{
 			fixturesVec.push_back(static_cast<void*>(fixtures[fIdx]));
 		}
@@ -1211,7 +1210,7 @@ extern "C" __declspec(dllexport)  int GetBodyFixturesCount(void* bodyPointer) {
 	std::vector<b2Fixture*>& fixtures = m_body->GetFixtureBuffer();
 	for each (int32 fIdx in fixtureIdxs)
 	{
-		if (fIdx != b2_invalidFixtureIndex)
+		if (fIdx != b2_invalidIndex)
 		{
 			++i;
 		}

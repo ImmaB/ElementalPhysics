@@ -49,7 +49,7 @@ b2World::~b2World()
 		{
 			for each (int32 fIdx in b->m_fixtureIdxBuffer)
 			{
-				if (fIdx != b2_invalidFixtureIndex)
+				if (fIdx != b2_invalidIndex)
 				{
 					b2Fixture* f = m_fixtureBuffer[fIdx];
 					f->m_proxyCount = 0;
@@ -98,7 +98,7 @@ int32 b2World::CreateBody(const b2BodyDef* def)
 	}
 	void* mem = m_blockAllocator.Allocate(sizeof(b2Body));
 	b2Body* b = new (mem) b2Body(def, this, m_fixtureBuffer);
-	int32 idx = b2_invalidBodyIndex;
+	int32 idx = b2_invalidIndex;
 	if (m_freeBodySlots.empty())
 	{
 		idx = m_bodyBuffer.size();
@@ -158,7 +158,7 @@ void b2World::DestroyBody(int32 idx)
 
 	for each (int32 fIdx in b->m_fixtureIdxBuffer)
 	{
-		if (fIdx != b2_invalidFixtureIndex)
+		if (fIdx != b2_invalidIndex)
 		{
 			b2Fixture* f = m_fixtureBuffer[fIdx];
 
@@ -189,7 +189,7 @@ void b2World::DestroyBody(int32 idx)
 
 int32 b2World::AppendFixture(b2Fixture* f)
 {
-	int32 idx = b2_invalidFixtureIndex;
+	int32 idx = b2_invalidIndex;
 	if (m_freeFixtureSlots.empty())
 	{
 		idx = m_fixtureBuffer.size();
@@ -1085,17 +1085,6 @@ struct b2WorldQueryWrapper
 	const b2BroadPhase* broadPhase;
 	b2QueryCallback* callback;
 };
-struct AFWorldQueryWrapper
-{
-	bool AFQueryCallback(int32 proxyId)
-	{
-		b2FixtureProxy* proxy = (b2FixtureProxy*)broadPhase->GetUserData(proxyId);
-		return callback->AFReportFixture(proxy->fixtureIdx);
-	}
-
-	const b2BroadPhase* broadPhase;
-	afQueryCallback* callback;
-};
 
 void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 {
@@ -1108,20 +1097,6 @@ void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 		if (callback->ShouldQueryParticleSystem(p))
 		{
 			p->QueryAABB(callback, aabb);
-		}
-	}
-}
-void b2World::AFQueryAABB(afQueryCallback* callback, const b2AABB& aabb) const
-{
-	AFWorldQueryWrapper wrapper;
-	wrapper.broadPhase = &m_contactManager.m_broadPhase;
-	wrapper.callback = callback;
-	m_contactManager.m_broadPhase.AFQuery(&wrapper, aabb);
-	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-	{
-		if (callback->AFShouldQueryParticleSystem(p))
-		{
-			p->AFQueryAABB(callback, aabb);
 		}
 	}
 }
@@ -1323,7 +1298,7 @@ void b2World::DrawDebugData()
 				
 				for each (int32 fIdx in b->GetFixtureIdxBuffer())
 				{
-					if (fIdx != b2_invalidFixtureIndex)
+					if (fIdx != b2_invalidIndex)
 					{
 						b2Fixture* f = m_fixtureBuffer[fIdx];
 						if (b->IsActive() == false)
@@ -1400,7 +1375,7 @@ void b2World::DrawDebugData()
 
 				for each (int32 fIdx in b->GetFixtureIdxBuffer())
 				{
-					if (fIdx != b2_invalidFixtureIndex)
+					if (fIdx != b2_invalidIndex)
 					{
 						b2Fixture* f = m_fixtureBuffer[fIdx];
 						for (int32 i = 0; i < f->m_proxyCount; ++i)

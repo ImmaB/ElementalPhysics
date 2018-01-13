@@ -59,7 +59,7 @@ void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx,
 	for (int32 i = 0; i < childCount; ++i)
 	{
 		m_proxies[i].fixture = NULL;
-		m_proxies[i].fixtureIdx = b2_invalidFixtureIndex;
+		m_proxies[i].fixtureIdx = b2_invalidIndex;
 		m_proxies[i].proxyId = b2BroadPhase::e_nullProxy;
 	}
 	m_proxyCount = 0;

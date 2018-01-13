@@ -190,7 +190,7 @@ int32 b2Body::CreateFixture(const b2FixtureDef* def)
 	// to be created at the beginning of the next time step.
 	m_world->m_flags |= b2World::e_newFixture;
 
-	int32 idx = b2_invalidFixtureIndex;
+	int32 idx = b2_invalidIndex;
 	if (m_fixtureIdxFreeSlots.empty())
 	{
 		idx = m_fixtureIdxBuffer.size();
@@ -226,7 +226,7 @@ void b2Body::DestroyFixture(int32 idx)
 	b2Fixture* fixture = m_world->m_fixtureBuffer[idx];
 
 	b2Assert(fixture->m_body == this);
-	m_fixtureIdxBuffer[idx] = b2_invalidFixtureIndex;
+	m_fixtureIdxBuffer[idx] = b2_invalidIndex;
 	m_fixtureIdxFreeSlots.push_back(idx);
 	// Remove the fixture from this body's singly linked list.
 	b2Assert(m_fixtureCount > 0);

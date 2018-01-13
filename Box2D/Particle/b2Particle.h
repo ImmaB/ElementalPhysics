@@ -34,7 +34,7 @@ class b2ParticleMaterial;
 enum b2ParticleFlag
 {
 	/// Water particle.
-	b2_waterParticle = 0,
+	b2_waterParticle = 1,
 	/// Removed after next simulation step.
 	b2_zombieParticle = 1 << 1,
 	/// Zero velocity.
@@ -305,8 +305,8 @@ struct b2ParticleDef
 		color = 0;
 		lifetime = 0.0f;
 		userData = NULL;
-		groupIdx = b2_invalidGroupIndex;
-		matIdx = b2_invalidMaterialIndex;
+		groupIdx = b2_invalidIndex;
+		matIdx = b2_invalidIndex;
 		heat = 0.0f;
 		health = 1.0f;
 	}
@@ -366,8 +366,8 @@ struct afParticleDef
 		color = 0;
 		lifetime = 0.0f;
 		userData = NULL;
-		groupIdx = b2_invalidGroupIndex;
-		matIdx = b2_invalidMaterialIndex;
+		groupIdx = b2_invalidIndex;
+		matIdx = b2_invalidIndex;
 		heat = 0.0f;
 		health = 1.0f;
 	}
@@ -432,7 +432,7 @@ class b2ParticleHandle : public b2TypedIntrusiveListNode<b2ParticleHandle>
 
 public:
 	/// Initialize the index associated with the handle to an invalid index.
-	b2ParticleHandle() : m_index(b2_invalidParticleIndex) { }
+	b2ParticleHandle() : m_index(b2_invalidIndex) { }
 	/// Empty destructor.
 	~b2ParticleHandle() { }
 

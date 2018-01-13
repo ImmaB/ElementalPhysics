@@ -56,13 +56,48 @@ uint32 b2ParticleGroup::GetAllParticleFlags() const
 	return flags;
 }
 
-/*void b2ParticleGroup::SetGroupFlags(uint32 flags)
+void b2ParticleGroup::SetGroupFlags(uint32 flags)
 {
 	b2Assert((flags & b2_particleGroupInternalMask) == 0);
 	flags |= m_groupFlags & b2_particleGroupInternalMask;
 	m_system->SetGroupFlags(this, flags);
-}*/
+}
 
+void b2ParticleGroup::UpdateStatistics() const
+{
+	if (m_timestamp != m_system->m_timestamp)
+	{
+		float32 m = m_system->m_partMatMassBuf[m_matIdx];  //m_system->GetParticleMass();
+		m_mass = 0;
+		m_center.SetZero();
+		m_linearVelocity.SetZero();
+		for (int32 i = m_firstIndex; i < m_lastIndex; i++)
+		{
+			m_mass += m;
+			m_center += m * b2Vec2(m_system->m_positionXBuffer[i], m_system->m_positionYBuffer[i]);
+			m_linearVelocity += m * b2Vec2(m_system->m_velocityXBuffer[i], m_system->m_velocityXBuffer[i]);
+		}
+		if (m_mass > 0)
+		{
+			m_center *= 1 / m_mass;
+			m_linearVelocity *= 1 / m_mass;
+		}
+		m_inertia = 0;
+		m_angularVelocity = 0;
+		for (int32 i = m_firstIndex; i < m_lastIndex; i++)
+		{
+			b2Vec2 p = b2Vec2(m_system->m_positionXBuffer[i], m_system->m_positionYBuffer[i]) - m_center;
+			b2Vec2 v = b2Vec2(m_system->m_velocityXBuffer[i], m_system->m_velocityYBuffer[i]) - m_linearVelocity;
+			m_inertia += m * b2Dot(p, p);
+			m_angularVelocity += m * b2Cross(p, v);
+		}
+		if (m_inertia > 0)
+		{
+			m_angularVelocity *= 1 / m_inertia;
+		}
+		m_timestamp = m_system->m_timestamp;
+	}
+}
 
 void b2ParticleGroup::ApplyForce(float32 forceX, float32 forceY)
 {

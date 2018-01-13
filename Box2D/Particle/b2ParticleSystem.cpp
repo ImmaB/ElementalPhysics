@@ -17,7 +17,7 @@
 */
 #define NOMINMAX
 #include <Box2D/Particle/b2ParticleSystem.h>
-#include <Box2D/Particle/b2ParticleGroup.h>
+#include <Box2D/Particle/b2Particlegroup.h>
 #include <Box2D/Particle/b2VoronoiDiagram.h>
 #include <Box2D/Particle/b2ParticleAssembly.h>
 #include <Box2D/Common/b2BlockAllocator.h>
@@ -73,7 +73,7 @@ public:
 		: m_system(system), m_lastIndex(-1), m_currentContacts(0),
 		  m_discarded(discarded) {}
 
-	bool operator()(int32 contactIdx)
+	bool operator()(const b2PartBodyContact& contact)
 	{
 		// This implements the selection criteria described in
 		// RemoveSpuriousBodyContacts().
@@ -84,7 +84,7 @@ public:
 		// by projecting a point back along that normal and seeing if it
 		// intersects the fixture generating the contact.
 		
-		int32 particleIdx = m_system->m_bodyContactIdxBuffer[contactIdx];
+		int32 particleIdx = contact.idx;
 
 		if (particleIdx != m_lastIndex)
 		{
@@ -100,16 +100,15 @@ public:
 
 		// Project along inverse normal (as returned in the contact) to get the
 		// point to check.
-		b2Vec2 n = b2Vec2(m_system->m_bodyContactNormalXBuffer[contactIdx],
-						  m_system->m_bodyContactNormalYBuffer[contactIdx]);
+		b2Vec2 n = contact.normal;
 		// weight is 1-(inv(diameter) * distance)
-		n *= m_system->m_particleDiameter * (1 - m_system->m_bodyContactWeightBuffer[contactIdx]);
+		n *= m_system->m_particleDiameter * (1 - contact.weight);
 		b2Vec2 pos = b2Vec2(m_system->m_positionXBuffer[particleIdx], m_system->m_positionYBuffer[particleIdx]) + n;
 
 		// pos is now a point projected back along the contact normal to the
 		// contact distance. If the surface makes sense for a contact, pos will
 		// now lie on or in the fixture generating
-		b2Fixture* fixture = m_system->m_fixtureBuffer[m_system->m_bodyContactFixtureIdxBuffer[contactIdx]];
+		b2Fixture* fixture = contact.fixture;
 		if (!fixture->TestPoint(pos))
 		{
 			int32 childCount = fixture->GetShape()->GetChildCount();
@@ -301,7 +300,7 @@ public:
 };
 
 // Associates a fixture with a particle index.
-typedef LightweightPair<int32,int32> FixtureParticle;
+typedef LightweightPair<b2Fixture*,int32> FixtureParticle;
 
 // Associates a fixture with a particle index.
 typedef LightweightPair<int32,int32> ParticlePair;
@@ -320,7 +319,7 @@ public:
 
 	// Initialize from a set of particle / body contacts for particles
 	// that have the b2_fixtureContactListenerParticle flag set.
-	void Initialize(const vector<int32> bodyContactIdxs, const vector<int32> bodyContactFixturesIdxs,
+	void Initialize(const vector<b2PartBodyContact>& bodyContactIdxs,
 					const int32 numBodyContacts,
 					const uint32 * const particleFlagsBuffer);
 
@@ -397,7 +396,7 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 		}
 		m_first++;
 	}
-	return b2_invalidParticleIndex;
+	return b2_invalidIndex;
 }
 /*/
 b2ParticleSystem::InsideBoundsEnumerator::InsideBoundsEnumerator(
@@ -431,7 +430,7 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 		}
 		m_firstPos++;
 	}
-	return b2_invalidParticleIndex;
+	return b2_invalidIndex;
 }
 
 
@@ -480,136 +479,8 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_pairBufferSize = 0;
 	m_triadCount = 0;
 	m_triadBufferSize = 0;
-	//m_forceBuffer = NULL;
-	//m_weightBuffer = NULL;
-	//m_staticPressureBuffer = NULL;
-	//m_accumulationBuffer = NULL;
-	//m_accumulation2Buffer = NULL;
-	//m_depthBuffer = NULL;
-	//m_groupBuffer = NULL;
-	//m_materialBuffer = NULL;
 
-	afPartBufs = {
-	afPosXBuf						= af::array(0, af::dtype::f32),
-	afPosYBuf						= af::array(0, af::dtype::f32),
-	afPosZBuf						= af::array(0, af::dtype::f32),
-	afFlagBuf						= af::array(0, af::dtype::u32),
-	afColLayBuf						= af::array(0, af::dtype::u32),	
-	afVelXBuf						= af::array(0, af::dtype::f32),
-	afVelYBuf						= af::array(0, af::dtype::f32),
-	afForceXBuf						= af::array(0, af::dtype::f32),
-	afForceYBuf						= af::array(0, af::dtype::f32),
-	afWeightBuf						= af::array(0, af::dtype::f32),
-	afHeatBuf						= af::array(0, af::dtype::f32),
-	afHealthBuf						= af::array(0, af::dtype::f32),
-	afColorBuf						= af::array(0, af::dtype::s32),
-	afUserDataBuf					= af::array(0, af::dtype::s32),
-	afGroupIdxBuf					= af::array(0, af::dtype::s32),
-	afPartMatIdxBuf					= af::array(0, af::dtype::f32)};
-
-	afPartExtraBufs = {
-	afAccumulationBuf				= af::array(0, af::dtype::f32),
-	afAccumulation2XBuf				= af::array(0, af::dtype::f32),
-	afAccumulation2YBuf				= af::array(0, af::dtype::f32),
-	afStaticPressureBuf				= af::array(0, af::dtype::f32),
-	afDepthBuf						= af::array(0, af::dtype::f32),
-																  
-	afLastBodyContactStepBuf		= af::array(0, af::dtype::s32),
-	afBodyContactCountBuf			= af::array(0, af::dtype::s32),
-	afConsecutiveContactStepsBuf	= af::array(0, af::dtype::s32),
-	afStuckParticleBuf				= af::array(0, af::dtype::s32)};
-
-	afProxyBufs = {
-	afProxyIdxBuf					= af::array(0, af::dtype::s32),
-	afProxyTagBuf					= af::array(0, af::dtype::u32)};
-
-	afGroupBufs = {
-	afGroupFirstIdxBuf				= af::array(0, af::dtype::s32),
-	afGroupLastIdxBuf				= af::array(0, af::dtype::s32),
-	afGroupFlagsBuf					= af::array(0, af::dtype::u32),
-	afGroupColGroupBuf				= af::array(0, af::dtype::u32),
-	afGroupStrengthBuf				= af::array(0, af::dtype::f32),
-	afGroupMatIdxBuf				= af::array(0, af::dtype::s32),
-	afGroupTimestampBuf				= af::array(0, af::dtype::f32),
-	afGroupMassBuf					= af::array(0, af::dtype::f32),
-	afGroupInertiaBuf				= af::array(0, af::dtype::f32),
-	afGroupCenterXBuf				= af::array(0, af::dtype::f32),
-	afGroupCenterYBuf				= af::array(0, af::dtype::f32),
-	afGroupLinVelXBuf				= af::array(0, af::dtype::f32),
-	afGroupLinVelYBuf				= af::array(0, af::dtype::f32),
-	afGroupAngVelBuf				= af::array(0, af::dtype::f32),
-	afGroupTransformBuf				= af::array(0, af::dtype::f32),
-	afGroupUserDataBuf				= af::array(0, af::dtype::s32)};
-
-	afContactBufs = {
-	afContactIdxABuf				= af::array(0, af::dtype::s32),
-	afContactIdxBBuf				= af::array(0, af::dtype::s32),
-	afContactWeightBuf				= af::array(0, af::dtype::f32),
-	afContactMassBuf				= af::array(0, af::dtype::f32),
-	afContactNormalXBuf				= af::array(0, af::dtype::f32),
-	afContactNormalYBuf				= af::array(0, af::dtype::f32),
-	afContactFlagsBuf				= af::array(0, af::dtype::u32),
-	afContactMatFlagsBuf			= af::array(0, af::dtype::u32)};
-
-	afBodyBufs = {
-	afBodyContactIdxBuf				= af::array(0, af::dtype::s32),
-	afBodyContactBodyIdxBuf			= af::array(0, af::dtype::s32),
-	afBodyContactFixtIdxBuf			= af::array(0, af::dtype::s32),
-	afBodyContactWeightBuf			= af::array(0, af::dtype::f32),
-	afBodyContactNormalXBuf			= af::array(0, af::dtype::f32),
-	afBodyContactNormalYBuf			= af::array(0, af::dtype::f32),
-	afBodyContactMassBuf			= af::array(0, af::dtype::f32)};
-
-	afPartMatBufs = {
-	afPartMatFlagsBuf				= af::array(0, af::dtype::u32),
-	afPartMatMassBuf				= af::array(0, af::dtype::f32),
-	afPartMatInvMassBuf				= af::array(0, af::dtype::f32),
-	afPartMatStabilityBuf			= af::array(0, af::dtype::f32),
-	afPartMatInvStabilityBuf		= af::array(0, af::dtype::f32),
-	afPartMatExtgshPntBuf			= af::array(0, af::dtype::f32),
-	afPartMatMeltingPntBuf			= af::array(0, af::dtype::f32),
-	afPartMatBoilingPntBuf			= af::array(0, af::dtype::f32),
-	afPartMatIgnitPntBuf			= af::array(0, af::dtype::f32),
-	afPartMatHeatCondBuf			= af::array(0, af::dtype::f32)};
-
-	afPairBufs = {
-	afPairIdxABuf					= af::array(0, af::dtype::s32),
-	afPairIdxBBuf					= af::array(0, af::dtype::s32),
-	afPairFlagsBuf					= af::array(0, af::dtype::u32),
-	afPairStrengthBuf				= af::array(0, af::dtype::u32),
-	afPairDistanceBuf				= af::array(0, af::dtype::u32)};
-
-	afTriadBufs = {
-	afTriadIdxABuf					= af::array(0, af::dtype::s32),
-	afTriadIdxBBuf					= af::array(0, af::dtype::s32),
-	afTriadIdxCBuf					= af::array(0, af::dtype::s32),
-	afTriadFlagsBuf					= af::array(0, af::dtype::u32),
-	afTriadStrengthBuf				= af::array(0, af::dtype::f32),
-	afTriadPAXBuf					= af::array(0, af::dtype::f32),
-	afTriadPAYBuf					= af::array(0, af::dtype::f32),
-	afTriadPBXBuf					= af::array(0, af::dtype::f32),
-	afTriadPBYBuf					= af::array(0, af::dtype::f32),
-	afTriadPCXBuf					= af::array(0, af::dtype::f32),
-	afTriadPCYBuf					= af::array(0, af::dtype::f32),
-	afTriadKABuf					= af::array(0, af::dtype::f32),
-	afTriadKBBuf					= af::array(0, af::dtype::f32),
-	afTriadKCBuf					= af::array(0, af::dtype::f32),
-	afTriadSBuf						= af::array(0, af::dtype::f32)};
-	
-	afHasColorBuf					= false;
-	afHasUserDataBuf				= false;
-	afHasHandleIdxBuf				= false;
-	afHasStaticPresBuf				= false;
-	afHasExpireTimeBuf				= false;
-	afHasIdxByExpireTimeBuf			= false;
-	afHasAccumulation2XBuf			= false;
-	afHasAccumulation2YBuf			= false;
-	afHasDepthBuf					= false;
-	afHasLastBodyContactBuf			= false;
-	afHasBodyContactCountBuf		= false;
-	afHasConsecutiveContactStepsBuf	= false;
-
-
+	hasColorBuf						 = false;
 	hasHandleIndexBuffer			 = false;
 	hasStaticPressureBuf			 = false;
 	hasAccumulation2Buf				 = false;
@@ -719,14 +590,6 @@ void b2ParticleSystem::RequestBuffer(vector<T>& buf, bool& hasBuffer)
 		hasBuffer = true;
 	}
 }
-void b2ParticleSystem::AFRequestBuffer(af::array& buf, bool& hasBuf)
-{
-	if (!hasBuf)
-	{
-		buf = af::constant(0, m_count);
-		hasBuf = true;
-	}
-}
 
 int32* b2ParticleSystem::GetColorBuffer()
 {
@@ -786,7 +649,7 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	m_accumulation2Buf.resize(size);
 	m_depthBuffer.resize(size);
 	m_colorBuffer.resize(size);
-	m_groupIdxBuffer.resize(size);
+	m_partGroupIdxBuffer.resize(size);
 
 	m_partMatIdxBuffer.resize(size);
 
@@ -797,9 +660,9 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	m_proxyIdxBuffer.resize(size);
 	m_proxyTagBuffer.resize(size);
 
-	m_findContactCountBuf.resize(size);
-	m_findContactIdxABuf.resize(size);
-	m_findContactIdxBBuf.resize(size);
+	//m_findContactCountBuf.resize(size);
+	//m_findContactIdxABuf.resize(size);
+	//m_findContactIdxBBuf.resize(size);
 	m_findContactRightTagBuf.resize(size);
 	m_findContactBottomLeftTagBuf.resize(size);
 	m_findContactBottomRightTagBuf.resize(size);
@@ -813,79 +676,33 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 void b2ParticleSystem::ResizeGroupBuffers(int32 size)
 {
 	if (!size) size = b2_minGroupBufferCapacity;
-	m_groupFirstIdxBuf.resize(size);
-	m_groupLastIdxBuf.resize(size);
-	m_groupFlagsBuf.resize(size);
-	m_groupColGroupBuf.resize(size);
-	m_groupStrengthBuf.resize(size);
-	m_groupMatIdxBuf.resize(size);
-	m_groupTimestampBuf.resize(size);
-	m_groupMassBuf.resize(size);
-	m_groupInertiaBuf.resize(size);
-	m_groupCenterXBuf.resize(size);
-	m_groupCenterYBuf.resize(size);
-	m_groupLinVelXBuf.resize(size);
-	m_groupLinVelYBuf.resize(size);
-	m_groupAngVelBuf.resize(size);
-	m_groupTransformBuf.resize(size);
-	m_groupUserDataBuf.resize(size);
+	m_groupBuffer.resize(size);
 	m_groupBufferSize = size;
 }
 
 void b2ParticleSystem::ResizeContactBuffers(int32 size)
 {
 	if (!size) size = b2_minParticleBufferCapacity;
-	m_contactIdxABuffer.resize(size);
-	m_contactIdxBBuffer.resize(size);
-	m_contactWeightBuffer.resize(size);
-	m_contactMassBuffer.resize(size);
-	m_contactNormalXBuffer.resize(size);
-	m_contactNormalYBuffer.resize(size);
-	m_contactFlagsBuffer.resize(size);
-	m_contactMatFlagsBuffer.resize(size);
+	m_partContactBuf.resize(size);
 	m_contactBufferSize = size;
 }
 void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
 	if (!size) size = b2_minParticleBufferCapacity;
-	m_bodyContactIdxBuffer.resize(size);
-	m_bodyContactBodyIdxBuffer.resize(size);
-	m_bodyContactFixtureIdxBuffer.resize(size);
-	m_bodyContactWeightBuffer.resize(size);
-	m_bodyContactNormalXBuffer.resize(size);
-	m_bodyContactNormalYBuffer.resize(size);
-	m_bodyContactMassBuffer.resize(size);
+	m_bodyContactBuf.resize(size);
 	m_bodyContactBufferSize = size;
 }
 
 void b2ParticleSystem::ResizePairBuffers(int32 size)
 {
 	if (!size) size = b2_minParticleBufferCapacity;
-	m_pairIdxABuf.resize(size);
-	m_pairIdxBBuf.resize(size);
-	m_pairFlagsBuf.resize(size);
-	m_pairStrengthBuf.resize(size);
-	m_pairDistanceBuf.resize(size);
+	m_pairBuffer.resize(size);
 	m_pairBufferSize = size;
 }
 void b2ParticleSystem::ResizeTriadBuffers(int32 size)
 {
 	if (!size) size = b2_minParticleBufferCapacity;
-	m_triadIdxABuf.resize(size);
-	m_triadIdxBBuf.resize(size);
-	m_triadIdxCBuf.resize(size);
-	m_triadFlagsBuf.resize(size);
-	m_triadStrengthBuf.resize(size);
-	m_triadPAXBuf.resize(size);
-	m_triadPAYBuf.resize(size);
-	m_triadPBXBuf.resize(size);
-	m_triadPBYBuf.resize(size);
-	m_triadPCXBuf.resize(size);
-	m_triadPCYBuf.resize(size);
-	m_triadKABuf.resize(size);
-	m_triadKBBuf.resize(size);
-	m_triadKCBuf.resize(size);
-	m_triadSBuf.resize(size);
+	m_triadBuffer.resize(size);
 	m_triadBufferSize = size;
 }
 
@@ -905,7 +722,6 @@ int32 b2ParticleSystem::CreateParticleMaterial(const b2ParticleMaterialDef & def
 	m_partMatBoilingPointBuf[idx] = def.boilingPoint;
 	m_partMatIgnitionPointBuf[idx] = def.ignitionPoint;
 	m_partMatHeatConductivityBuf[idx] = def.heatConductivity;
-	CopyMatsToGPU();
 	return idx;
 }
 
@@ -913,9 +729,7 @@ int32 b2ParticleSystem::CreateParticle(const b2ParticleDef& def)
 {
 	b2Assert(m_world->IsLocked() == false);
 	if (m_world->IsLocked())
-	{
 		return 0;
-	}
 
 	if (m_count >= m_particleBufferSize)
 		ResizeParticleBuffers(2 * m_count);
@@ -932,24 +746,18 @@ int32 b2ParticleSystem::CreateParticle(const b2ParticleDef& def)
 		}
 		else
 		{
-			return b2_invalidParticleIndex;
+			return b2_invalidIndex;
 		}
 	}
 	int32 index = m_count++;
 
 	m_flagsBuffer[index] = 0;
 	if (!m_lastBodyContactStepBuffer.empty())
-	{
 		m_lastBodyContactStepBuffer[index] = 0;
-	}
 	if (!m_bodyContactCountBuffer.empty())
-	{
 		m_bodyContactCountBuffer[index] = 0;
-	}
 	if (!m_consecutiveContactStepsBuffer.empty())
-	{
 		m_consecutiveContactStepsBuffer[index] = 0;
-	}
 	m_positionXBuffer[index] = def.positionX;
 	m_positionYBuffer[index] = def.positionY;
 	m_positionZBuffer[index] = def.positionZ;
@@ -964,16 +772,14 @@ int32 b2ParticleSystem::CreateParticle(const b2ParticleDef& def)
 	m_forceYBuffer[index] = 0;
 	m_partMatIdxBuffer[index] = def.matIdx;
 	if (!m_staticPressureBuf.empty())
-	{
 		m_staticPressureBuf[index] = 0;
-	}
+	
 	m_depthBuffer[index] = 0;
 	m_colorBuffer[index] = def.color;
 	m_userDataBuffer[index] = def.userData;
 	if (!m_handleIndexBuffer.empty())
-	{
 		m_handleIndexBuffer[index] = NULL;
-	}
+	
 	m_proxyIdxBuffer[index] = index;
 	m_proxyTagBuffer[index] = 0;
 
@@ -990,130 +796,33 @@ int32 b2ParticleSystem::CreateParticle(const b2ParticleDef& def)
 		m_idxByExpireTimeBuf[index] = index;
 	}
 
-	int32 groupIdx = def.groupIdx;
-	m_groupIdxBuffer[index] = groupIdx;
-	if (groupIdx >= 0)
+	if (def.groupIdx != b2_invalidIndex)
 	{
-		int32& firstIdx = m_groupFirstIdxBuf[groupIdx];
-		int32& lastIdx = m_groupLastIdxBuf[groupIdx];
-		if (firstIdx < lastIdx)
+		b2ParticleGroup* group = m_groupBuffer[def.groupIdx];
+		if (group->m_firstIndex < group->m_lastIndex)
 		{
 			// Move particles in the group just before the new particle.
-			RotateBuffer(firstIdx, lastIdx, index);
-			b2Assert(lastIdx == index);
+			RotateBuffer(group->m_firstIndex, group->m_lastIndex, index);
+			b2Assert(group->m_lastIndex == index);
 			// Update the index range of the group to contain the new particle.
-			lastIdx = index + 1;
+			group->m_lastIndex = index + 1;
 		}
 		else
 		{
 			// If the group is empty, reset the index range to contain only the
 			// new particle.
-			firstIdx = index;
-			lastIdx = index + 1;
+			group->m_firstIndex = index;
+			group->m_lastIndex = index + 1;
 		}
 	}
 	SetParticleFlags(index, def.flags);
 	return index;
 }
-int32 b2ParticleSystem::AFCreateParticle(const afParticleDef& def)
-{
-	b2Assert(m_world->IsLocked() == false);
-	if (m_world->IsLocked())
-		return 0;
-
-	const int32 addCount = def.positionX.elements();
-
-	if (addCount <= 0)
-		return 0;
-
-	int32 newCount = m_count + addCount;
-	const af::array& newIdxs = (af::array)af::seq(addCount) + m_count;
-	const af::array& newEmpty = af::constant(0, addCount);
-
-	if (!afLastBodyContactStepBuf.isempty())
-		AFJoin(afLastBodyContactStepBuf, newEmpty, af::dtype::s32);
-
-	if (!afBodyContactCountBuf.isempty())
-		AFJoin(afBodyContactCountBuf, newEmpty, af::dtype::u32);
-
-	if (!afConsecutiveContactStepsBuf.isempty())
-		AFJoin(afConsecutiveContactStepsBuf, newEmpty, af::dtype::u32);
-
-	AFJoin(afPosXBuf,		def.positionX);
-	AFJoin(afPosYBuf,		def.positionY);
-	AFJoin(afPosZBuf,		def.positionZ);
-	AFJoin(afFlagBuf,		newEmpty, af::dtype::u32);
-	AFJoin(afColLayBuf,		AFGetLayerMaskFromZ(def.positionZ), af::dtype::u32);
-	AFJoin(afVelXBuf,		def.velocityX);
-	AFJoin(afVelYBuf,		def.velocityY);
-	AFJoin(afWeightBuf,		newEmpty);
-	AFJoin(afHeatBuf,		af::constant(def.heat, addCount));
-	AFJoin(afHealthBuf,		af::constant(def.health, addCount));
-	AFJoin(afColorBuf,		def.color, af::dtype::s32);
-	AFJoin(afUserDataBuf,	af::constant(def.userData, addCount), af::dtype::s32);
-	AFJoin(afForceXBuf,		newEmpty);
-	AFJoin(afForceYBuf,		newEmpty);
-	AFJoin(afPartMatIdxBuf, af::constant(def.matIdx, addCount), af::dtype::s32);
-	if (!afStaticPressureBuf.isempty())
-		AFJoin(afStaticPressureBuf, newEmpty);
-	AFJoin(afDepthBuf,		newEmpty);
-	if (afHasHandleIdxBuf)
-		AFJoin(afHandleIdxBuf, af::constant(b2_invalidParticleIndex, addCount), af::dtype::s32);
-	AFJoin(afProxyIdxBuf, newIdxs, af::dtype::s32);
-	AFJoin(afProxyTagBuf, newEmpty, af::dtype::u32);
-
-	// If particle lifetimes are enabled or the lifetime is set in the particle
-	// definition, initialize the lifetime.
-	/*const bool finiteLifetime = def.lifetime > 0;	//TODO
-	if (!m_expireTimeBuf.empty() || finiteLifetime)
-	{
-		SetParticleLifetime(index, finiteLifetime ? def.lifetime :
-			ExpirationTimeToLifetime(
-				-GetQuantizedTimeElapsed()));
-		// Add a reference to the newly added particle to the end of the
-		// queue.
-		m_idxByExpireTimeBuf[index] = index;
-	}*/
-
-	int32 groupIdx = def.groupIdx;
-	AFJoin(afGroupIdxBuf, af::constant(groupIdx, addCount), af::dtype::s32);
-	if (groupIdx != b2_invalidGroupIndex)
-	{
-		int32& firstIdx = m_groupFirstIdxBuf[groupIdx];
-		int32& lastIdx = m_groupLastIdxBuf[groupIdx];
-		if (firstIdx < lastIdx)
-		{
-			// Move particles in the group just before the new particle.
-			AFRotateBuffer(firstIdx, lastIdx, m_count);
-			b2Assert(lastIdx == index);
-			// Update the index range of the group to contain the new particles.
-			lastIdx = newCount;
-		}
-		else
-		{
-			// If the group is empty, reset the index range to contain only the
-			// new particles.
-			firstIdx = m_count;
-			lastIdx = newCount;
-		}
-	}
-	AFSetParticleFlags(newIdxs, def.flags);
-	m_count = newCount;
-
-
-	return newCount;
-}
-
 
 const uint32 b2ParticleSystem::GetLayerMaskFromZ(float32 z)
 {
 	int32 layer = z * m_invPointsPerLayer + m_layerGraphB;
 	return (1 << layer);
-}
-const af::array b2ParticleSystem::AFGetLayerMaskFromZ(const af::array& z)
-{
-	af::array layer = (z * m_invPointsPerLayer + m_layerGraphB).as(af::dtype::u32);
-	return 1 << layer;
 }
 
 /// Retrieve a handle to the particle at the specified index.
@@ -1121,7 +830,7 @@ const b2ParticleHandle* b2ParticleSystem::GetParticleHandleFromIndex(
 	const int32 index)
 {
 	b2Assert(index >= 0 && index < GetParticleCount() &&
-			 index != b2_invalidParticleIndex);
+			 index != b2_invalidIndex);
 	RequestBuffer(m_handleIndexBuffer, hasHandleIndexBuffer);
 	b2ParticleHandle* handle = m_handleIndexBuffer[index];
 	if (handle)
@@ -1136,7 +845,6 @@ const b2ParticleHandle* b2ParticleSystem::GetParticleHandleFromIndex(
 	return handle;
 }
 
-
 void b2ParticleSystem::DestroyParticle(
 	int32 index, bool callDestructionListener)
 {
@@ -1146,15 +854,6 @@ void b2ParticleSystem::DestroyParticle(
 		flags |= b2_destructionListenerParticle;
 	}
 	SetParticleFlags(index, m_flagsBuffer[index] | flags);
-}
-void b2ParticleSystem::AFDestroyParticles(af::array idxs, bool callDestructionListener)
-{
-	uint32 flags = b2_zombieParticle;
-	if (callDestructionListener)
-	{
-		flags |= b2_destructionListenerParticle;
-	}
-	afFlagBuf(idxs) = afFlagBuf(idxs) | flags;
 }
 
 void b2ParticleSystem::DestroyOldestParticle(
@@ -1260,56 +959,7 @@ int32 b2ParticleSystem::CreateParticleForGroup(
 	particleDef.matIdx = groupDef.matIdx;
 	return CreateParticle(particleDef);
 }
-int32 b2ParticleSystem::AFCreateParticleForGroup(
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf, const af::array& px, const af::array& py)
-{
-	//TODO join with create PG
-	afParticleDef particleDef;
-	particleDef.flags     = groupDef.flags;
-	particleDef.positionX = b2MulX(xf, px, py);
-	particleDef.positionY = b2MulY(xf, px, py);
-	float32 z = m_lowestPoint + m_pointsPerLayer * (float32)groupDef.layer;
-	particleDef.positionZ = af::constant(z, px.elements(), af::dtype::f32);
-	particleDef.velocityX = groupDef.linearVelocity.x +
-								b2CrossX(groupDef.angularVelocity,
-									particleDef.positionX - groupDef.position.x);
-	particleDef.velocityY = groupDef.linearVelocity.y +
-								b2CrossY(groupDef.angularVelocity,
-									particleDef.positionY - groupDef.position.y);
-	particleDef.color	  = af::constant(groupDef.color, px.elements(), af::dtype::s32);
-	particleDef.lifetime  = groupDef.lifetime;
-	particleDef.userData  = groupDef.userData;
-	particleDef.health	  = groupDef.health;
-	particleDef.heat	  = groupDef.heat;
-	particleDef.matIdx    = groupDef.matIdx;
-	return AFCreateParticle(particleDef);
-}
 
-int32 b2ParticleSystem::AFCreateParticleForGroup(const b2ParticleGroupDef& groupDef,
-												 const b2Transform& xf,
-												 const af::array& posX, 
-												 const af::array& posY, 
-												 const af::array& posZ,
-												 const af::array& color) {
-	afParticleDef particleDef;
-	particleDef.flags = groupDef.flags;
-	particleDef.positionX = b2MulX(xf, posX, posY);
-	particleDef.positionY = b2MulY(xf, posX, posY);
-	particleDef.positionZ = posZ;
-	particleDef.velocityX = groupDef.linearVelocity.x +
-		b2CrossX(groupDef.angularVelocity,
-			particleDef.positionX - groupDef.position.x);
-	particleDef.velocityY = groupDef.linearVelocity.y +
-		b2CrossY(groupDef.angularVelocity,
-			particleDef.positionY - groupDef.position.y);
-	particleDef.color = groupDef.colorData;
-	particleDef.lifetime = groupDef.lifetime;
-	particleDef.userData = groupDef.userData;
-	particleDef.health = groupDef.health;
-	particleDef.heat = groupDef.heat;
-	particleDef.matIdx = groupDef.matIdx;
-	return AFCreateParticle(particleDef);
-}
 int32 b2ParticleSystem::CreateParticleForGroup(
 	const b2ParticleGroupDef& groupDef, const b2Transform& xf, const b2Vec2& p, const float32 z, int32 c)
 {
@@ -1368,38 +1018,6 @@ void b2ParticleSystem::CreateParticlesStrokeShapeForGroup(
 		positionOnEdge -= edgeLength;
 	}
 }
-void b2ParticleSystem::AFCreateParticlesStrokeShapeForGroup(
-	const b2Shape *shape,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf)
-{
-	float32 stride = groupDef.stride;
-	if (stride == 0)
-	{
-		stride = GetParticleStride();
-	}
-	float32 positionOnEdge = 0;
-	int32 childCount = shape->GetChildCount();
-	for (int32 childIndex = 0; childIndex < childCount; childIndex++)
-	{
-		b2EdgeShape edge;
-		if (shape->GetType() == b2Shape::e_edge)
-		{
-			edge = *(b2EdgeShape*)shape;
-		}
-		else
-		{
-			b2Assert(shape->GetType() == b2Shape::e_chain);
-			((b2ChainShape*)shape)->GetChildEdge(&edge, childIndex);
-		}
-		b2Vec2 d = edge.m_vertex2 - edge.m_vertex1;
-		float32 edgeLength = d.Length();
-		af::array positionsOnEdge = af::seq(positionOnEdge, edgeLength, stride);
-		af::array px = edge.m_vertex1.x + positionsOnEdge / edgeLength * d.x;
-		af::array py = edge.m_vertex1.y + positionsOnEdge / edgeLength * d.y;
-		AFCreateParticleForGroup(groupDef, xf, px, py);
-		positionOnEdge -= edgeLength;
-	}
-}
 
 void b2ParticleSystem::CreateParticlesFillShapeForGroup(
 	const b2Shape *shape,
@@ -1429,39 +1047,6 @@ void b2ParticleSystem::CreateParticlesFillShapeForGroup(
 		}
 	}
 }
-void b2ParticleSystem::AFCreateParticlesFillShapeForGroup(
-	const b2Shape *shape,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf)
-{
-	float32 stride = groupDef.stride;
-	if (stride == 0)
-		stride = GetParticleStride();
-	
-	b2Transform identity;
-	identity.SetIdentity();
-	b2AABB aabb;
-	b2Assert(shape->GetChildCount() == 1);
-	shape->ComputeAABB(&aabb, identity, 0);
-
-	int32 yStart = floorf(aabb.lowerBound.y / stride) * stride;
-	int32 yEnd   = aabb.upperBound.y;
-	int32 xStart = floorf(aabb.lowerBound.x / stride) * stride;
-	int32 xEnd   = aabb.upperBound.x;
-	af::array y = af::seq(yStart, yEnd, stride);
-	af::array x = af::seq(xStart, xEnd, stride);
-	int32 ySize = (yEnd - yStart) / stride;
-	int32 xSize = (xEnd - xStart) / stride;
-	if (ySize <= 0 || xSize <= 0)
-		return;
-	x = af::tile(x, ySize);
-	y = af::tile(y, 1, xSize);
-	y = af::transpose(y);
-	y = af::flat(y);
-
-	af::array condIdxs = af::where(shape->AFTestPoints(identity, x, y));
-	if (!condIdxs.isempty())
-		AFCreateParticleForGroup(groupDef, xf, x(condIdxs), y(condIdxs));
-}
 
 void b2ParticleSystem::CreateParticlesWithShapeForGroup(
 	const b2Shape* shape,
@@ -1475,24 +1060,6 @@ void b2ParticleSystem::CreateParticlesWithShapeForGroup(
 	case b2Shape::e_polygon:
 	case b2Shape::e_circle:
 		CreateParticlesFillShapeForGroup(shape, groupDef, xf);
-		break;
-	default:
-		b2Assert(false);
-		break;
-	}
-}
-void b2ParticleSystem::AFCreateParticlesWithShapeForGroup(
-	const b2Shape* shape,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf)
-{
-	switch (shape->GetType()) {
-	case b2Shape::e_edge:
-	case b2Shape::e_chain:
-		AFCreateParticlesStrokeShapeForGroup(shape, groupDef, xf);
-		break;
-	case b2Shape::e_polygon:
-	case b2Shape::e_circle:
-		AFCreateParticlesFillShapeForGroup(shape, groupDef, xf);
 		break;
 	default:
 		b2Assert(false);
@@ -1617,129 +1184,11 @@ void b2ParticleSystem::CreateParticlesWithShapesForGroup(
 	} compositeShape(shapes, shapeCount);
 	CreateParticlesFillShapeForGroup(&compositeShape, groupDef, xf);
 }
-void b2ParticleSystem::AFCreateParticlesWithShapesForGroup(
-	const b2Shape* const* shapes, int32 shapeCount,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf)
-{
-	class CompositeShape : public b2Shape
-	{
-	public:
-		CompositeShape(const b2Shape* const* shapes, int32 shapeCount)
-		{
-			m_shapes = shapes;
-			m_shapeCount = shapeCount;
-		}
-		b2Shape* Clone(b2BlockAllocator* allocator) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(allocator);
-			return NULL;
-		}
-		int32 GetChildCount() const
-		{
-			return 1;
-		}
-		bool TestPoint(const b2Transform& xf, const b2Vec2& p) const
-		{
-			for (int32 i = 0; i < m_shapeCount; i++)
-			{
-				if (m_shapes[i]->TestPoint(xf, p))
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-		af::array AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const
-		{
-			af::array ret = af::constant(0, px.elements(), af::dtype::b8);
-			for (int32 i = 0; i < m_shapeCount; ++i)
-			{
-				ret(af::where(m_shapes[i]->AFTestPoints(xf, px, py))) = true;
-			}
-			return ret;
-		}
-		void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
-			float32* distance, b2Vec2* normal, int32 childIndex) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(xf);
-			B2_NOT_USED(p);
-			B2_NOT_USED(distance);
-			B2_NOT_USED(normal);
-			B2_NOT_USED(childIndex);
-		}
-		void AFComputeDistance(const b2Transform& xf, const af::array& px,
-			const af::array& py, af::array& distance, af::array& normalX, af::array& normalY,
-			int32 childIndex) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(xf);
-			B2_NOT_USED(px);
-			B2_NOT_USED(py);
-			B2_NOT_USED(distance);
-			B2_NOT_USED(normalX);
-			B2_NOT_USED(normalY);
-			B2_NOT_USED(childIndex);
-		}
-		bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
-			const b2Transform& transform, int32 childIndex) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(output);
-			B2_NOT_USED(input);
-			B2_NOT_USED(transform);
-			B2_NOT_USED(childIndex);
-			return false;
-		}
-		af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
-			const b2Transform& transform, int32 childIndex) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(output);
-			B2_NOT_USED(input);
-			B2_NOT_USED(transform);
-			B2_NOT_USED(childIndex);
-			return af::array(false, input.p1x.elements(), af::dtype::b8);
-		}
-		void ComputeAABB(
-			b2AABB* aabb, const b2Transform& xf, int32 childIndex) const
-		{
-			B2_NOT_USED(childIndex);
-			aabb->lowerBound.x = +FLT_MAX;
-			aabb->lowerBound.y = +FLT_MAX;
-			aabb->upperBound.x = -FLT_MAX;
-			aabb->upperBound.y = -FLT_MAX;
-			b2Assert(childIndex == 0);
-			for (int32 i = 0; i < m_shapeCount; i++)
-			{
-				int32 childCount = m_shapes[i]->GetChildCount();
-				for (int32 j = 0; j < childCount; j++)
-				{
-					b2AABB subaabb;
-					m_shapes[i]->ComputeAABB(&subaabb, xf, j);
-					aabb->Combine(subaabb);
-				}
-			}
-		}
-		void ComputeMass(b2MassData* massData, float32 density) const
-		{
-			b2Assert(false);
-			B2_NOT_USED(massData);
-			B2_NOT_USED(density);
-		}
-	private:
-		const b2Shape* const* m_shapes;
-		int32 m_shapeCount;
-	} compositeShape(shapes, shapeCount);
-	AFCreateParticlesFillShapeForGroup(&compositeShape, groupDef, xf);
-}
 
 int32 b2ParticleSystem::CreateParticleGroup(
 	const b2ParticleGroupDef& groupDef)
 {
-	clock_t clockCreateGroup = clock();
-
+	//clock_t clockCreateGroup = clock();
 	b2Assert(m_world->IsLocked() == false);
 	if (m_world->IsLocked())
 	{
@@ -1768,121 +1217,48 @@ int32 b2ParticleSystem::CreateParticleGroup(
 			CreateParticleForGroup(groupDef, transform, b2Vec2(groupDef.positionDataX[i], groupDef.positionDataY[i]), groupDef.positionDataZ[i], c);
 		}
 	}
-	if (m_groupCount >= m_groupBufferSize)
-		ResizeGroupBuffers(m_groupBufferSize * 2);
 
 	int32 lastIndex = m_count;
 
-	int32 groupIdx;
-	if (!m_freeGroupIdxBuffer.empty())
+	int32 groupIdx = b2_invalidIndex;
+	if (m_emptyGroupSlots)
 	{
-		groupIdx = m_freeGroupIdxBuffer.back();
-		m_freeGroupIdxBuffer.pop_back();
+		for (int32 i = 0; i < m_groupCount; i++)
+		{
+			if (!m_groupBuffer[i])
+			{
+				groupIdx = i;
+				m_emptyGroupSlots--;
+				break;
+			}
+		}
 	}
-	else
+	if (groupIdx == b2_invalidIndex)
 	{
-		groupIdx = m_groupCount;
-		m_groupCount++;
+		groupIdx = m_groupCount++; 
+		if (m_groupCount >= m_groupBufferSize)
+			ResizeGroupBuffers(m_groupBufferSize * 2);
 	}
-	m_groupFirstIdxBuf[groupIdx] = firstIndex;
-	m_groupLastIdxBuf[groupIdx] = lastIndex;
-	m_groupStrengthBuf[groupIdx] = groupDef.strength;
-	m_groupUserDataBuf[groupIdx] = groupDef.userData;
-	m_groupColGroupBuf[groupIdx] = groupDef.collisionGroup;
-	m_groupMatIdxBuf[groupIdx] = groupDef.matIdx;
-	m_groupTransformBuf[groupIdx] = transform;
+	b2ParticleGroup* group = m_groupBuffer[groupIdx] = new b2ParticleGroup();
+	group->m_firstIndex = firstIndex;
+	group->m_lastIndex = lastIndex;
+	group->m_strength = groupDef.strength;
+	group->m_userData = groupDef.userData;
+	group->m_collisionGroup = groupDef.collisionGroup;
+	group->m_matIdx = groupDef.matIdx;
+	group->m_transform = transform;
 
 	for (int32 i = firstIndex; i < lastIndex; i++)
 	{
-		m_groupIdxBuffer[i] = groupIdx;
+		m_partGroupIdxBuffer[i] = groupIdx;
 	}
-	SetGroupFlags(groupIdx, groupDef.groupFlags);
+	SetGroupFlags(group, groupDef.groupFlags);
 
 
-	// Create pairs and triads between particles in the group.
+	// Create pairs and triads between particles in the group->
 	ConnectionFilter filter;
-	//UpdateContacts(true);
-	//UpdatePairsAndTriads(firstIndex, lastIndex, filter);
-
-	cout << "CreateGroup " << (clock() - clockCreateGroup) * 1000 / CLOCKS_PER_SEC << "ms\n";
-
-	return groupIdx;
-
-	if (groupDef.groupIdx)
-	{
-		JoinParticleGroups(groupDef.groupIdx, groupIdx);
-		groupIdx = groupDef.groupIdx;
-	}
-
-	return groupIdx;
-}
-int32 b2ParticleSystem::AFCreateParticleGroup(
-	const b2ParticleGroupDef& groupDef)
-{
-	b2Assert(m_world->IsLocked() == false);
-	if (m_world->IsLocked())
-		return 0;
-
-	b2Transform transform;
-	transform.Set(groupDef.position, groupDef.angle);
-	int32 firstIndex = m_count;
-	if (groupDef.shape)
-	{
-		AFCreateParticlesWithShapeForGroup(groupDef.shape, groupDef, transform);
-	}
-	if (groupDef.shapes)
-	{
-		AFCreateParticlesWithShapesForGroup(
-			groupDef.shapes, groupDef.shapeCount, groupDef, transform);
-	}
-	if (groupDef.particleCount)
-	{
-		b2Assert(groupDef.positionDataX);
-		b2Assert(groupDef.colorData);
-		af::array px = af::array(groupDef.particleCount, afArrayDims, groupDef.positionDataX);
-		af::array py = af::array(groupDef.particleCount, afArrayDims, groupDef.positionDataY);
-		af::array pz = af::array(groupDef.particleCount, afArrayDims, groupDef.positionDataZ);
-		af::array c  = af::array(groupDef.particleCount, afArrayDims, groupDef.colorData);
-		AFCreateParticleForGroup(groupDef, transform, px, py, pz, c);
-	}
-	if (m_groupCount >= m_groupBufferSize)
-		ResizeGroupBuffers(m_groupBufferSize * 2);
-
-	int32 lastIndex = m_count;
-
-	int32 groupIdx;
-	if (!m_freeGroupIdxBuffer.empty())
-	{
-		groupIdx = m_freeGroupIdxBuffer.back();
-		m_freeGroupIdxBuffer.pop_back();
-	}
-	else
-	{
-		groupIdx = m_groupCount;
-		m_groupCount++;
-	}
-	m_groupFirstIdxBuf[groupIdx] = firstIndex;
-	m_groupLastIdxBuf[groupIdx] = lastIndex;
-	m_groupStrengthBuf[groupIdx] = groupDef.strength;
-	m_groupUserDataBuf[groupIdx] = groupDef.userData;
-	m_groupColGroupBuf[groupIdx] = groupDef.collisionGroup;
-	m_groupMatIdxBuf[groupIdx] = groupDef.matIdx;
-	m_groupTransformBuf[groupIdx] = transform;
-
-	// Set Particle Group
-	int32 partCount = lastIndex - firstIndex;
-	if (partCount)
-	{
-		afGroupIdxBuf((af::array)(af::seq(partCount)) + firstIndex) = groupIdx;
-	}
-
-	SetGroupFlags(groupIdx, groupDef.groupFlags);
-
-	// Create pairs and triads between particles in the group.
-	AFConnectionFilter filter;
-	
-	//AFUpdateContacts(true);
-	//AFUpdatePairsAndTriads(firstIndex, lastIndex, filter);
+	UpdateContacts(true);
+	UpdatePairsAndTriads(firstIndex, lastIndex, filter);
 
 	return groupIdx;
 
@@ -1903,15 +1279,18 @@ void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
 	{
 		return;
 	}
+	b2Assert(groupAIdx != groupBIdx);
 
-	b2Assert(groupA != groupB);
-	RotateBuffer(m_groupFirstIdxBuf[groupBIdx], m_groupLastIdxBuf[groupBIdx], m_count);
-	b2Assert(m_groupLastIdxBuf[groupBIdx] == m_count);
-	RotateBuffer(m_groupFirstIdxBuf[groupAIdx], m_groupLastIdxBuf[groupAIdx],
-				 m_groupFirstIdxBuf[groupBIdx]);
-	b2Assert(m_groupLastIdxBuf[groupAIdx] == m_groupFirstIdxBuf[groupBIdx]);
+	b2ParticleGroup* groupA = m_groupBuffer[groupAIdx];
+	b2ParticleGroup* groupB = m_groupBuffer[groupBIdx];
 
-	// Create pairs and triads connecting groupA and groupB.
+	RotateBuffer(groupB->m_firstIndex, groupB->m_lastIndex, m_count);
+	b2Assert(groupB->m_lastIndex == m_count);
+	RotateBuffer(groupA->m_firstIndex, groupA->m_lastIndex,
+		groupB->m_firstIndex);
+	b2Assert(groupA->m_lastIndex == groupB->m_firstIndex);
+
+	// Create pairs and triads connecting groupA and groupB->
 	class JoinParticleGroupsFilter : public ConnectionFilter
 	{
 		bool ShouldCreatePair(int32 a, int32 b) const
@@ -1932,18 +1311,18 @@ void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
 		{
 			m_threshold = threshold;
 		}
-	} filter(m_groupFirstIdxBuf[groupBIdx]);
+	} filter(groupB->m_firstIndex);
 	UpdateContacts(true);
-	UpdatePairsAndTriads(m_groupFirstIdxBuf[groupAIdx], m_groupLastIdxBuf[groupBIdx], filter);
+	UpdatePairsAndTriads(groupA->m_firstIndex, groupB->m_lastIndex, filter);
 
-	for (int32 i = m_groupFirstIdxBuf[groupBIdx]; i < m_groupLastIdxBuf[groupBIdx]; i++)
+	for (int32 i = groupB->m_firstIndex; i < groupB->m_lastIndex; i++)
 	{
-		m_groupIdxBuffer[i] = groupAIdx;
+		m_partGroupIdxBuffer[i] = groupAIdx;
 	}
-	uint32 groupFlags = m_groupFlagsBuf[groupAIdx] | m_groupFlagsBuf[groupBIdx];
-	SetGroupFlags(groupAIdx, groupFlags);
-	m_groupLastIdxBuf[groupAIdx] = m_groupLastIdxBuf[groupBIdx];
-	m_groupFirstIdxBuf[groupBIdx] = m_groupLastIdxBuf[groupBIdx];
+	uint32 groupFlags = groupA->m_groupFlags | groupB->m_groupFlags;
+	SetGroupFlags(groupA, groupFlags);
+	groupA->m_lastIndex = groupB->m_lastIndex;
+	groupB->m_firstIndex = groupB->m_lastIndex;
 	DestroyParticleGroup(groupBIdx);
 }
 
@@ -1964,59 +1343,6 @@ void b2ParticleSystem::SplitParticleGroup(b2ParticleGroup* group)
 	CreateParticleGroupsFromParticleList(group, nodeBuffer, survivingList);
 	UpdatePairsAndTriadsWithParticleList(group, nodeBuffer);
 	m_world->m_stackAllocator.Free(nodeBuffer);
-}
-
-void b2ParticleSystem::UpdateGroupStatistics(int32 groupIdx)
-{
-	if (m_groupTimestampBuf[groupIdx] != m_timestamp)
-	{
-		int32 firstIdx = m_groupFirstIdxBuf[groupIdx];
-		int32 lastIdx = m_groupLastIdxBuf[groupIdx];
-
-		float32 m = m_partMatMassBuf[m_groupMatIdxBuf[groupIdx]];
-		float32& mass = m_groupMassBuf[groupIdx];
-		float32& centerX = m_groupCenterXBuf[groupIdx];
-		float32& centerY = m_groupCenterYBuf[groupIdx];
-		float32& linVelX = m_groupLinVelXBuf[groupIdx];
-		float32& linVelY = m_groupLinVelYBuf[groupIdx];
-		mass = 0;
-		centerX = 0;
-		centerY	= 0;
-		linVelX	= 0;
-		linVelY	= 0;
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			mass += m;
-			centerX += m * m_positionXBuffer[i];
-			centerY += m * m_positionYBuffer[i];
-			linVelX += m * m_velocityXBuffer[i];
-			linVelY += m * m_velocityXBuffer[i];
-		}
-		if (mass > 0)
-		{
-			centerX *= 1 / mass;
-			centerY *= 1 / mass;
-			linVelX *= 1 / mass;
-			linVelY *= 1 / mass;
-		}
-		float32& inertia = m_groupInertiaBuf[groupIdx];
-		float32& angVel = m_groupAngVelBuf[groupIdx];
-		inertia = 0;
-		angVel = 0;
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			float32 px = m_positionXBuffer[i] - centerX,
-					py = m_positionYBuffer[i] - centerY,
-					vx = m_velocityXBuffer[i] - linVelX,
-					vy = m_velocityYBuffer[i] - linVelY;
-			inertia += m * b2Dot(px, py, px, py);
-			angVel += m * b2Cross(px, py, vx, vy);
-		}
-		if (inertia > 0)
-			angVel *= 1 / inertia;
-
-		m_groupTimestampBuf[groupIdx] = m_timestamp;
-	}
 }
 
 void b2ParticleSystem::InitializeParticleLists(
@@ -2040,8 +1366,9 @@ void b2ParticleSystem::MergeParticleListsInContact(
 	int32 bufferIndex = group->GetBufferIndex();
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
 		if (!group->ContainsParticle(a) || !group->ContainsParticle(b)) {
 			continue;
 		}
@@ -2180,34 +1507,26 @@ void b2ParticleSystem::UpdatePairsAndTriadsWithParticleList(
 	// be shifted by bufferIndex.
 	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		int32 a = m_pairIdxABuf[k];
-		int32 b = m_pairIdxBBuf[k];
+		b2ParticlePair& pair = m_pairBuffer[k];
+		int32 a = pair.indexA;
+		int32 b = pair.indexB;
 		if (group->ContainsParticle(a))
-		{
-			m_pairIdxABuf[k] = nodeBuffer[a - bufferIndex].index;
-		}
+			pair.indexA = nodeBuffer[a - bufferIndex].index;		
 		if (group->ContainsParticle(b))
-		{
-			m_pairIdxBBuf[k] = nodeBuffer[b - bufferIndex].index;
-		}
+			pair.indexB = nodeBuffer[b - bufferIndex].index;		
 	}
 	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		int32 a = m_triadIdxABuf[k];
-		int32 b = m_triadIdxBBuf[k];
-		int32 c = m_triadIdxCBuf[k];
-		if (group->ContainsParticle(a))
-		{
-			m_triadIdxABuf[k] = nodeBuffer[a - bufferIndex].index;
-		}
-		if (group->ContainsParticle(b))
-		{
-			m_triadIdxBBuf[k] = nodeBuffer[b - bufferIndex].index;
-		}
-		if (group->ContainsParticle(c))
-		{
-			m_triadIdxCBuf[k] = nodeBuffer[c - bufferIndex].index;
-		}
+		b2ParticleTriad& triad = m_triadBuffer[k];
+		int32 a = triad.indexA;
+		int32 b = triad.indexB;
+		int32 c = triad.indexC;
+		if (group->ContainsParticle(a))		
+			triad.indexA = nodeBuffer[a - bufferIndex].index;		
+		if (group->ContainsParticle(b))		
+			triad.indexB = nodeBuffer[b - bufferIndex].index;		
+		if (group->ContainsParticle(c))		
+			triad.indexC = nodeBuffer[c - bufferIndex].index;		
 	}
 }
 
@@ -2295,40 +1614,13 @@ void b2ParticleSystem::UpdatePairsAndTriadsWithReactiveParticles()
 	}
 	m_allParticleFlags &= ~b2_reactiveParticle;
 }
-void b2ParticleSystem::AFUpdatePairsAndTriadsWithReactiveParticles()
-{
-	class AFReactiveFilter : public AFConnectionFilter
-	{
-		af::array IsNecessary(af::array idxs) const
-		{
-			return (flagsBuf(idxs) & b2_reactiveParticle) != 0;
-		}
-		af::array flagsBuf;
-	public:
-		AFReactiveFilter(af::array flags)
-		{
-			flagsBuf = flags;
-		}
-	} filter(afFlagBuf);
-	AFUpdatePairsAndTriads(0, m_count, filter);
-
-	afFlagBuf = afFlagBuf & ~b2_reactiveParticle;
-	m_allParticleFlags &= ~b2_reactiveParticle;
-}
 
 static bool ParticleCanBeConnected(
-	uint32 flags, int32 groupIdx, int32 groupFlags)
+	uint32 flags, b2ParticleGroup* group, int32 groupIdx)
 {
 	return
 		(flags & (b2_wallParticle | b2_springParticle | b2_elasticParticle)) ||
-		(groupIdx && groupFlags & b2_rigidParticleGroup);
-}
-static af::array AFParticleCanBeConnected(
-	af::array flags, af::array groupIdx, af::array groupFlags)
-{
-	return
-		(flags & (b2_wallParticle | b2_springParticle | b2_elasticParticle)) ||
-		(groupIdx && groupFlags & b2_rigidParticleGroup);
+		(groupIdx != b2_invalidIndex && group->GetGroupFlags() & b2_rigidParticleGroup);
 }
 
 void b2ParticleSystem::UpdatePairsAndTriads(
@@ -2353,68 +1645,41 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 	{
 		for (int32 k = 0; k < m_contactCount; k++)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
 			uint32 af = m_flagsBuffer[a];
 			uint32 bf = m_flagsBuffer[b];
-			int32 groupAIdx = m_groupIdxBuffer[a];
-			int32 groupBIdx = m_groupIdxBuffer[b];
+			int32 groupAIdx = m_partGroupIdxBuffer[a];
+			int32 groupBIdx = m_partGroupIdxBuffer[b];
+			b2ParticleGroup* groupA = m_groupBuffer[groupAIdx];
+			b2ParticleGroup* groupB = m_groupBuffer[groupBIdx];
 			if (a >= firstIndex && a < lastIndex &&
 				b >= firstIndex && b < lastIndex &&
 				!((af | bf) & b2_zombieParticle) &&
 				((af | bf) & k_pairFlags) &&
 				(filter.IsNecessary(a) || filter.IsNecessary(b)) &&
-				ParticleCanBeConnected(af, groupAIdx, m_groupFlagsBuf[groupAIdx]) &&
-				ParticleCanBeConnected(bf, groupBIdx, m_groupFlagsBuf[groupBIdx]) &&
+				ParticleCanBeConnected(af, groupA, groupAIdx) &&
+				ParticleCanBeConnected(bf, groupB, groupBIdx) &&
 				filter.ShouldCreatePair(a, b))
 			{
 				if (m_pairCount >= m_pairBufferSize)
 					ResizePairBuffers(m_pairCount * 2);
-				int32 i = m_pairCount;
-				m_pairCount++;
-				m_pairIdxABuf[i] = a;
-				m_pairIdxBBuf[i] = b;
-				m_pairFlagsBuf[i] = m_contactFlagsBuffer[k];
-				m_pairStrengthBuf[i] = b2Min(
-					groupAIdx != b2_invalidGroupIndex ? m_groupStrengthBuf[groupAIdx] : 1,
-					groupBIdx != b2_invalidGroupIndex ? m_groupStrengthBuf[groupBIdx] : 1);
-				m_pairDistanceBuf[i] = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
-												  b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]));
+				b2ParticlePair& pair = m_pairBuffer[m_pairCount];
+				pair.indexA = a;
+				pair.indexB = b;
+				pair.flags = contact.flags;
+				pair.strength = b2Min(
+					groupAIdx != b2_invalidIndex ? groupA->m_strength : 1,
+					groupBIdx != b2_invalidIndex ? groupB->m_strength : 1);
+				pair.distance = b2Distance(b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]),
+										   b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]));
 			}
 		}
-
-		// Sort
-		vector<int32> idxs(m_pairCount);
-		std::iota(idxs.begin(), idxs.end(), 0);
-
-		auto ComparePairIndices = [this](int32 a, int32 b) -> bool
-		{
-			int32 diffA = m_pairIdxABuf[a] - m_pairIdxABuf[b];
-			if (diffA != 0) return diffA < 0;
-			return m_pairIdxBBuf[a] < m_pairIdxBBuf[b];
-		};
-
-		concurrency::parallel_sort(idxs.begin(), idxs.end(), ComparePairIndices);
-
-		reorder(m_pairIdxABuf, idxs);
-		reorder(m_pairIdxBBuf, idxs);
-		reorder(m_pairFlagsBuf, idxs);
-		reorder(m_pairStrengthBuf, idxs);
-		reorder(m_pairDistanceBuf, idxs);
-
-		auto MatchPairIndices = [this](int32 a, int32 b) -> bool
-		{
-			return m_pairIdxABuf[a] == m_pairIdxABuf[b] && m_pairIdxBBuf[a] == m_pairIdxBBuf[b];
-		};
-
-		idxs = GetUniqueIdxs(m_pairCount, MatchPairIndices);
-		reorder(m_pairIdxABuf, idxs);
-		reorder(m_pairIdxBBuf, idxs);
-		reorder(m_pairFlagsBuf, idxs);
-		reorder(m_pairStrengthBuf, idxs);
-		reorder(m_pairDistanceBuf, idxs);
-
-		m_pairCount = idxs.size();
+		concurrency::parallel_sort(
+			m_pairBuffer.begin(), m_pairBuffer.end(), ComparePairIndices);
+		unique(m_pairBuffer.begin(), m_pairBuffer.end(), MatchPairIndices);
+		m_pairCount = m_pairBuffer.size();
 	}
 	if (particleFlags & k_triadFlags)
 	{
@@ -2423,9 +1688,9 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 		for (int32 i = firstIndex; i < lastIndex; i++)
 		{
 			uint32 flags = m_flagsBuffer[i];
-			int32 groupIdx = m_groupIdxBuffer[i];
+			int32 groupIdx = m_partGroupIdxBuffer[i];
 			if (!(flags & b2_zombieParticle) &&
-				ParticleCanBeConnected(flags, groupIdx, m_groupFlagsBuf[groupIdx]))
+				ParticleCanBeConnected(flags, m_groupBuffer[groupIdx], groupIdx))
 			{
 				diagram.AddGenerator(
 					b2Vec2(m_positionXBuffer[i], m_positionYBuffer[i]), i, filter.IsNecessary(i));
@@ -2443,56 +1708,45 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 				if (((af | bf | cf) & k_triadFlags) &&
 					m_filter->ShouldCreateTriad(a, b, c))
 				{
-					const float32 pax = m_system->m_positionXBuffer[a];
-					const float32 pay = m_system->m_positionYBuffer[a];
-					const float32 pbx = m_system->m_positionXBuffer[b];
-					const float32 pby = m_system->m_positionYBuffer[b];
-					const float32 pcx = m_system->m_positionXBuffer[c];
-					const float32 pcy = m_system->m_positionYBuffer[c];
-					float32 dabx = pax - pbx;
-					float32 daby = pay - pby;
-					float32 dbcx = pbx - pcx;
-					float32 dbcy = pby - pcy;
-					float32 dcax = pcx - pax;
-					float32 dcay = pcy - pay;
+					const b2Vec2& pa = b2Vec2(m_system->m_positionXBuffer[a], m_system->m_positionYBuffer[a]);
+					const b2Vec2& pb = b2Vec2(m_system->m_positionXBuffer[b], m_system->m_positionYBuffer[b]);
+					const b2Vec2& pc = b2Vec2(m_system->m_positionXBuffer[c], m_system->m_positionYBuffer[c]);
+					b2Vec2 dab = pa - pb;
+					b2Vec2 dbc = pb - pc;
+					b2Vec2 dca = pc - pa;
 					float32 maxDistanceSquared = b2_maxTriadDistanceSquared *
-												 m_system->m_squaredDiameter;
-					if (b2Dot(dabx, daby, dabx, daby) > maxDistanceSquared ||
-						b2Dot(dbcx, dbcy, dbcx, dbcy) > maxDistanceSquared ||
-						b2Dot(dcax, dcay, dcax, dcay) > maxDistanceSquared)
-					{
+						m_system->m_squaredDiameter;
+					if (b2Dot(dab, dab) > maxDistanceSquared ||
+						b2Dot(dbc, dbc) > maxDistanceSquared ||
+						b2Dot(dca, dca) > maxDistanceSquared)
 						return;
-					}
-					int32 groupAIdx = m_system->m_groupIdxBuffer[a];
-					int32 groupBIdx = m_system->m_groupIdxBuffer[b];
-					int32 groupCIdx = m_system->m_groupIdxBuffer[c];
+					int32 groupAIdx = m_system->m_partGroupIdxBuffer[a];
+					int32 groupBIdx = m_system->m_partGroupIdxBuffer[b];
+					int32 groupCIdx = m_system->m_partGroupIdxBuffer[c];
+					b2ParticleGroup* groupA = m_system->m_groupBuffer[groupAIdx];
+					b2ParticleGroup* groupB = m_system->m_groupBuffer[groupBIdx];
+					b2ParticleGroup* groupC = m_system->m_groupBuffer[groupCIdx];
 					int32& triadCount = m_system->m_triadCount;
 					if (triadCount >= m_system->m_triadBufferSize)
 						m_system->ResizeTriadBuffers(triadCount * 2);
-					int i = triadCount;
+					b2ParticleTriad& triad = m_system->m_triadBuffer[triadCount];
 					triadCount++;
-					m_system->m_triadIdxABuf[i] = a;
-					m_system->m_triadIdxBBuf[i] = b;
-					m_system->m_triadIdxCBuf[i] = c;
-					m_system->m_triadFlagsBuf[i] = af | bf | cf;
-					const std::vector<float32>& strengthBuf = m_system->m_groupStrengthBuf;
-					m_system->m_triadStrengthBuf[i] = b2Min(b2Min(
-						groupAIdx ? strengthBuf[groupAIdx] : 1,
-						groupBIdx ? strengthBuf[groupBIdx] : 1),
-						groupCIdx ? strengthBuf[groupCIdx] : 1);
-					float32 midPointX = (float32)1 / 3 * (pax + pbx + pcx);
-					float32 midPointY = (float32)1 / 3 * (pay + pby + pcy);
-					m_system->m_triadPAXBuf[i] = pax - midPointX;
-					m_system->m_triadPAYBuf[i] = pay - midPointY;
-					m_system->m_triadPBXBuf[i] = pbx - midPointX;
-					m_system->m_triadPBYBuf[i] = pby - midPointY;
-					m_system->m_triadPCXBuf[i] = pcx - midPointX;
-					m_system->m_triadPCYBuf[i] = pcy - midPointY;
-					m_system->m_triadKABuf[i] = -b2Dot(dcay, dcay, dabx, daby);
-					m_system->m_triadKBBuf[i] = -b2Dot(daby, daby, dbcx, dbcy);
-					m_system->m_triadKCBuf[i] = -b2Dot(dbcy, dbcy, dcax, dcay);
-					m_system->m_triadSBuf[i] = b2Cross(pax, pay, pbx, pby) + b2Cross(pbx, pby, pcx, pcy) + b2Cross(pcx, pcy, pax, pay);
-					triadCount++;
+					triad.indexA = a;
+					triad.indexB = b;
+					triad.indexC = c;
+					triad.flags = af | bf | cf;
+					triad.strength = b2Min(b2Min(
+						groupAIdx != b2_invalidIndex ? groupA->m_strength : 1,
+						groupBIdx != b2_invalidIndex ? groupB->m_strength : 1),
+						groupCIdx != b2_invalidIndex ? groupC->m_strength : 1);
+					b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
+					triad.pa = pa - midPoint;
+					triad.pb = pb - midPoint;
+					triad.pc = pc - midPoint;
+					triad.ka = -b2Dot(dca, dab);
+					triad.kb = -b2Dot(dab, dbc);
+					triad.kc = -b2Dot(dbc, dca);
+					triad.s = b2Cross(pa, pb) + b2Cross(pb, pc) + b2Cross(pc, pa);
 				}
 			}
 			b2ParticleSystem* m_system;
@@ -2508,262 +1762,41 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 		diagram.GetNodes(callback);
 
 
-		auto CompareTriadIndices = [this](int32 a, int32 b) -> bool
-		{
-			int32 diffA = m_triadIdxABuf[a] - m_triadIdxABuf[b];
-			if (diffA != 0) return diffA < 0;
-			int32 diffB = m_triadIdxBBuf[a] - m_triadIdxBBuf[b];
-			if (diffB != 0) return diffB < 0;
-			return m_triadIdxCBuf[a] < m_triadIdxCBuf[b];
-		};
-		auto MatchTriadIndices = [this](int32 a, int32 b) -> bool
-		{
-			return m_triadIdxABuf[a] == m_triadIdxABuf[b]
-				&& m_triadIdxBBuf[a] == m_triadIdxBBuf[b]
-				&& m_triadIdxCBuf[a] == m_triadIdxCBuf[b];
-		};
-
-
-
-		vector<int32> idxs = GetStableSortedIdxs(m_triadCount, CompareTriadIndices);
-		reorder(m_triadIdxABuf, idxs);
-		reorder(m_triadIdxBBuf, idxs);
-		reorder(m_triadIdxCBuf, idxs);
-		reorder(m_triadFlagsBuf, idxs);
-		reorder(m_triadStrengthBuf, idxs);
-		reorder(m_triadPAXBuf, idxs);
-		reorder(m_triadPAYBuf, idxs);
-		reorder(m_triadPBXBuf, idxs);
-		reorder(m_triadPBYBuf, idxs);
-		reorder(m_triadPCXBuf, idxs);
-		reorder(m_triadPCYBuf, idxs);
-		reorder(m_triadKABuf, idxs);
-		reorder(m_triadKBBuf, idxs);
-		reorder(m_triadKCBuf, idxs);
-		reorder(m_triadSBuf, idxs);
-
-		idxs = GetUniqueIdxs(m_triadCount, MatchTriadIndices);
-		reorder(m_triadIdxABuf, idxs);
-		reorder(m_triadIdxBBuf, idxs);
-		reorder(m_triadIdxCBuf, idxs);
-		reorder(m_triadFlagsBuf, idxs);
-		reorder(m_triadStrengthBuf, idxs);
-		reorder(m_triadPAXBuf, idxs);
-		reorder(m_triadPAYBuf, idxs);
-		reorder(m_triadPBXBuf, idxs);
-		reorder(m_triadPBYBuf, idxs);
-		reorder(m_triadPCXBuf, idxs);
-		reorder(m_triadPCYBuf, idxs);
-		reorder(m_triadKABuf, idxs);
-		reorder(m_triadKBBuf, idxs);
-		reorder(m_triadKCBuf, idxs);
-		reorder(m_triadSBuf, idxs);
-		m_triadCount = idxs.size();
+		concurrency::parallel_sort(
+			m_triadBuffer.begin(), m_triadBuffer.end(), CompareTriadIndices);
+		unique(m_triadBuffer.begin(), m_triadBuffer.end(), MatchTriadIndices);
+		m_triadCount = m_triadBuffer.size();
 	}
 }
-void b2ParticleSystem::AFUpdatePairsAndTriads(
-int32 firstIndex, int32 lastIndex, const AFConnectionFilter& filter)
+
+bool b2ParticleSystem::ComparePairIndices(
+	const b2ParticlePair& a, const b2ParticlePair& b)
 {
-	// Create pairs or triads.
-	// All particles in each pair/triad should satisfy the following:
-	// * firstIndex <= index < lastIndex
-	// * don't have b2_zombieParticle
-	// * ParticleCanBeConnected returns true
-	// * ShouldCreatePair/ShouldCreateTriad returns true
-	// Any particles in each pair/triad should satisfy the following:
-	// * filter.IsNeeded returns true
-	// * have one of k_pairFlags/k_triadsFlags
-	b2Assert(firstIndex <= lastIndex);
-	bool hasPairs = !af::where(afFlagBuf & k_pairFlags).isempty();
-	bool hasTriads = !af::where(afFlagBuf & k_triadFlags).isempty();
+	int32 diffA = a.indexA - b.indexA;
+	if (diffA != 0) return diffA < 0;
+	return a.indexB < b.indexB;
+}
 
-	if (hasPairs)
-	{
-		const af::array& a = afContactIdxABuf;
-		const af::array& b = afContactIdxBBuf;
-		const af::array& af = afFlagBuf(a);
-		const af::array& bf = afFlagBuf(b);
-		const af::array& groupAIdx = afGroupIdxBuf(a);
-		const af::array& groupBIdx = afGroupIdxBuf(b);
+bool b2ParticleSystem::MatchPairIndices(
+	const b2ParticlePair& a, const b2ParticlePair& b)
+{
+	return a.indexA == b.indexA && a.indexB == b.indexB;
+}
 
-		const af::array& condIdxs = af::where(a >= firstIndex && a < lastIndex &&
-											  b >= firstIndex && b < lastIndex &&
-											  !((af | bf) & b2_zombieParticle) &&
-											  ((af | bf) & k_pairFlags) &&
-											  (filter.IsNecessary(a) || filter.IsNecessary(b)) &&
-											  AFParticleCanBeConnected(af, groupAIdx, afGroupFlagsBuf(groupAIdx)) &&
-											  AFParticleCanBeConnected(bf, groupBIdx, afGroupFlagsBuf(groupBIdx)) &&
-											  filter.ShouldCreatePair(a, b));
-		if (!condIdxs.isempty())
-		{
-			const af::array& newPairIdxABuf = a(condIdxs);
-			const af::array& newPairIdxBBuf = b(condIdxs);
-			const af::array& newPairFlagsBuf = afContactFlagsBuf(condIdxs);
-			const af::array& strengthA = afGroupStrengthBuf(groupAIdx);
-			const af::array& strengthB = afGroupStrengthBuf(groupBIdx);
-			const af::array& newPairStrengthBuf = af::select(strengthA < strengthB, strengthA, strengthB);
-			const af::array& newPairDistanceBuf = afDistance(afPosXBuf(a), afPosYBuf(a), afPosXBuf(b), afPosYBuf(b));
+bool b2ParticleSystem::CompareTriadIndices(
+	const b2ParticleTriad& a, const b2ParticleTriad& b)
+{
+	int32 diffA = a.indexA - b.indexA;
+	if (diffA != 0) return diffA < 0;
+	int32 diffB = a.indexB - b.indexB;
+	if (diffB != 0) return diffB < 0;
+	return a.indexC < b.indexC;
+}
 
-			//Append to existing
-			AFJoin(afPairIdxABuf, newPairIdxABuf, af::dtype::s32);
-			AFJoin(afPairIdxBBuf, newPairIdxBBuf, af::dtype::s32);
-			AFJoin(afPairFlagsBuf, newPairFlagsBuf, af::dtype::u32);
-			AFJoin(afPairStrengthBuf, newPairStrengthBuf);
-			AFJoin(afPairDistanceBuf, newPairDistanceBuf);
-
-			/*//Sort Pairs
-			af::array idxs = AFGetSortedPairIdxs();
-			afPairIdxABuf = afPairIdxABuf(idxs);
-			afPairIdxBBuf = afPairIdxBBuf(idxs);
-			afPairFlagsBuf = afPairFlagsBuf(idxs);
-			afPairStrengthBuf = afPairStrengthBuf(idxs);
-			afPairDistanceBuf = afPairDistanceBuf(idxs);*/
-
-			// TODO Fix Unique
-			//Filter Unique Pairs
-			/*af::array idxs = AFGetUniquePairIdxs();
-			afPairIdxABuf = afPairIdxABuf(idxs);
-			afPairIdxBBuf = afPairIdxBBuf(idxs);
-			afPairFlagsBuf = afPairFlagsBuf(idxs);
-			afPairStrengthBuf = afPairStrengthBuf(idxs);
-			afPairDistanceBuf = afPairDistanceBuf(idxs);*/
-
-			//m_pairCount = idxs.elements();
-		}
-	}
-
-	if (hasTriads)
-	{
-		AFVoronoiDiagram diagram(lastIndex - firstIndex);
-
-		const af::array& idxs = af::seq(firstIndex, lastIndex);
-		const af::array& flags = afFlagBuf(idxs);
-		const af::array& groupIdxs = afGroupIdxBuf(idxs);
-		const af::array& condIdxs = af::where(!(flags & b2_zombieParticle) &&
-			AFParticleCanBeConnected(flags, groupIdxs, afGroupFlagsBuf(groupIdxs)));
-		if (!condIdxs.isempty())
-			diagram.AddGenerators(afPosXBuf(condIdxs), afPosYBuf(condIdxs), condIdxs, filter.IsNecessary(condIdxs));
-		
-		float32 stride = GetParticleStride();
-		diagram.Generate(stride / 2, stride * 2);
-
-		class AFUpdateTriadsCallback : public AFVoronoiDiagram::NodeCallback
-		{
-			void operator()(af::array a, af::array b, af::array c)
-			{
-				af::array af = m_system->afFlagBuf(a);
-				af::array bf = m_system->afFlagBuf(b);
-				af::array cf = m_system->afFlagBuf(c);
-
-				af::array condIdxs = af::where(((af | bf | cf) & k_triadFlags) &&
-					m_filter->AFShouldCreateTriad(a, b, c));
-				if (!condIdxs.isempty())
-				{
-					a = a(condIdxs);
-					b = b(condIdxs);
-					c = c(condIdxs);
-
-					af::array pax = m_system->afPosXBuf(a);
-					af::array pay = m_system->afPosYBuf(a);
-					af::array pbx = m_system->afPosXBuf(b);
-					af::array pby = m_system->afPosYBuf(b);
-					af::array pcx = m_system->afPosXBuf(c);
-					af::array pcy = m_system->afPosYBuf(c);
-					af::array dabx = pax - pbx;
-					af::array daby = pay - pby;
-					af::array dbcx = pbx - pcx;
-					af::array dbcy = pby - pcy;
-					af::array dcax = pcx - pax;
-					af::array dcay = pcy - pay;
-
-					float32 maxDistanceSquared = b2_maxTriadDistanceSquared *
-						m_system->m_squaredDiameter;
-
-					af::array condIdxs = af::where(!(b2Dot(dabx, daby, dabx, daby) > maxDistanceSquared ||
-						b2Dot(dbcx, dbcy, dbcx, dbcy) > maxDistanceSquared ||
-						b2Dot(dcax, dcay, dcax, dcay) > maxDistanceSquared));
-					if (!condIdxs.isempty())
-					{
-						a = a(condIdxs);
-						b = b(condIdxs);
-						c = c(condIdxs);
-						af = af(condIdxs);
-						bf = bf(condIdxs);
-						cf = cf(condIdxs);
-						pax	= pax(condIdxs);
-						pay	= pay(condIdxs);
-						pbx	= pbx(condIdxs);
-						pby	= pby(condIdxs);
-						pcx	= pcx(condIdxs);
-						pcy	= pcy(condIdxs);
-						dabx = dabx(condIdxs);
-						daby = daby(condIdxs);
-						dbcx = dbcx(condIdxs);
-						dbcy = dbcy(condIdxs);
-						dcax = dcax(condIdxs);
-						dcay = dcay(condIdxs);
-
-						const af::array& groupAIdx = m_system->afGroupIdxBuf(a);
-						const af::array& groupBIdx = m_system->afGroupIdxBuf(b);
-						const af::array& groupCIdx = m_system->afGroupIdxBuf(c);
-
-						const af::array& strengthBuf = m_system->afGroupStrengthBuf;
-						af::array s = af::min(af::min(
-							af::select(groupAIdx != -1, strengthBuf(groupAIdx), 1),
-							af::select(groupBIdx != -1, strengthBuf(groupBIdx), 1)),
-							af::select(groupCIdx != -1, strengthBuf(groupCIdx), 1));
-
-						const af::array& midPointX = 1.0f / 3.0f * (pax + pbx + pcx);
-						const af::array& midPointY = 1.0f / 3.0f * (pay + pby + pcy);
-
-						m_system->AFJoin(m_system->afTriadIdxABuf, a, af::dtype::s32);
-						m_system->AFJoin(m_system->afTriadIdxBBuf, b, af::dtype::s32);
-						m_system->AFJoin(m_system->afTriadIdxCBuf, c, af::dtype::s32);
-						m_system->AFJoin(m_system->afTriadFlagsBuf, af | bf | cf, af::dtype::u32);
-						m_system->AFJoin(m_system->afTriadStrengthBuf, s);
-						m_system->AFJoin(m_system->afTriadPAXBuf, pax - midPointX);
-						m_system->AFJoin(m_system->afTriadPAYBuf, pay - midPointY);
-						m_system->AFJoin(m_system->afTriadPBXBuf, pbx - midPointX);
-						m_system->AFJoin(m_system->afTriadPBYBuf, pby - midPointY);
-						m_system->AFJoin(m_system->afTriadPCXBuf, pcx - midPointX);
-						m_system->AFJoin(m_system->afTriadPCYBuf, pcy - midPointY);
-						m_system->AFJoin(m_system->afTriadKABuf, -b2Dot(dcax, dcay, dabx, daby));
-						m_system->AFJoin(m_system->afTriadKBBuf, -b2Dot(dabx, daby, dbcx, dbcy));
-						m_system->AFJoin(m_system->afTriadKCBuf, -b2Dot(dbcx, dbcy, dcax, dcay));
-						m_system->AFJoin(m_system->afTriadSBuf, b2Cross(pax, pay, pbx, pby) + b2Cross(pbx, pby, pcx, pcy) + b2Cross(pcx, pcy, pax, pay));
-					}
-				}
-			}
-			b2ParticleSystem* m_system;
-			const AFConnectionFilter* m_filter;
-		public:
-			AFUpdateTriadsCallback(b2ParticleSystem* system, const AFConnectionFilter* filter)
-			{
-				m_system = system;
-				m_filter = filter;
-			}
-		} callback(this, &filter);
-		diagram.GetNodes(callback);
-
-
-		// TODO Fix Unique
-		/*
-		af::array uniqueIdxs = AFGetUniqueTriadIdxs();
-		afTriadStrengthBuf = afTriadStrengthBuf(uniqueIdxs);
-		afTriadPAXBuf = afTriadPAXBuf(uniqueIdxs);
-		afTriadPAYBuf = afTriadPAYBuf(uniqueIdxs);
-		afTriadPBXBuf = afTriadPBXBuf(uniqueIdxs);
-		afTriadPBYBuf = afTriadPBYBuf(uniqueIdxs);
-		afTriadPCXBuf = afTriadPCXBuf(uniqueIdxs);
-		afTriadPCYBuf = afTriadPCYBuf(uniqueIdxs);
-		afTriadKABuf = afTriadKABuf(uniqueIdxs);
-		afTriadKBBuf = afTriadKBBuf(uniqueIdxs);
-		afTriadKCBuf = afTriadKCBuf(uniqueIdxs);
-		afTriadSBuf = afTriadSBuf(uniqueIdxs);
-		
-		m_triadCount = uniqueIdxs.elements()
-		*/
-	}
+bool b2ParticleSystem::MatchTriadIndices(
+	const b2ParticleTriad& a, const b2ParticleTriad& b)
+{
+	return a.indexA == b.indexA && a.indexB == b.indexB && a.indexC == b.indexC;
 }
 
 // Only called from SolveZombie() or JoinParticleGroups().
@@ -2772,19 +1805,26 @@ void b2ParticleSystem::DestroyParticleGroup(int32 groupIdx)
 	b2Assert(m_groupCount > 0);
 	b2Assert(groupIdx > 0);
 
+	b2ParticleGroup* group = m_groupBuffer[groupIdx];
+
 	if (m_world->m_destructionListener)
 	{
-		m_world->m_destructionListener->SayGoodbye(groupIdx);
+		m_world->m_destructionListener->SayGoodbye(group);
 	}
 
-	SetGroupFlags(groupIdx, 0);
-	for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+	SetGroupFlags(group, 0);
+	for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
 	{
-		m_groupIdxBuffer[i] = b2_invalidGroupIndex;
+		m_partGroupIdxBuffer[i] = b2_invalidIndex;
 	}
+	free(group);
 
-	m_freeGroupIdxBuffer.push_back(groupIdx);
-	//--m_groupCount;
+	for (int i = m_groupCount - 1; i >= 0; i--)
+	{
+		if (!m_groupBuffer[i])
+			break;
+		m_groupCount--;
+	}
 }
 
 void b2ParticleSystem::ComputeWeight()
@@ -2796,109 +1836,75 @@ void b2ParticleSystem::ComputeWeight()
 	std::fill(m_weightBuffer.begin(), m_weightBuffer.end(), 0);
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
-		float32 w = m_bodyContactWeightBuffer[k];
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		float32 w = contact.weight;
 		m_weightBuffer[a] += w;
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		float32 w = m_contactWeightBuffer[k];
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		float32 w = contact.weight;
 		m_weightBuffer[a] += w;
 		m_weightBuffer[b] += w;
-	}
-}
-void b2ParticleSystem::AFComputeWeight()
-{
-	afWeightBuf = af::constant(0.0f, m_count);
-
-	if (m_bodyContactCount)
-		afWeightBuf(afBodyContactIdxBuf) += afBodyContactWeightBuf;
-
-	if (m_contactCount)
-	{
-		afWeightBuf(afContactIdxABuf) += afContactWeightBuf;
-		afWeightBuf(afContactIdxBBuf) += afContactWeightBuf;
-	}
-}
-
-void b2ParticleSystem::FilterRealGroups()
-{
-	m_realGroupIdxBuffer.resize(m_groupCount);
-	std::iota(m_realGroupIdxBuffer.begin(), m_realGroupIdxBuffer.end(), 0);
-
-	std::sort(m_freeGroupIdxBuffer.begin(), m_freeGroupIdxBuffer.end());
-
-	auto ib = std::begin(m_freeGroupIdxBuffer);
-	auto iter = std::remove_if(
-		std::begin(m_realGroupIdxBuffer), std::end(m_realGroupIdxBuffer),
-		[&ib, this](int x) -> bool {
-		while (ib != std::end(m_freeGroupIdxBuffer) && *ib < x) ++ib;
-		return (ib != std::end(m_freeGroupIdxBuffer) && *ib == x);
-	});
-}
-void b2ParticleSystem::AFFilterRealGroups()
-{
-	if (!m_freeGroupIdxBuffer.empty())
-	{
-		af::array afFreeGroupIdxBuf(m_freeGroupIdxBuffer.size(), afArrayDims, m_freeGroupIdxBuffer.data());
-		afRealGroupIdxBuf = af::seq(0, m_groupCount);
-		af::array empty = af::constant(0, m_groupCount);
-		empty(afFreeGroupIdxBuf) = 1;
-		const af::array& notEmptyIdxs = af::where(empty);
-		afRealGroupIdxBuf = afRealGroupIdxBuf(notEmptyIdxs);
 	}
 }
 
 void b2ParticleSystem::ComputeDepth()
 {
-	vector<int32> contactGroups(m_contactCount);
+	vector<b2ParticleContact> contactGroups(m_contactCount);
 	int32 contactGroupsCount = 0;
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		const int32 groupAIdx = m_groupIdxBuffer[a];
-		const int32 groupBIdx = m_groupIdxBuffer[b];
-		if (groupAIdx != b2_invalidGroupIndex && groupAIdx == groupBIdx &&
-			(m_groupFlagsBuf[a] & b2_particleGroupNeedsUpdateDepth))
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		const int32 groupAIdx = m_partGroupIdxBuffer[a];
+		const int32 groupBIdx = m_partGroupIdxBuffer[b];
+		if (groupAIdx != b2_invalidIndex && groupAIdx == groupBIdx &&
+			(m_groupBuffer[groupAIdx]->m_groupFlags & b2_particleGroupNeedsUpdateDepth))
 		{
-			contactGroups[contactGroupsCount++] = k;
+			contactGroups[contactGroupsCount++] = contact;
 		}
 	}
-	vector<int32> groupsToUpdate(m_groupCount);
+	vector<b2ParticleGroup*> groupsToUpdate(m_groupCount);
 	int32 groupsToUpdateCount = 0;
 
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+	for (int k = 0; k < m_groupCount; k++)
 	{
-		if (m_groupFlagsBuf[groupIdx] & b2_particleGroupNeedsUpdateDepth)
+		b2ParticleGroup* group = m_groupBuffer[k];
+		if (group)
 		{
-			groupsToUpdate[groupsToUpdateCount++] = groupIdx;
-			SetGroupFlags(groupIdx,
-				m_groupFlagsBuf[groupIdx] &
-				~b2_particleGroupNeedsUpdateDepth);
-			for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+			if (group->m_groupFlags & b2_particleGroupNeedsUpdateDepth)
 			{
-				m_accumulationBuf[i] = 0;
+				groupsToUpdate[groupsToUpdateCount++] = group;
+				SetGroupFlags(group,
+					group->m_groupFlags &
+					~b2_particleGroupNeedsUpdateDepth);
+				for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
+				{
+					m_accumulationBuf[i] = 0;
+				}
 			}
 		}
 	}
 	// Compute sum of weight of contacts except between different groups.
 	for (int32 k = 0; k < contactGroupsCount; k++)
 	{
-		const int32 contactPos = contactGroups[k];
-		int32 a = m_contactIdxABuffer[contactPos];
-		int32 b = m_contactIdxBBuffer[contactPos];
-		float32 w = m_contactWeightBuffer[contactPos];
+		const b2ParticleContact& contact = contactGroups[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		float32 w = contact.weight;
 		m_accumulationBuf[a] += w;
 		m_accumulationBuf[b] += w;
 	}
 	b2Assert(m_depthBuffer);
 	for (int32 i = 0; i < groupsToUpdateCount; i++)
 	{
-		const int32 groupIdx = groupsToUpdate[i];
-		for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+		b2ParticleGroup* group = groupsToUpdate[i];
+		for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
 		{
 			float32 w = m_accumulationBuf[i];
 			m_depthBuffer[i] = w < 0.8f ? 0 : b2_maxFloat;
@@ -2913,10 +1919,10 @@ void b2ParticleSystem::ComputeDepth()
 		bool updated = false;
 		for (int32 k = 0; k < contactGroupsCount; k++)
 		{
-			const int32 contactPos = contactGroups[k];
-			int32 a = m_contactIdxABuffer[contactPos];
-			int32 b = m_contactIdxBBuffer[contactPos];
-			float32 r = 1 - m_contactWeightBuffer[contactPos];
+			const b2ParticleContact& contact = contactGroups[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 r = 1 - contact.weight;
 			float32& ap0 = m_depthBuffer[a];
 			float32& bp0 = m_depthBuffer[b];
 			float32 ap1 = bp0 + r;
@@ -2939,8 +1945,8 @@ void b2ParticleSystem::ComputeDepth()
 	}
 	for (int32 i = 0; i < groupsToUpdateCount; i++)
 	{
-		const int32 groupIdx = groupsToUpdate[i];
-		for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+		b2ParticleGroup* group = groupsToUpdate[i];
+		for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
 		{
 			float32& p = m_depthBuffer[i];
 			if (p < b2_maxFloat)
@@ -2952,95 +1958,6 @@ void b2ParticleSystem::ComputeDepth()
 				p = 0;
 			}
 		}
-	}
-}
-void b2ParticleSystem::AFComputeDepth()
-{
-	AFRequestBuffer(afDepthBuf, afHasDepthBuf);
-	const af::array& a = afContactIdxABuf;
-	const af::array& b = afContactIdxBBuf;
-	const af::array groupAIdx = afGroupIdxBuf(a);
-	const af::array groupBIdx = afGroupIdxBuf(b);
-	af::array afContactGroupIdxs = af::where(groupAIdx != b2_invalidGroupIndex
-										 	 && groupBIdx == groupBIdx
-											 && afGroupFlagsBuf(groupAIdx) & b2_particleGroupNeedsUpdateDepth);
-	
-
-	//int contactGroupsCount = afContactGroups.elements();
-
-	af::array afGroupsToUpdateIdxs = af::where(afGroupFlagsBuf(afRealGroupIdxBuf) & b2_particleGroupNeedsUpdateDepth);
-	int32 groupsToUpdateCount = afGroupsToUpdateIdxs.elements();
-	if (!afGroupsToUpdateIdxs.isempty())
-	{
-		AFSetGroupFlags(afGroupsToUpdateIdxs, afGroupFlagsBuf(afGroupsToUpdateIdxs) &
-			~b2_particleGroupNeedsUpdateDepth);
-
-		gfor(af::seq i, groupsToUpdateCount)
-		{
-			af::array groupIdx = afGroupsToUpdateIdxs(i);
-			af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
-										 afGroupLastIdxBuf(groupIdx).scalar<int32>());
-			afAccumulationBuf(partIdxs) = 0;
-		}
-	}
-
-	// Compute sum of weight of contacts except between different groups.
-	if (!afContactGroupIdxs.isempty())
-	{
-		af::array a = afContactIdxABuf(afContactGroupIdxs);
-		af::array b = afContactIdxBBuf(afContactGroupIdxs);
-		af::array w = afContactWeightBuf(afContactGroupIdxs);
-		afAccumulationBuf(a) += w;
-		afAccumulationBuf(b) += w;
-	}
-
-	gfor(af::seq i, groupsToUpdateCount)
-	{
-		af::array groupIdx = afGroupsToUpdateIdxs(i);
-		af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
-			afGroupLastIdxBuf(groupIdx).scalar<int32>());
-		af::array d = afDepthBuf(partIdxs);
-		afDepthBuf(partIdxs) = af::select(afAccumulationBuf(partIdxs) < 0.8f, 
-										  af::constant(0, groupsToUpdateCount), b2_maxFloat);
-	}
-
-	// The number of iterations is equal to particle number from the deepest
-	// particle to the nearest surface particle, and in general it is smaller
-	// than sqrt of total particle number.
-	int32 iterationCount = (int32)b2Sqrt((float)m_count);
-	for (int32 t = 0; t < iterationCount; t++)
-	{
-		bool updated = false;
-		
-		af::array a = afContactIdxABuf(afContactGroupIdxs);
-		af::array b = afContactIdxBBuf(afContactGroupIdxs);
-		af::array r = 1.0f - afContactWeightBuf(afContactGroupIdxs);
-		af::array ap0 = afDepthBuf(a);
-		af::array bp0 = afDepthBuf(b);
-		af::array ap1 = bp0 + r;
-		af::array bp1 = ap0 + r;
-		af::array aCondIdxs = af::where(ap0 > ap1);
-		if (!aCondIdxs.isempty())
-		{
-			ap0(aCondIdxs) = ap1(aCondIdxs);
-			updated = true;
-		}
-		af::array bCondIdxs = af::where(bp0 > bp1);
-		{
-			bp0(bCondIdxs) = bp1(bCondIdxs);
-			updated = true;
-		}
-		if (!updated)
-			break;
-	}
-	gfor(af::seq i, groupsToUpdateCount)
-	{
-		af::array groupIdx = afGroupsToUpdateIdxs(i);
-		af::array partIdxs = af::seq(afGroupFirstIdxBuf(groupIdx).scalar<int32>(),
-			afGroupLastIdxBuf(groupIdx).scalar<int32>());
-		af::array d = afDepthBuf(partIdxs);
-		afDepthBuf(partIdxs) = af::select(afDepthBuf(partIdxs) < b2_maxFloat,
-										  afDepthBuf(partIdxs) * m_particleDiameter, 0);
 	}
 }
 
@@ -3061,29 +1978,11 @@ b2ParticleSystem::GetInsideBoundsEnumerator(const b2AABB& aabb) const
 
 	return InsideBoundsEnumerator(this, lowerTag, upperTag, firstPos, lastPos);
 }
-af::array b2ParticleSystem::AFGetInsideBoundsEnumerator(const b2AABB& aabb) const
-{
-	uint32 lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
-		m_inverseDiameter * aabb.lowerBound.y - 1);
-	uint32 upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x + 1,
-		m_inverseDiameter * aabb.upperBound.y + 1);
-
-	const af::array& idxs = af::where(afProxyTagBuf >= lowerTag && afProxyTagBuf <= upperTag);
-
-	uint32 m_xLower = lowerTag & xMask;
-	uint32 m_xUpper = upperTag & xMask;
-	uint32 m_yLower = lowerTag & yMask;
-	uint32 m_yUpper = upperTag & yMask;
-
-	//Get Next
-	const af::array& xTags = afProxyTagBuf(idxs) & xMask;
-	const af::array& idxsInBounds = af::where(xTags >= m_xLower && xTags <= m_xUpper);
-
-	return afProxyIdxBuf(idxsInBounds);
-}
 
 void b2ParticleSystem::FindContacts()
 {
+	m_contactCount = 0;
+
 	for (int32 i = 0; i < m_count; i++)
 	{
 		const uint32& tag = m_proxyTagBuffer[i];
@@ -3091,9 +1990,9 @@ void b2ParticleSystem::FindContacts()
 		m_findContactBottomLeftTagBuf[i]  = computeRelativeTag(tag, -1, 1);
 		m_findContactBottomRightTagBuf[i] = computeRelativeTag(tag,  1, 1);
 	}
-	const int end = m_count;
 
-	//clock_t clockFillBuffer = clock();
+	//Time t = Clock::now();
+	const int end = m_count;
 	for (int a = 0, c = 0; a < end; a++)
 	{
 		const int32  aIdx = m_proxyIdxBuffer[a];
@@ -3106,8 +2005,9 @@ void b2ParticleSystem::FindContacts()
 			int32 bIdx = m_proxyIdxBuffer[b];
 			if (!(m_collisionLayerBuffer[aIdx] & m_collisionLayerBuffer[bIdx]) &&
 				ShouldCollide(aIdx, bIdx)) break;
-			m_findContactIdxABuf[a][aContactCount] = aIdx;
-			m_findContactIdxBBuf[a][aContactCount] = bIdx;
+			AddContact(aIdx, bIdx, m_contactCount);
+			//m_findContactIdxABuf[a][aContactCount] = aIdx;
+			//m_findContactIdxBBuf[a][aContactCount] = bIdx;
 			if (++aContactCount >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
 		}
 		const uint32 bottomLeftTag = m_findContactBottomLeftTagBuf[a];
@@ -3122,86 +2022,23 @@ void b2ParticleSystem::FindContacts()
 			int32 bIdx = m_proxyIdxBuffer[b];
 			if (!(m_collisionLayerBuffer[aIdx] & m_collisionLayerBuffer[bIdx]) &&
 				ShouldCollide(aIdx, bIdx)) break;
-			m_findContactIdxABuf[a][aContactCount] = aIdx;
-			m_findContactIdxBBuf[a][aContactCount] = bIdx;
+			AddContact(aIdx, bIdx, m_contactCount);
+			//m_findContactIdxABuf[a][aContactCount] = aIdx;
+			//m_findContactIdxBBuf[a][aContactCount] = bIdx;
 			if (++aContactCount >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
 		}
 		cnt:;
-		m_findContactCountBuf[a] = aContactCount;
+		//m_findContactCountBuf[a] = aContactCount;
 	}
-	//cout << "FillBuffer " << (clock() - clockFillBuffer) * 1000 / CLOCKS_PER_SEC << "ms\n";
+	//cout << "FillBuffer " << GetTimeDif(t) << "ms\n";
 
-	clock_t clockAddContact = clock();
-	m_contactCount = 0;
-	for (int i = 0; i < m_count; i++)
-		for (int j = 0; j < m_findContactCountBuf[i]; j++)
-			AddContact(m_findContactIdxABuf[i][j], m_findContactIdxBBuf[i][j], m_contactCount);
-	//cout << "AddContacts " << (clock() - clockAddContact) * 1000 / CLOCKS_PER_SEC << "ms\n";
+	//t = Clock::now();
+	//for (int i = 0; i < m_count; i++)
+	//	for (int j = 0; j < m_findContactCountBuf[i]; j++)
+	//		AddContact(m_findContactIdxABuf[i][j], m_findContactIdxBBuf[i][j], m_contactCount);
+	//cout << "AddContacts " << GetTimeDif(t) << "ms\n";
 
-	std::snprintf(debugString, 64, "contactCount: %d", m_contactCount);
-}
-void b2ParticleSystem::AFFindContacts()
-{
-
-	int maxContactCount = m_count * MAX_CONTACTS_PER_PARTICLE;
-	vector<int32> contactIdxAs(maxContactCount, b2_invalidParticleIndex);
-	vector<int32> contactIdxBs(maxContactCount, b2_invalidParticleIndex);
-
-	const uint32* rightTagBuf = afComputeRelativeTag(afProxyTagBuf, 1, 0).host<uint32>();
-	const uint32* bottomLeftTagBuf = afComputeRelativeTag(afProxyTagBuf, -1, 1).host<uint32>();
-	const uint32* bottomRightTagBuf = afComputeRelativeTag(afProxyTagBuf, 1, 1).host<uint32>();
-
-	const int end = m_count;
-	for (int a = 0, c = 0; a < end; a++)
-	{
-		const int32  aIdx = m_proxyIdxBuffer[a];
-		const uint32 aTag = m_proxyTagBuffer[a];
-		const uint32 rightTag = rightTagBuf[a];
-		int32 writeOffset = 0;
-		const uint32 writeStart = a * MAX_CONTACTS_PER_PARTICLE;
-		for (int b = a + 1; b < end; b++)
-		{
-			if (rightTag < m_proxyTagBuffer[b]) break;
-			contactIdxAs[writeStart + writeOffset] = aIdx;
-			contactIdxBs[writeStart + writeOffset] = m_proxyIdxBuffer[b];
-			if (++writeOffset >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
-		}
-		const uint32 bottomLeftTag = bottomLeftTagBuf[a];
-		for (; c < end; c++)
-		{
-			if (bottomLeftTag <= m_proxyTagBuffer[c]) break;
-		}
-		const uint32 bottomRightTag = bottomRightTagBuf[a];
-		for (int b = c; b < end; b++)
-		{
-			if (bottomRightTag < m_proxyTagBuffer[b]) break;
-			contactIdxAs[writeStart + writeOffset] = aIdx;
-			contactIdxBs[writeStart + writeOffset] = m_proxyIdxBuffer[b];
-			if (++writeOffset >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
-		}
-		cnt:;
-	}
-
-	//Copy to GPU
-	af::array afContactIdxsA, afContactIdxsB;
-	CPPtoAF(maxContactCount, contactIdxAs, afContactIdxsA);
-	CPPtoAF(maxContactCount, contactIdxBs, afContactIdxsB);
-
-	//Remove Empty Contacts
-	const af::array& k = af::where(afContactIdxsA != b2_invalidParticleIndex &&
-								   afContactIdxsB != b2_invalidParticleIndex);
-	if (!k.isempty())
-	{
-		afContactIdxsA = afContactIdxsA(k);
-		afContactIdxsB = afContactIdxsB(k);
-
-		//Remove Contacts that shouldn't collide
-		const af::array& k2 = af::where(AFShouldCollide(afContactIdxsA, afContactIdxsB));
-		if (!k2.isempty())
-		{
-			AFAddContacts(afContactIdxsA(k2), afContactIdxsB(k2));
-		}
-	}
+	//std::snprintf(debugString, 64, "contactCount: %d", m_contactCount);
 }
 inline void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 {
@@ -3212,112 +2049,47 @@ inline void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 	{
 		if (m_contactBufferSize <= contactCount)
 			ResizeContactBuffers(contactCount * 2);
+		b2ParticleContact& contact = m_partContactBuf[contactCount];
+		contactCount++;
+
 		float32 invD = b2InvSqrt(distBtParticlesSq);
-		m_contactIdxABuffer[contactCount] = a;
-		m_contactIdxBBuffer[contactCount] = b;
-		m_contactFlagsBuffer[contactCount] = m_flagsBuffer[a] | m_flagsBuffer[b];
+		contact.idxA = a;
+		contact.idxB = b;
+		contact.flags = m_flagsBuffer[a] | m_flagsBuffer[b];
 		int32 matAIdx = m_partMatIdxBuffer[a];
 		int32 matBIdx = m_partMatIdxBuffer[b];
-		m_contactMatFlagsBuffer[contactCount] = m_partMatFlagsBuf[matAIdx] | m_partMatFlagsBuf[matBIdx];
-		m_contactWeightBuffer[contactCount] = 1 - distBtParticlesSq * invD * m_inverseDiameter;
+		contact.matFlags = m_partMatFlagsBuf[matAIdx] | m_partMatFlagsBuf[matBIdx];
+		contact.weight = 1 - distBtParticlesSq * invD * m_inverseDiameter;
 		float32 invM = 1 / (m_partMatMassBuf[matAIdx] + m_partMatMassBuf[matBIdx]);
-		m_contactMassBuffer[contactCount] = invM > 0 ? invM : 0;
-		m_contactNormalXBuffer[contactCount] = invD * dx;
-		m_contactNormalYBuffer[contactCount] = invD * dy;
-		contactCount++;
+		contact.mass = invM > 0 ? invM : 0;
+		contact.normal = invD * b2Vec2(dx, dy);
 	
 	}
 }
-inline void b2ParticleSystem::AFAddContacts(const af::array& a, const af::array& b)
-{
-	af::array dx = afPosXBuf(b) - afPosXBuf(a);
-	af::array dy = afPosYBuf(b) - afPosYBuf(a);
-	af::array distBtParticlesSq = (dx * dx) + (dy * dy);	//dot product
-
-	const af::array& k = af::where(distBtParticlesSq < m_squaredDiameter);
-	m_contactCount = k.elements();
-	if (k.isempty()) return;
-	
-	dx = dx(k);
-	dy = dy(k);
-	distBtParticlesSq = distBtParticlesSq(k);
-
-	afContactIdxABuf = a(k);
-	afContactIdxBBuf = b(k);
-	afContactFlagsBuf = afFlagBuf(afContactIdxABuf) | afFlagBuf(afContactIdxBBuf);
-	const af::array& matIdxsA = afPartMatIdxBuf(afContactIdxABuf);
-	const af::array& matIdxsB = afPartMatIdxBuf(afContactIdxBBuf);
-	afContactMatFlagsBuf = afPartMatFlagsBuf(matIdxsA) | afPartMatFlagsBuf(matIdxsB);
-	const af::array& invD = afInvSqrt(distBtParticlesSq);
-	afContactWeightBuf = 1 - distBtParticlesSq * invD * m_inverseDiameter;
-	const af::array& invMass = 1 / (afPartMatMassBuf(matIdxsA) + afPartMatMassBuf(matIdxsB));
-	afContactMassBuf = af::select(invMass > 0, invMass, 0);
-	afContactNormalXBuf = invD * dx;
-	afContactNormalYBuf = invD * dy;
-}
 inline bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const
 {
-	const int32& groupAIdx = m_groupIdxBuffer[a];
-	const int32& groupBIdx = m_groupIdxBuffer[b];
-	const int32& colGroupA = m_groupColGroupBuf[groupAIdx];
-	const int32& colGroupB = m_groupColGroupBuf[groupBIdx];
+	const int32& groupAIdx = m_partGroupIdxBuffer[a];
+	const int32& groupBIdx = m_partGroupIdxBuffer[b];
+	const int32& colGroupA = m_groupBuffer[groupAIdx]->m_collisionGroup;
+	const int32& colGroupB = m_groupBuffer[groupBIdx]->m_collisionGroup;
 	return ((colGroupA >= 0 || colGroupB >= 0) ||
 			(groupAIdx == groupBIdx) ||
 			(colGroupA != colGroupB));
-}
-inline af::array b2ParticleSystem::AFShouldCollide(const af::array& a, const af::array& b) const
-{
-	const af::array& groupColGroupA = afGroupColGroupBuf(a);
-	const af::array& groupColGroupB = afGroupColGroupBuf(b);
-	return (afColLayBuf(a) & afColLayBuf(b)
-		&& ((groupColGroupA >= 0 || groupColGroupB >= 0)
-			|| afGroupIdxBuf(a) == afGroupIdxBuf(b)
-			|| groupColGroupA != groupColGroupB));
 }
 inline bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const
 {
 	if (m_collisionLayerBuffer[i] & f->GetCollisionLayers())
 		return false;
-	int32 partColGroup = m_groupColGroupBuf[m_groupIdxBuffer[i]];
+	int32 partColGroup = m_groupBuffer[m_partGroupIdxBuffer[i]]->m_collisionGroup;
 	if (partColGroup >= 0)								return true;
 	if (f->GetFilterData().groupIndex >= 0)				return true;
 	if (partColGroup != f->GetFilterData().groupIndex)	return true;
 	return false;
 }
-inline af::array b2ParticleSystem::AFShouldCollide(const af::array& i, b2Fixture* f) const
+
+static inline bool b2ParticleContactIsZombie(const b2ParticleContact& contact)
 {
-	const af::array& groupColGroup = afGroupColGroupBuf(i);
-	uint32 fixColGroup = f->GetFilterData().groupIndex;
-	return (afColLayBuf(i) & f->GetCollisionLayers()
-		&& ((groupColGroup >= 0 || fixColGroup >= 0)
-			|| afGroupIdxBuf(i) == fixColGroup
-			|| groupColGroup != fixColGroup));
-}
-
-inline af::array b2ParticleSystem::afInvSqrt(af::array x)
-{
-	af::array xhalf = 0.5f * x.as(af::dtype::f32);
-	af::array i = x.as(af::dtype::s32);				// store floating-point bits in integer
-	i = 0x5f3759df - (i >> 1);						// initial guess for Newton's method
-	x = i.as(af::dtype::f32);						// convert new bits into float
-	x *= 1.5f - xhalf * x * x;						// One round of Newton's method
-	return x;
-
-	/*af::array xhalf = 0.5f * x.as(af::dtype::f32);
-	x = 0x5f3759df - (x.as(af::dtype::s32) >> 1);
-	x *= 1.5f - xhalf * x * x;
-	return x;*/
-}
-
-
-
-static inline bool b2ParticleContactIsZombie(const uint32& flags)
-{
-	return (flags & b2_zombieParticle) == b2_zombieParticle;
-}
-static inline af::array afParticleContactIsZombie(const af::array& flags)
-{
-	return (flags & b2_zombieParticle) == b2_zombieParticle;
+	return (contact.flags & b2_zombieParticle) == b2_zombieParticle;
 }
 
 // Get the world's contact filter if any particles with the
@@ -3350,9 +2122,9 @@ public:
 
 	bool operator()(const b2ParticleContact& contact)
 	{
-	    return (contact.GetFlags() & b2_particleContactFilterParticle)
-	        && !m_contactFilter->ShouldCollide(m_system, contact.GetIndexA(),
-	        								   contact.GetIndexB());
+	    return (contact.flags & b2_particleContactFilterParticle)
+	        && !m_contactFilter->ShouldCollide(m_system, contact.idxA,
+	        								   contact.idxB);
 	}
 
 private:
@@ -3430,56 +2202,6 @@ void b2ParticleSystem::NotifyContactListenerPostContact(
 	}*/
 }
 
-void b2ParticleSystem::AFUpdateContacts(bool exceptZombie)
-{
-	if (afProxyIdxBuf.isempty()) return;
-
-	CopyProxiesToGPU();
-
-	// Update Proxy Tags
-	afProxyTagBuf = afComputeTag(m_inverseDiameter * afPosXBuf(afProxyIdxBuf),
-								 m_inverseDiameter * afPosYBuf(afProxyIdxBuf));
-
-
-	// Sort Proxies by Tag
-	//clock_t clockSort = clock();
-	AFSort(afProxyTagBuf, afProxyIdxBuf, true);
-	CopyProxiesToCPU();
-	//cout << "SortProxies " << (clock() - clockSort) * 1000 / CLOCKS_PER_SEC << "ms\n";
-	//SortProxies();
-
-	//find Body COntacts in seperate Thread
-	//clock_t clockfindBodyContacts = clock();
-	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
-
-	// While findBodyContactsThread is running
-	//clock_t clockPartContacts = clock();
-	FindContacts();
-	CopyContactsToGPU();
-	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
-	
-	
-
-	WaitForSingleObject(findBodyContactsThread, INFINITE);
-	//cout << "FindBodyContacts " << (clock() - clockfindBodyContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
-
-	if (exceptZombie)
-	{
-		af::array zombies = afParticleContactIsZombie(afContactFlagsBuf);
-		af::array zombieIdxs = af::where(zombies);
-		af::array aliveIdxs = af::where(!zombies);
-		if (!zombieIdxs.isempty())
-		{
-			AFReorder(aliveIdxs, vector<af::array>{afContactIdxABuf,
-				afContactIdxBBuf, afContactWeightBuf, afContactMassBuf,
-				afContactNormalXBuf, afContactNormalYBuf,
-				afContactFlagsBuf, afContactMatFlagsBuf});
-			m_contactCount		 = aliveIdxs.elements();
-		}
-	}
-	std::snprintf(debugString, 64, "contactCount: %d", m_contactCount);
-}
-
 void b2ParticleSystem::UpdateProxies()
 {
 	for (int i = 0; i < m_count; i++)
@@ -3497,102 +2219,14 @@ void b2ParticleSystem::UpdateProxies()
 // tractable.
 void b2ParticleSystem::SortProxies()
 {
-	const auto compareProxies = [this](int32 a, int32 b) -> bool
-	{
-		return m_proxyTagBuffer[a] < m_proxyTagBuffer[b];
-	};
-	const vector<int32>& sortedIdxs = GetSortedIdxs(m_count, compareProxies);
-	reorder(m_proxyIdxBuffer, m_proxyTagBuffer, sortedIdxs);
-}
-void b2ParticleSystem::AFSort(af::array& compareArray, af::array& array, bool ascending)
-{
-	af::array sortedIdxs;
-	af::sort(compareArray, sortedIdxs, compareArray, 0, ascending);
-	array = array(sortedIdxs);
-}
-void b2ParticleSystem::AFSort(af::array& compareArray, vector<af::array>& arrays)
-{
-	af::array sortedIdxs;
-	af::sort(compareArray, sortedIdxs, compareArray);
-	for each (af::array a in arrays)
-		a = a(sortedIdxs);
-}
-void b2ParticleSystem::AFReorder(af::array& idxs, vector<af::array>& arrays)
-{
-	for each (af::array a in arrays)
-		a = a(idxs);
-}
-inline void b2ParticleSystem::AFJoin(af::array& origArray, const af::array& newArray, af::dtype type)
-{
-	origArray = af::join(0, origArray.as(type), newArray.as(type));
-}
+	CPPtoAF(m_count, m_proxyIdxBuffer, afProxyIdxBuf);
+	CPPtoAF(m_count, m_proxyTagBuffer, afProxyTagBuf);
 
-template <class UnaryPredicate>
-vector<int32> b2ParticleSystem::GetValidIdxs(int32 vSize, const UnaryPredicate isValidFunc)
-{
-	vector<int32> idx(vSize);
-	std::iota(idx.begin(), idx.end(), 0);
-	int newI = 0;
-	for (int i = 0; i < vSize; i++)
-	{
-		if (isValidFunc(i))
-		{
-			idx[newI] = i;
-			newI++;
-		}
-	}
-	return idx;
-}
-template <class UnaryPredicate>
-vector<int32> b2ParticleSystem::GetSortedIdxs(int32 vSize, const UnaryPredicate& compFunc)
-{
-	vector<int32> idx(vSize);
-	std::iota(idx.begin(), idx.end(), 0);
-	concurrency::parallel_sort(idx.begin(), idx.end(), compFunc);
-	return idx;
-}
-af::array b2ParticleSystem::AFGetSortedPairIdxs() const
-{
-	af::array keys = af::select(afPairIdxABuf != 0, -afPairIdxABuf, -afPairIdxBBuf);
-	af::array idxs = af::seq(0, m_pairCount);
-	af::sort(keys, idxs, keys, idxs);
-	return idxs;
-}
-template <class UnaryPredicate>
-vector<int32> b2ParticleSystem::GetStableSortedIdxs(int32 vSize, UnaryPredicate compFunc)
-{
-	vector<int32> idx(vSize);
-	iota(idx.begin(), idx.end(), 0);
-	stable_sort(idx.begin(), idx.end(), compFunc);
-	return idx;
-}
-template <class UnaryPredicate>
-vector<int32> b2ParticleSystem::GetUniqueIdxs(int32 vSize, UnaryPredicate compFunc)
-{
-	vector<int32> idx(vSize);
-	iota(idx.begin(), idx.end(), 0);
-	unique(idx.begin(), idx.end(), compFunc);
-	return idx;
-}
+	af::sort(afProxyTagBuf, sortedProxyTagIdxs, afProxyTagBuf, 0, true);
+	afProxyIdxBuf = afProxyIdxBuf(sortedProxyTagIdxs);
 
-af::array b2ParticleSystem::AFGetUniquePairIdxs()
-{
-	//TODO Fix
-	int32 p = m_pairCount + 1;
-	af::array hashs = afPairIdxABuf * p + afPairIdxBBuf;
-	af::array vals, idxs, locs;
-	//af::sea(vals, idxs, locs, hashs);
-	return idxs;
-}
-af::array b2ParticleSystem::AFGetUniqueTriadIdxs()
-{
-	int32 p = m_triadCount + 1;
-	af::array hashs = (afTriadIdxABuf * p + afTriadIdxBBuf) * p + afTriadIdxCBuf;
-
-	af::array vals, idxs, locs;
-	//af::setUnique(vals, idxs, locs, hashs);
-	af::setUnique(hashs);
-	return idxs;
+	AFtoCPP(m_count, afProxyIdxBuf, m_proxyIdxBuffer);
+	AFtoCPP(m_count, afProxyTagBuf, m_proxyTagBuffer);
 }
 
 template<class T>
@@ -3679,38 +2313,6 @@ void b2ParticleSystem::DetectStuckParticle(int32 particle)
 	}
 	lastStep = m_timestamp;
 }
-void b2ParticleSystem::AFDetectStuckParticle(const af::array& particles)
-{
-	// Detect stuck particles
-	//
-	// The basic algorithm is to allow the user to specify an optional
-	// threshold where we detect whenever a particle is contacting
-	// more than one fixture for more than threshold consecutive
-	// steps. This is considered to be "stuck", and these are put
-	// in a list the user can query per step, if enabled, to deal with
-	// such particles.
-
-	if (m_stuckThreshold <= 0)
-		return;
-	
-	// This is only called when there is a body contact for this particle.
-	const af::array bodyCount = afBodyContactCountBuf(particles) += 1;
-
-	// We want to only trigger detection once per step, the first time we
-	// contact more than one fixture in a step for a given particle.
-	af::array condIdxs = af::where(bodyCount == 2);
-	if (!condIdxs.isempty())
-	{
-		af::array idxs = particles(condIdxs);
-		const af::array consecutiveCount = afConsecutiveContactStepsBuf(idxs) += 1;
-		af::array cond2Idxs = af::where(consecutiveCount > m_stuckThreshold);
-		if (!cond2Idxs.isempty())
-		{
-			AFJoin(afStuckParticleBuf, idxs(cond2Idxs));
-		}
-	}
-	afLastBodyContactStepBuf(particles) = m_timestamp;
-}
 
 // Get the world's contact listener if any particles with the
 // b2_fixtureContactListenerParticle flag are present in the system.
@@ -3746,18 +2348,6 @@ void b2ParticleSystem::ComputeAABB(b2AABB* const aabb) const
 		aabb->lowerBound = b2Min(aabb->lowerBound, p);
 		aabb->upperBound = b2Max(aabb->upperBound, p);
 	}
-	aabb->lowerBound.x -= m_particleDiameter;
-	aabb->lowerBound.y -= m_particleDiameter;
-	aabb->upperBound.x += m_particleDiameter;
-	aabb->upperBound.y += m_particleDiameter;
-}
-void b2ParticleSystem::AFComputeAABB(b2AABB* const aabb) const
-{
-	b2Assert(aabb);
-	aabb->lowerBound.x = af::min<float32>(afPosXBuf);
-	aabb->lowerBound.y = af::min<float32>(afPosYBuf);
-	aabb->upperBound.x = af::max<float32>(afPosXBuf);
-	aabb->upperBound.y = af::max<float32>(afPosYBuf);
 	aabb->lowerBound.x -= m_particleDiameter;
 	aabb->lowerBound.y -= m_particleDiameter;
 	aabb->upperBound.x += m_particleDiameter;
@@ -3823,7 +2413,7 @@ static int32 FindItemIndexInFixedSet(const TypedFixedSetAllocator<T>& set,
 // Initialize from a set of particle / body contacts for particles
 // that have the b2_fixtureContactListenerParticle flag set.
 void FixtureParticleSet::Initialize(
-	const vector<int32> bodyContactIdxs, const vector<int32> bodyContactFixtureIdxs,
+	const vector<b2PartBodyContact>& bodyContacts,
 	const int32 numBodyContacts,
 	const uint32 * const particleFlagsBuffer)
 {
@@ -3835,15 +2425,15 @@ void FixtureParticleSet::Initialize(
 		for (int32 i = 0; i < numBodyContacts; ++i)
 		{
 			FixtureParticle* const fixtureParticle = &set[i];
-			const int32& idx = bodyContactIdxs[i];
-			if (idx == b2_invalidParticleIndex ||
-				!(particleFlagsBuffer[idx] &
+			const b2PartBodyContact& bodyContact = bodyContacts[i];
+			if (bodyContact.idx == b2_invalidIndex ||
+				!(particleFlagsBuffer[bodyContact.idx] &
 				  b2_fixtureContactListenerParticle))
 			{
 				continue;
 			}
-			fixtureParticle->first = bodyContactFixtureIdxs[i];
-			fixtureParticle->second = idx;
+			fixtureParticle->first = bodyContact.fixture;
+			fixtureParticle->second = bodyContact.idx;
 			insertedContacts++;
 		}
 		SetCount(insertedContacts);
@@ -3875,8 +2465,8 @@ void b2ParticlePairSet::Initialize(
 			ParticlePair* const pair = &set[i];
 			const int32 idxA = contactIdxAs[i],
 						idxB = contactIdxBs[i];
-			if (idxA == b2_invalidParticleIndex ||
-				idxB == b2_invalidParticleIndex ||
+			if (idxA == b2_invalidIndex ||
+				idxB == b2_invalidIndex ||
 				!((particleFlagsBuffer[idxA] |
 				   particleFlagsBuffer[idxB]) &
 				  b2_particleContactListenerParticle))
@@ -3965,51 +2555,6 @@ private:
 protected:
 	b2ParticleSystem* m_system;
 };
-/// Callback class to receive pairs of fixtures and particles which may be
-/// overlapping. Used as an argument of b2World::QueryAABB.
-class afFixtureParticleQueryCallback : public afQueryCallback
-{
-public:
-	explicit afFixtureParticleQueryCallback(b2ParticleSystem* system)
-	{
-		m_system = system;
-	}
-
-private:
-	// Skip reporting particles.
-	bool AFShouldQueryParticleSystem(const b2ParticleSystem* system)
-	{
-		B2_NOT_USED(system);
-		return false;
-	}
-
-	// Receive a fixture and call ReportFixtureAndParticle() for each particle
-	// inside aabb of the fixture.
-	bool AFReportFixture(int32 fixtureIdx)
-	{
-		b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
-		if (fixture->IsSensor())
-			return true;
-		
-		const b2Shape* shape = fixture->GetShape();
-		int32 childCount = shape->GetChildCount();
-		for (int32 childIndex = 0; childIndex < childCount; childIndex++)
-		{
-			b2AABB aabb = fixture->GetAABB(childIndex);
-			af::array idxs = m_system->AFGetInsideBoundsEnumerator(aabb);
-			if (!idxs.isempty())
-				AFReportFixtureAndParticle(fixtureIdx, childIndex, idxs);
-		}
-		return true;
-	}
-
-	// Receive a fixture and a particle which may be overlapping.
-	virtual void AFReportFixtureAndParticle(
-		int32 fixtureIdx, int32 childIdx, const af::array& partIdxs) = 0;
-
-protected:
-	b2ParticleSystem * m_system;
-};
 
 void b2ParticleSystem::NotifyBodyContactListenerPreContact(
 	FixtureParticleSet* fixtureSet) const
@@ -4018,7 +2563,7 @@ void b2ParticleSystem::NotifyBodyContactListenerPreContact(
 	if (contactListener == NULL)
 		return;
 
-	fixtureSet->Initialize(m_bodyContactIdxBuffer, m_bodyContactFixtureIdxBuffer,
+	fixtureSet->Initialize(m_bodyContactBuf,
 						   m_bodyContactCount,
 						   GetFlagsBuffer());
 }
@@ -4037,9 +2582,10 @@ void b2ParticleSystem::NotifyBodyContactListenerPostContact(
 	// "invalidating" the ones that still exist.
 	for (int i = 0; i < m_bodyContactCount; i++)
 	{
+		const b2PartBodyContact& contact = m_bodyContactBuf[i];
 		FixtureParticle fixtureParticleToFind;
-		fixtureParticleToFind.first = m_bodyContactFixtureIdxBuffer[i];
-		fixtureParticleToFind.second = m_bodyContactIdxBuffer[i];
+		fixtureParticleToFind.first = contact.fixture;
+		fixtureParticleToFind.second = contact.idx;
 		const int32 index = fixtureSet.Find(fixtureParticleToFind);
 		if (index >= 0)
 		{
@@ -4125,17 +2671,17 @@ void b2ParticleSystem::UpdateBodyContacts()
 					float32 rpn = b2Cross(rp, n);
 					float32 invM = invAm + invBm + invBI * rpn * rpn;
 
-					int32 bodyContactCount = m_system->m_bodyContactCount;
-					m_system->m_bodyContactCount++;
-					if (bodyContactCount >= m_system->m_bodyContactBufferSize)
+					int32& bodyContactCount = m_system->m_bodyContactCount;
+					if (bodyContactCount+1 >= m_system->m_bodyContactBufferSize)
 						m_system->ResizeBodyContactBuffers(bodyContactCount * 2);
-					m_system->m_bodyContactIdxBuffer[bodyContactCount] = a;
-					m_system->m_bodyContactBodyIdxBuffer[bodyContactCount] = bIdx;
-					m_system->m_bodyContactFixtureIdxBuffer[bodyContactCount] = fixtureIdx;
-					m_system->m_bodyContactWeightBuffer[bodyContactCount] = 1 - d * m_system->m_inverseDiameter;
-					m_system->m_bodyContactNormalXBuffer[bodyContactCount] = -n.x;
-					m_system->m_bodyContactNormalYBuffer[bodyContactCount] = -n.y;
-					m_system->m_bodyContactMassBuffer[bodyContactCount] = invM > 0 ? 1 / invM : 0;
+					b2PartBodyContact& contact = m_system->m_bodyContactBuf[bodyContactCount];
+					bodyContactCount++;
+					contact.idx = a;
+					contact.body = b;
+					contact.fixture = fixture;
+					contact.weight = 1 - d * m_system->m_inverseDiameter;
+					contact.normal = -n;
+					contact.mass = invM > 0 ? 1 / invM : 0;
 					m_system->DetectStuckParticle(a);
 				}
 			}
@@ -4162,104 +2708,6 @@ void b2ParticleSystem::UpdateBodyContacts()
 	}
 
 	NotifyBodyContactListenerPostContact(fixtureSet);
-}
-
-void b2ParticleSystem::AFUpdateBodyContacts()
-{
-	// If the particle contact listener is enabled, generate a set of
-	// fixture / particle contacts.
-
-	//TODO
-	FixtureParticleSet fixtureSet(&m_world->m_stackAllocator);
-	NotifyBodyContactListenerPreContact(&fixtureSet);
-
-	if (m_stuckThreshold > 0)
-	{
-		afBodyContactCountBuf = af::constant(0, m_count);
-		afConsecutiveContactStepsBuf(af::where(
-			m_timestamp > (afLastBodyContactStepBuf + 1))) = 0;
-	}
-	afStuckParticleBuf = af::array();
-	m_bodyContactCount = 0;
-
-	class UpdateBodyContactsCallback : public afFixtureParticleQueryCallback
-	{
-		void AFReportFixtureAndParticle(
-			int32 fixtureIdx, int32 childIndex, const af::array& a)
-		{
-			af::array apx = m_system->afPosXBuf(a);
-			af::array apy = m_system->afPosYBuf(a);
-			af::array d;
-			af::array nx;
-			af::array ny;
-			b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
-			fixture->AFComputeDistance(apx, apy, d, nx, ny, childIndex);
-			if (!d.isempty())
-			{
-				af::array condIdxs = af::where(d < m_system->m_particleDiameter && m_system->AFShouldCollide(a, fixture));
-				if (!condIdxs.isempty())
-				{
-					af::array idxs = a(condIdxs);
-					apx = apx(condIdxs);
-					apy = apy(condIdxs);
-					d = d(condIdxs);
-					nx = nx(condIdxs);
-					ny = ny(condIdxs);
-					b2Body* b = fixture->GetBody();
-					int32 bIdx = fixture->GetBodyIdx();
-					float32 bpx = b->GetWorldCenter().x;
-					float32 bpy = b->GetWorldCenter().y;
-					float32 bm = b->GetMass();
-					float32 bI =
-						b->GetInertia() - bm * b->GetLocalCenter().LengthSquared();
-					float32 invBm = bm > 0 ? 1 / bm : 0;
-					float32 invBI = bI > 0 ? 1 / bI : 0;
-					const af::array& matIdxs = m_system->afPartMatIdxBuf(idxs);
-					const af::array& invAm = af::select(m_system->afFlagBuf(idxs) & b2_wallParticle,
-						0, m_system->afPartMatInvMassBuf(matIdxs));
-					const af::array& rpx = apx - bpx;
-					const af::array& rpy = apy - bpy;
-					const af::array& rpn = b2Cross(rpx, rpy, nx, ny);
-					const af::array& invM = invAm + invBm + invBI * rpn * rpn;
-
-					int32& i = m_system->m_bodyContactCount;
-					int32 addCount = idxs.elements();
-					m_system->AFJoin(m_system->afBodyContactIdxBuf, idxs);
-					m_system->AFJoin(m_system->afBodyContactBodyIdxBuf, af::constant(bIdx, addCount));
-					m_system->AFJoin(m_system->afBodyContactFixtIdxBuf, af::constant(fixtureIdx, addCount));
-					m_system->AFJoin(m_system->afBodyContactWeightBuf, 1 - d * m_system->m_inverseDiameter);
-					m_system->AFJoin(m_system->afBodyContactNormalXBuf, -nx);
-					m_system->AFJoin(m_system->afBodyContactNormalYBuf, -ny);
-					m_system->AFJoin(m_system->afBodyContactMassBuf, af::select(invM > 0, 1 / invM, 0));
-					m_system->m_bodyContactCount += addCount;
-
-					m_system->AFDetectStuckParticle(idxs);
-				}
-			}
-		}
-
-		b2ContactFilter* m_contactFilter;
-
-	public:
-		UpdateBodyContactsCallback(
-			b2ParticleSystem* system, b2ContactFilter* contactFilter) :
-			afFixtureParticleQueryCallback(system)
-		{
-			m_contactFilter = contactFilter;
-		}
-	} callback(this, GetFixtureContactFilter());
-
-	b2AABB aabb;							// TODO is this Needed?
-	AFComputeAABB(&aabb);
-	m_world->AFQueryAABB(&callback, aabb);
-	
-	if (m_def.strictContactCheck)
-	{
-		RemoveSpuriousBodyContacts();
-	}
-
-	//TODO
-	//NotifyBodyContactListenerPostContact(fixtureSet);
 }
 
 void b2ParticleSystem::RemoveSpuriousBodyContacts()
@@ -4305,16 +2753,6 @@ void b2ParticleSystem::RemoveSpuriousBodyContacts()
 	}
 	return m_bodyContactIdxBuffer[lhsIdx] < m_bodyContactIdxBuffer[lhsIdx];
 }*/
-
-
-af::array b2ParticleSystem::AFBodyGetLinVelXFromWorldPoint(const af::array& bodyIdxs, const af::array& y)
-{
-	return afBodyVelXBuf(bodyIdxs) + b2CrossX(afBodyAngVelBuf(bodyIdxs), y - afBodySweepCY(bodyIdxs));	// y is right
-}
-af::array b2ParticleSystem::AFBodyGetLinVelYFromWorldPoint(const af::array& bodyIdxs, const af::array& x)
-{
-	return afBodyVelYBuf(bodyIdxs) + b2CrossY(afBodyAngVelBuf(bodyIdxs), x - afBodySweepCX(bodyIdxs));	// x is right
-}
 
 
 void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
@@ -4419,120 +2857,6 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 	} callback(this, step, GetFixtureContactFilter());
 	m_world->QueryAABB(&callback, aabb);
 }
-void b2ParticleSystem::AFSolveCollision(const b2TimeStep& step)
-{
-	// This function detects particles which are crossing boundary of bodies
-	// and modifies velocities of them so that they will move just in front of
-	// boundary. This function function also applies the reaction force to
-	// bodies as precisely as the numerical stability is kept.
-
-	const af::array& p1x = afPosXBuf;
-	const af::array& p1y = afPosYBuf;
-	const af::array& p2x = afPosXBuf + step.dt * afVelXBuf;
-	const af::array& p2y = afPosYBuf + step.dt * afVelYBuf;
-
-	b2AABB aabb;
-	aabb.lowerBound.x = af::min<float32>(af::min(p1x, p2x));
-	aabb.lowerBound.y = af::max<float32>(af::max(p1x, p2x));
-	aabb.upperBound.x = af::min<float32>(af::min(p1y, p2y));
-	aabb.upperBound.y = af::max<float32>(af::max(p1y, p2y));
-
-	class AFSolveCollisionCallback : public afFixtureParticleQueryCallback
-	{
-		void AFReportFixtureAndParticle(
-			int32 fixtureIdx, int32 childIndex, const af::array& a)
-		{
-			b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
-			af::array k = m_system->AFShouldCollide(a, fixture);
-			if (!k.isempty()) 
-			{
-				af::array idxs = a(k);
-				b2Body* body = fixture->GetBody();
-				const af::array& apx = m_system->afPosXBuf(idxs);
-				const af::array& apy = m_system->afPosYBuf(idxs);
-				const af::array& avx = m_system->afVelXBuf(idxs);
-				const af::array& avy = m_system->afVelYBuf(idxs);
-				afRayCastOutput output;
-				afRayCastInput input;
-				if (m_system->m_iterationIndex == 0)
-				{
-					// Put 'ap' in the local space of the previous frame
-					af::array p1x = b2MulTX(body->m_xf0, apx, apy);
-					af::array p1y = b2MulTY(body->m_xf0, apx, apy);
-					if (fixture->GetShape()->GetType() == b2Shape::e_circle)
-					{
-						// Make relative to the center of the circle
-						p1x -= body->GetLocalCenter().x;
-						p1y -= body->GetLocalCenter().y;
-						// Re-apply rotation about the center of the
-						// circle
-						p1x = b2MulX(body->m_xf0.q, p1x, p1y);
-						p1y = b2MulY(body->m_xf0.q, p1x, p1y);
-						// Subtract rotation of the current frame
-						p1x = b2MulTX(body->m_xf.q, p1x, p1y);
-						p1y = b2MulTY(body->m_xf.q, p1x, p1y);
-						// Return to local space
-						p1x += body->GetLocalCenter().x;
-						p1y += body->GetLocalCenter().y;
-					}
-					// Return to global space and apply rotation of current frame
-					input.p1x = b2MulX(body->m_xf, p1x, p1y);
-					input.p1y = b2MulY(body->m_xf, p1x, p1y);
-				}
-				else
-				{
-					input.p1x = apx;
-					input.p1y = apy;
-				}
-				input.p2x = apx + m_step.dt * avx;
-				input.p2y = apy + m_step.dt * avy;
-				input.maxFraction = 1;
-				af::array k2 = af::where(fixture->AFRayCast(&output, input, childIndex));
-				if (!k2.isempty())
-				{
-					idxs = idxs(k2);
-					output.fraction = output.fraction(k2);
-					output.normalX = output.normalX(k2);
-					output.normalY = output.normalY(k2);
-					const af::array& p1x = input.p1x(k2);
-					const af::array& p1y = input.p1y(k2);
-					const af::array& p2x = input.p2x(k2);
-					const af::array& p2y = input.p2y(k2);
-					const af::array& nx = output.normalX;
-					const af::array& ny = output.normalY;
-					const af::array& px = (1 - output.fraction) * p1x +
-						output.fraction * p2x +
-						b2_linearSlop * nx;
-					const af::array& py = (1 - output.fraction) * p1y +
-						output.fraction * p2y +
-						b2_linearSlop * ny;
-					const af::array& vx = m_step.inv_dt * (px - apx);
-					const af::array& vy = m_step.inv_dt * (py - apy);
-					m_system->afVelXBuf(idxs) = vx;
-					m_system->afVelYBuf(idxs) = vy;
-					const af::array& matIdxs = m_system->afPartMatIdxBuf(idxs);
-					const af::array& mass = m_system->afPartMatMassBuf(matIdxs);
-					const af::array& fx = m_step.inv_dt * mass * (avx - vx);
-					const af::array& fy = m_step.inv_dt * mass * (avy - vy);
-					m_system->AFParticleApplyForce(idxs, fx, fy);
-				}
-			}
-		}
-
-		b2TimeStep m_step;
-		b2ContactFilter* m_contactFilter;
-
-	public:
-		AFSolveCollisionCallback(
-			b2ParticleSystem* system, const b2TimeStep& step, b2ContactFilter* contactFilter) :
-			afFixtureParticleQueryCallback(system)
-		{
-			m_step = step;
-			m_contactFilter = contactFilter;
-		}
-	} callback(this, step, GetFixtureContactFilter());
-	m_world->AFQueryAABB(&callback, aabb);
-}
 
 void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 {
@@ -4552,19 +2876,22 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 	float32 tmax = b2_barrierCollisionTime * step.dt;
 	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		if (m_pairFlagsBuf[k] & b2_barrierParticle)
+		const b2ParticlePair& pair = m_pairBuffer[k];
+		if (pair.flags & b2_barrierParticle)
 		{
-			int32 a = m_pairIdxABuf[k];
-			int32 b = m_pairIdxBBuf[k];
+			int32 a = pair.indexA;
+			int32 b = pair.indexB;
 			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
 			b2AABB aabb;
 			aabb.lowerBound = b2Min(pa, pb);
 			aabb.upperBound = b2Max(pa, pb);
-			int32 aGroupIdx = m_groupIdxBuffer[a];
-			int32 bGroupIdx = m_groupIdxBuffer[b];
-			b2Vec2 va = GetLinearVelocity(aGroupIdx, a, pa);
-			b2Vec2 vb = GetLinearVelocity(bGroupIdx, b, pb);
+			int32 aGroupIdx = m_partGroupIdxBuffer[a];
+			int32 bGroupIdx = m_partGroupIdxBuffer[b];
+			b2ParticleGroup* aGroup = m_groupBuffer[aGroupIdx];
+			b2ParticleGroup* bGroup = m_groupBuffer[bGroupIdx];
+			b2Vec2 va = GetLinearVelocity(aGroup, a, pa);
+			b2Vec2 vb = GetLinearVelocity(bGroup, b, pb);
 			b2Vec2 pba = pb - pa;
 			b2Vec2 vba = vb - va;
 			InsideBoundsEnumerator enumerator = GetInsideBoundsEnumerator(aabb);
@@ -4572,10 +2899,11 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 			while ((c = enumerator.GetNext()) >= 0)
 			{
 				b2Vec2 pc = b2Vec2(m_positionXBuffer[c], m_positionYBuffer[c]);
-				int32 cGroupIdx = m_groupIdxBuffer[c];
+				int32 cGroupIdx = m_partGroupIdxBuffer[c];
 				if (aGroupIdx != cGroupIdx && bGroupIdx != cGroupIdx)
 				{
-					b2Vec2 vc = GetLinearVelocity(cGroupIdx, c, pc);
+					b2ParticleGroup* cGroup = m_groupBuffer[cGroupIdx];
+					b2Vec2 vc = GetLinearVelocity(cGroup, c, pc);
 					// Solve the equation below:
 					//   (1-s)*(pa+t*va)+s*(pb+t*vb) = pc+t*vc
 					// which expresses that the particle c will pass a line
@@ -4624,20 +2952,19 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 					// interpolated velocity at the collision point on line ab.
 					b2Vec2 dv = va + s * vba - vc;
 					b2Vec2 f = m_partMatMassBuf[m_partMatIdxBuffer[c]] * dv;
-					if (IsRigidGroup(cGroupIdx))
+					if (IsRigidGroup(cGroup))
 					{
 						// If c belongs to a rigid group, the force will be
-						// distributed in the group.
-						float32 mass = GetGroupMass(cGroupIdx);
-						float32 inertia = GetGroupInertia(cGroupIdx);
+						// distributed in the group->
+						float32 mass = cGroup->GetMass();
+						float32 inertia = cGroup->GetInertia();
 						if (mass > 0)
 						{
-							m_groupLinVelXBuf[cGroupIdx] += 1 / mass * f.x;
-							m_groupLinVelXBuf[cGroupIdx] += 1 / mass * f.y;
+							cGroup->m_linearVelocity += 1 / mass * f;
 						}
 						if (inertia > 0)
-							m_groupAngVelBuf[cGroupIdx] +=
-								b2Cross(pc - GetGroupCenter(cGroupIdx), f) / inertia;
+							cGroup->m_angularVelocity +=
+								b2Cross(pc - cGroup->GetCenter(), f) / inertia;
 					}
 					else
 					{
@@ -4661,16 +2988,14 @@ void b2ParticleSystem::SolveInit()
 	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f)
 		return;
 
-	if (!m_expireTimeBuf.empty())
-		SolveLifetimes(m_step);
+	//if (!m_expireTimeBuf.empty())
+	//	SolveLifetimes(m_step);
 	if (m_allParticleFlags & b2_zombieParticle)
 		SolveZombie();
 	if (m_needsUpdateAllParticleFlags)
 		UpdateAllParticleFlags();
 	if (m_needsUpdateAllGroupFlags)
 		UpdateAllGroupFlags();
-	FilterRealGroups();
-
 }
 
 void b2ParticleSystem::UpdateContacts(bool exceptZombie)
@@ -4680,38 +3005,31 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 	if (m_paused)
 		return;
 
-	// Update Proxy Tags
-	UpdateProxies();
-	//afProxyTagBuf = afComputeTag(m_inverseDiameter * afPosXBuf(afProxyIdxBuf),
-	//	m_inverseDiameter * afPosYBuf(afProxyIdxBuf));
 
-	// Sort Proxies by Tag
-	clock_t clockSort = clock();
-	CopyProxiesToGPU();
-	AFSort(afProxyTagBuf, afProxyIdxBuf, true);
-	CopyProxiesToCPU();
-	cout << "SortProxies " << (clock() - clockSort) * 1000 / CLOCKS_PER_SEC << "ms\n";
+	Time sortStart = Clock::now();
+	// Update Proxy Tags and Sort by Tags
+	UpdateProxies();
+	SortProxies();
+	float32 sortTime = GetTimeDif(sortStart);
 
 	//find Body COntacts in seperate Thread
-	clock_t clockfindBodyContacts = clock();
+	Time findStart = Clock::now();
 	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
 
 	// While findBodyContactsThread is running
-	clock_t clockPartContacts = clock();
+	//clock_t clockPartContacts = clock();
 	FindContacts();
-	cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
+	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
 
 	WaitForSingleObject(findBodyContactsThread, INFINITE);
-	cout << "FindBodyContacts " << (clock() - clockfindBodyContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
+	float32 findTime = GetTimeDif(findStart);
+
 
 	if (exceptZombie)
 	{
-		RemoveFromVectorsIf(m_contactFlagsBuffer, m_contactIdxABuffer, m_contactIdxBBuffer,
-			m_contactWeightBuffer, m_contactMassBuffer,
-			m_contactNormalXBuffer, m_contactNormalYBuffer,
-			m_contactMatFlagsBuffer,
-			m_contactCount, b2ParticleContactIsZombie, true);
+		RemoveFromVectorIf(m_partContactBuf, m_contactCount, b2ParticleContactIsZombie, true);
 	}
+	snprintf(debugString, 64, "Sort %fms  find %fms", sortTime, findTime);
 }
 
 void b2ParticleSystem::SolveIteration(int32 iteration)
@@ -4725,8 +3043,6 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	//clock_t clockSolve = clock();
 
 	ComputeWeight();
-
-	//CopyParticlesToCPU();
 
 	if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
 		ComputeDepth();
@@ -4753,32 +3069,31 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 
 
 	// HEAT MANAGEMENT
-	//if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
-	//SolveHeatConduct(subStep);
-	//if (m_allParticleFlags & b2_heatLoosingParticle)
-	//SolveLooseHeat(subStep);
+	if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
+		SolveHeatConduct(subStep);
+	if (m_allParticleFlags & b2_heatLoosingParticle)
+		SolveLooseHeat(subStep);
 
 	// FIRE
-	/*if (m_allParticleFlags & b2_flameParticle)
+	if (m_allParticleFlags & b2_flameParticle)
 	{
-	SolveFlame(subStep);
-	if (m_world->m_allMaterialFlags & b2_flammableMaterial)
-	SolveIgnite();
-	if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
-	SolveExtinguish();
+		SolveFlame(subStep);
+		if (m_world->m_allMaterialFlags & b2_flammableMaterial)
+			SolveIgnite();
+		if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
+			SolveExtinguish();
 	}
 	if (m_allParticleFlags & b2_burningParticle)
-	SolveBurning(subStep);*/
+		SolveBurning(subStep);
 
 	// WATER
-	/*if (m_allParticleFlags & b2_waterParticle)
-	SolveWater();
+	if (m_allParticleFlags & b2_waterParticle)
+		SolveWater();
 	if (m_world->m_allMaterialFlags & b2_boilingMaterial)
-	SolveEvaporate();
-	SolveFreeze();*/
+		SolveEvaporate();
+	SolveFreeze();
 
 	//Destroy Dead Particles
-	//AFDestroyParticles(af::where(afHealthBuf < 0));
 	SolveDestroyDead();
 
 	SolveGravity(subStep);
@@ -4817,8 +3132,6 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 
 
 	// The particle positions can be updated only at the end of substep.
-	//afPosXBuf += subStep.dt * afVelXBuf;
-	//afPosYBuf += subStep.dt * afVelYBuf;
 	if (m_allParticleFlags & b2_fallingParticle)
 		SolveFalling(subStep);
 	if (m_allParticleFlags & b2_risingParticle)
@@ -4833,209 +3146,9 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 
 void b2ParticleSystem::SolveEnd() 
 {
-	//CopyParticlesToCPU();
-	//CopyGroupsToCPU();
+
 }
 
-void b2ParticleSystem::CopyParticlesToGPU()
-{
-	CPPtoAF(m_count, m_positionXBuffer,			afPosXBuf			);
-	CPPtoAF(m_count, m_positionYBuffer,			afPosYBuf			);
-	CPPtoAF(m_count, m_positionZBuffer,			afPosZBuf			);
-	CPPtoAF(m_count, m_flagsBuffer,				afFlagBuf			);
-	CPPtoAF(m_count, m_collisionLayerBuffer,	afColLayBuf			);
-	CPPtoAF(m_count, m_velocityXBuffer,			afVelXBuf			);
-	CPPtoAF(m_count, m_velocityYBuffer,			afVelYBuf			);
-	CPPtoAF(m_count, m_forceXBuffer,			afForceXBuf			);
-	CPPtoAF(m_count, m_forceYBuffer,			afForceYBuf			);
-	CPPtoAF(m_count, m_weightBuffer,			afWeightBuf			);
-	CPPtoAF(m_count, m_heatBuffer,				afHeatBuf			);
-	CPPtoAF(m_count, m_healthBuffer,			afHealthBuf			);
-	CPPtoAF(m_count, m_colorBuffer,				afColorBuf			);
-	CPPtoAF(m_count, m_userDataBuffer,			afUserDataBuf		);
-	CPPtoAF(m_count, m_groupIdxBuffer,			afGroupIdxBuf		);
-	CPPtoAF(m_count, m_partMatIdxBuffer,		afPartMatIdxBuf		);
-
-	CPPtoAF(m_count, m_expireTimeBuf,			afExpireTimeBuf		);
-	CPPtoAF(m_count, m_idxByExpireTimeBuf,		afIdxByExpireTimeBuf);
-}
-void b2ParticleSystem::CopyParticlesToCPU()
-{
-	if (m_count >= m_particleBufferSize)
-		ResizeParticleBuffers(m_count * 2);
-	AFtoCPP(m_count, afFlagBuf,		  m_flagsBuffer			);
-	AFtoCPP(m_count, afColLayBuf,	  m_collisionLayerBuffer);	
-	AFtoCPP(m_count, afPosXBuf,		  m_positionXBuffer		);
-	AFtoCPP(m_count, afPosYBuf,		  m_positionYBuffer		);
-	AFtoCPP(m_count, afPosZBuf,		  m_positionZBuffer		);	
-	AFtoCPP(m_count, afVelXBuf,		  m_velocityXBuffer		);
-	AFtoCPP(m_count, afVelYBuf,		  m_velocityYBuffer		);
-	AFtoCPP(m_count, afWeightBuf,	  m_weightBuffer		);
-	AFtoCPP(m_count, afHeatBuf,		  m_heatBuffer			);
-	AFtoCPP(m_count, afHealthBuf,	  m_healthBuffer		);
-	AFtoCPP(m_count, afColorBuf,	  m_colorBuffer			);
-	AFtoCPP(m_count, afUserDataBuf,	  m_userDataBuffer		);
-	AFtoCPP(m_count, afGroupIdxBuf,   m_groupIdxBuffer		);
-	AFtoCPP(m_count, afPartMatIdxBuf, m_partMatIdxBuffer	);
-
-	//if (afHasExpireTimeBuf)
-	//	CopyFromAFArrayToVector(m_count, afExpireTimeBuf,	   m_expireTimeBuf);
-	//CopyFromAFArrayToVector(m_count, afIdxByExpireTimeBuf, m_idxByExpireTimeBuf);
-}
-
-void b2ParticleSystem::CopyProxiesToGPU()
-{
-	CPPtoAF(m_count, m_proxyIdxBuffer, afProxyIdxBuf);
-	CPPtoAF(m_count, m_proxyTagBuffer, afProxyTagBuf);
-}
-void b2ParticleSystem::CopyProxiesToCPU()
-{
-	AFtoCPP(m_count, afProxyIdxBuf, m_proxyIdxBuffer);
-	AFtoCPP(m_count, afProxyTagBuf, m_proxyTagBuffer);
-}
-
-void b2ParticleSystem::CopyGroupsToGPU()
-{
-	CPPtoAF(m_groupCount, m_groupFirstIdxBuf,		afGroupFirstIdxBuf	);
-	CPPtoAF(m_groupCount, m_groupLastIdxBuf,		afGroupLastIdxBuf	);
-	CPPtoAF(m_groupCount, m_groupFlagsBuf,			afGroupFlagsBuf		);
-	CPPtoAF(m_groupCount, m_groupColGroupBuf,		afGroupColGroupBuf	);
-	CPPtoAF(m_groupCount, m_groupStrengthBuf,		afGroupStrengthBuf	);
-	CPPtoAF(m_groupCount, m_groupMatIdxBuf,			afGroupMatIdxBuf	);
-	CPPtoAF(m_groupCount, m_groupTimestampBuf,      afGroupTimestampBuf	);
-	CPPtoAF(m_groupCount, m_groupMassBuf,			afGroupMassBuf		);
-	CPPtoAF(m_groupCount, m_groupInertiaBuf,		afGroupInertiaBuf	);
-	CPPtoAF(m_groupCount, m_groupCenterXBuf,		afGroupCenterXBuf	);
-	CPPtoAF(m_groupCount, m_groupCenterYBuf,		afGroupCenterYBuf	);
-	CPPtoAF(m_groupCount, m_groupLinVelXBuf,		afGroupLinVelXBuf	);
-	CPPtoAF(m_groupCount, m_groupLinVelYBuf,		afGroupLinVelYBuf	);
-	CPPtoAF(m_groupCount, m_groupAngVelBuf,			afGroupAngVelBuf	);
-  //CPPtoAF(m_groupCount, m_groupTransformBuf,      afGroupTransformBuf	);
-	CPPtoAF(m_groupCount, m_groupUserDataBuf,		afGroupUserDataBuf	);
-}
-void b2ParticleSystem::CopyGroupsToCPU()
-{
-	AFtoCPP(m_groupCount, afGroupFirstIdxBuf,	m_groupFirstIdxBuf	);
-	AFtoCPP(m_groupCount, afGroupLastIdxBuf,	m_groupLastIdxBuf	);
-	AFtoCPP(m_groupCount, afGroupFlagsBuf,		m_groupFlagsBuf		);
-	AFtoCPP(m_groupCount, afGroupColGroupBuf,	m_groupColGroupBuf	);
-	AFtoCPP(m_groupCount, afGroupStrengthBuf,	m_groupStrengthBuf	);
-	AFtoCPP(m_groupCount, afGroupMatIdxBuf,		m_groupMatIdxBuf	);
-	AFtoCPP(m_groupCount, afGroupTimestampBuf,	m_groupTimestampBuf	);
-	AFtoCPP(m_groupCount, afGroupMassBuf,		m_groupMassBuf		);
-	AFtoCPP(m_groupCount, afGroupInertiaBuf,	m_groupInertiaBuf	);
-	AFtoCPP(m_groupCount, afGroupCenterXBuf,	m_groupCenterXBuf	);
-	AFtoCPP(m_groupCount, afGroupCenterYBuf,	m_groupCenterYBuf	);
-	AFtoCPP(m_groupCount, afGroupLinVelXBuf,	m_groupLinVelXBuf	);
-	AFtoCPP(m_groupCount, afGroupLinVelYBuf,	m_groupLinVelYBuf	);
-	AFtoCPP(m_groupCount, afGroupAngVelBuf,		m_groupAngVelBuf	);
-  //AFtoCPP(m_groupCount, afGroupTransformBuf,	m_groupTransformBuf );
-	AFtoCPP(m_groupCount, afGroupUserDataBuf,	m_groupUserDataBuf	);
-}
-
-void b2ParticleSystem::CopyMatsToGPU()
-{
-	CPPtoAF(m_partMatCount, m_partMatFlagsBuf,				afPartMatFlagsBuf			);
-	CPPtoAF(m_partMatCount, m_partMatMassBuf,				afPartMatMassBuf			);
-	CPPtoAF(m_partMatCount, m_partMatInvMassBuf,			afPartMatInvMassBuf			);
-	CPPtoAF(m_partMatCount, m_partMatStabilityBuf,			afPartMatStabilityBuf		);
-	CPPtoAF(m_partMatCount, m_partMatInvStabilityBuf,		afPartMatInvStabilityBuf	);
-	CPPtoAF(m_partMatCount, m_partMatExtinguishingPointBuf,	afPartMatExtgshPntBuf		);
-	CPPtoAF(m_partMatCount, m_partMatMeltingPointBuf,		afPartMatMeltingPntBuf		);
-	CPPtoAF(m_partMatCount, m_partMatBoilingPointBuf,		afPartMatBoilingPntBuf		);
-	CPPtoAF(m_partMatCount, m_partMatIgnitionPointBuf,		afPartMatIgnitPntBuf		);
-	CPPtoAF(m_partMatCount, m_partMatHeatConductivityBuf,	afPartMatHeatCondBuf		);
-}
-void b2ParticleSystem::CopyMatsToCPU()
-{
-	AFtoCPP(m_partMatCount, afPartMatFlagsBuf,			m_partMatFlagsBuf				);
-	AFtoCPP(m_partMatCount, afPartMatMassBuf,			m_partMatMassBuf				);
-	AFtoCPP(m_partMatCount, afPartMatInvMassBuf,		m_partMatInvMassBuf				);
-	AFtoCPP(m_partMatCount, afPartMatStabilityBuf,		m_partMatStabilityBuf			);
-	AFtoCPP(m_partMatCount, afPartMatInvStabilityBuf,	m_partMatInvStabilityBuf		);
-	AFtoCPP(m_partMatCount, afPartMatExtgshPntBuf,		m_partMatExtinguishingPointBuf	);
-	AFtoCPP(m_partMatCount, afPartMatMeltingPntBuf,		m_partMatMeltingPointBuf		);
-	AFtoCPP(m_partMatCount, afPartMatBoilingPntBuf,		m_partMatBoilingPointBuf		);
-	AFtoCPP(m_partMatCount, afPartMatIgnitPntBuf,		m_partMatIgnitionPointBuf		);
-	AFtoCPP(m_partMatCount, afPartMatHeatCondBuf,		m_partMatHeatConductivityBuf	);
-}
-
-void b2ParticleSystem::CopyContactsToGPU()
-{
-	CPPtoAF(m_contactCount,  m_contactIdxABuffer,		afContactIdxABuf	 );
-	CPPtoAF(m_contactCount,  m_contactIdxBBuffer,		afContactIdxBBuf	 );
-	CPPtoAF(m_contactCount,  m_contactWeightBuffer,		afContactWeightBuf	 );
-	CPPtoAF(m_contactCount,  m_contactMassBuffer,		afContactMassBuf	 );
-	CPPtoAF(m_contactCount,  m_contactNormalXBuffer,	afContactNormalXBuf	 );
-	CPPtoAF(m_contactCount,  m_contactNormalYBuffer,	afContactNormalYBuf	 );
-	CPPtoAF(m_contactCount,  m_contactFlagsBuffer,		afContactFlagsBuf	 );
-	CPPtoAF(m_contactCount,  m_contactMatFlagsBuffer,	afContactMatFlagsBuf );
-
-	//vector<af::array> afContactIdxASplits = AFSeperateToUniqueIdxBufs(afContactIdxABuf);
-	//vector<af::array> afContactIdxBSplits = AFSeperateToUniqueIdxBufs(afContactIdxBBuf);
-}
-void b2ParticleSystem::CopyContactsToCPU()
-{
-	AFtoCPP(m_contactCount, afContactIdxABuf,		m_contactIdxABuffer		);
-	AFtoCPP(m_contactCount, afContactIdxBBuf,		m_contactIdxBBuffer		);
-	AFtoCPP(m_contactCount, afContactWeightBuf,		m_contactWeightBuffer	);
-	AFtoCPP(m_contactCount, afContactMassBuf,		m_contactMassBuffer		);
-	AFtoCPP(m_contactCount, afContactNormalXBuf,	m_contactNormalXBuffer	);
-	AFtoCPP(m_contactCount, afContactNormalYBuf,	m_contactNormalYBuffer	);
-	AFtoCPP(m_contactCount, afContactFlagsBuf,		m_contactFlagsBuffer	);
-	AFtoCPP(m_contactCount, afContactMatFlagsBuf,	m_contactMatFlagsBuffer	);
-}
-
-void b2ParticleSystem::CopyBodyContactsToGPU()
-{
-	if (m_bodyContactCount == 0) return;
-	CPPtoAF(m_bodyContactCount, m_bodyContactIdxBuffer,			afBodyContactIdxBuf		  );
-    CPPtoAF(m_bodyContactCount, m_bodyContactBodyIdxBuffer,		afBodyContactBodyIdxBuf	  );
-	CPPtoAF(m_bodyContactCount, m_bodyContactFixtureIdxBuffer,	afBodyContactFixtIdxBuf   );
-	CPPtoAF(m_bodyContactCount, m_bodyContactWeightBuffer,		afBodyContactWeightBuf	  );
-	CPPtoAF(m_bodyContactCount, m_bodyContactNormalXBuffer,		afBodyContactNormalXBuf	  );
-	CPPtoAF(m_bodyContactCount, m_bodyContactNormalYBuffer,		afBodyContactNormalYBuf	  );
-	CPPtoAF(m_bodyContactCount, m_bodyContactMassBuffer,		afBodyContactMassBuf	  );
-}
-void b2ParticleSystem::CopyBodyContactsToCPU()
-{
-	AFtoCPP(m_bodyContactCount, afBodyContactIdxBuf,		m_bodyContactIdxBuffer			);
-    AFtoCPP(m_bodyContactCount, afBodyContactBodyIdxBuf,	m_bodyContactBodyIdxBuffer		);
-    AFtoCPP(m_bodyContactCount, afBodyContactFixtIdxBuf,	m_bodyContactFixtureIdxBuffer	);
-	AFtoCPP(m_bodyContactCount, afBodyContactWeightBuf,		m_bodyContactWeightBuffer		);
-	AFtoCPP(m_bodyContactCount, afBodyContactNormalXBuf,	m_bodyContactNormalXBuffer		);
-	AFtoCPP(m_bodyContactCount, afBodyContactNormalYBuf,	m_bodyContactNormalYBuffer		);
-	AFtoCPP(m_bodyContactCount, afBodyContactMassBuf,		m_bodyContactMassBuffer			);
-}
-
-void b2ParticleSystem::CopyBodiesToGPU()
-{
-	m_bodyCount = m_bodyBuffer.size();
-
-	vector<float32> velX		(m_bodyCount);
-	vector<float32> velY		(m_bodyCount);
-	vector<float32> angVel		(m_bodyCount);
-	vector<float32> bodySweepCX	(m_bodyCount);
-	vector<float32> bodySweepCY	(m_bodyCount);
-
-	for (int i = 0; i < m_bodyCount; i++)
-	{
-		const b2Body* b = m_bodyBuffer[i];
-		if (b != NULL)
-		{
-			velX[i]			= b->m_linearVelocity.x;
-			velY[i]			= b->m_linearVelocity.y;
-			angVel[i]		= b->m_angularVelocity;
-			bodySweepCX[i]	= b->m_sweep.c.x;
-			bodySweepCY[i]	= b->m_sweep.c.y;
-		}
-	}
-	CPPtoAF(m_bodyCount, velX,			afBodyVelXBuf	);
-	CPPtoAF(m_bodyCount, velY,			afBodyVelYBuf	);
-	CPPtoAF(m_bodyCount, angVel,		afBodyAngVelBuf	);
-	CPPtoAF(m_bodyCount, bodySweepCX,	afBodySweepCX	);
-	CPPtoAF(m_bodyCount, bodySweepCY,	afBodySweepCY	);
-}
 
 template <class T> 
 inline void b2ParticleSystem::AFtoCPP(const int32& count, const af::array& arr, vector<T>& vec)
@@ -5055,30 +3168,13 @@ inline void b2ParticleSystem::CPPtoAF(const int32& count, const T* vec, af::arra
 	arr = af::array(count, vec, af::source::afHost);
 }
 
-vector<af::array> b2ParticleSystem::AFSeperateToUniqueIdxBufs(const af::array& a)
+float32 b2ParticleSystem::GetTimeDif(Time start, Time end)
 {
-	int count = a.elements();
-	af::array aSorted;
-	af::array origIdxs = af::seq(count);
-	//af::sort(aSorted, origIdxs, a);
-
-	vector<af::array> v;
-	for (int i = 0; i < 10; i++)
-	{
-		const af::array& unique = aSorted != af::shift(aSorted, 1);
-		const af::array& uniqueOrigIdxs = origIdxs(af::where(unique));
-		if (!uniqueOrigIdxs.isempty())
-			v.push_back(uniqueOrigIdxs);
-		else 
-			break;
-		const af::array& restIdxs = af::where(!unique);
-		if (restIdxs.isempty()) break;
-		v.push_back(origIdxs(restIdxs));
-		count = restIdxs.elements();
-		aSorted = aSorted(restIdxs);
-		origIdxs = origIdxs(restIdxs);
-	}
-	return v;
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000000.0f;
+}
+float32 b2ParticleSystem::GetTimeDif(Time start)
+{
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count() / 1000000.0f;
 }
 
 void b2ParticleSystem::SolveFalling(const b2TimeStep& step)
@@ -5098,23 +3194,6 @@ void b2ParticleSystem::SolveFalling(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveFalling(const b2TimeStep& step)
-{
-	const af::array& k = af::where(afFlagBuf & b2_fallingParticle);
-	if (!k.isempty())
-	{
-		af::array z = afPosZBuf(k) - step.dt;
-		const af::array& k2 = af::where(z <= 0);
-		if (!k2.isempty())
-		{
-			z(k2) = 0;
-			const af::array& newK = k(k2);
-			afFlagBuf(newK) = afFlagBuf(newK) & ~b2_fallingParticle;
-		}
-		afPosZBuf(k) = z;
-		afColLayBuf(k) = 1 << (z * m_invPointsPerLayer + m_layerGraphB).as(af::dtype::s32);
-	}
-}
 
 void b2ParticleSystem::SolveRising(const b2TimeStep& step)
 {
@@ -5128,17 +3207,6 @@ void b2ParticleSystem::SolveRising(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveRising(const b2TimeStep& step)
-{
-	const af::array& k = af::where(afFlagBuf & b2_risingParticle);
-	if (!k.isempty())
-	{
-		const af::array& z = afColLayBuf(k) + step.dt;
-		afPosZBuf(k) = z;
-		afColLayBuf(k) = 1 << (z * m_invPointsPerLayer + m_layerGraphB).as(af::dtype::s32);
-	}
-}
-
 
 void b2ParticleSystem::UpdateAllParticleFlags()
 {
@@ -5149,23 +3217,14 @@ void b2ParticleSystem::UpdateAllParticleFlags()
 	}
 	m_needsUpdateAllParticleFlags = false;
 }
-void b2ParticleSystem::AFUpdateAllParticleFlags()
-{
-	//TODO ...
-	m_allParticleFlags = 0;
-
-	for (int32 i = 0; i < 32; i++)
-		m_allParticleFlags |= !af::where(afFlagBuf & (1 << i)).isempty() << i;
-
-	m_needsUpdateAllParticleFlags = false;
-}
 
 void b2ParticleSystem::UpdateAllGroupFlags()
 {
 	m_allGroupFlags = 0;
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+	for (int i = 0; i < m_groupCount; i++)
 	{
-		m_allGroupFlags |= m_groupFlagsBuf[groupIdx];
+		if (m_groupBuffer[i])
+			m_allGroupFlags |= m_groupBuffer[i]->m_groupFlags;
 	}
 	m_needsUpdateAllGroupFlags = false;
 }
@@ -5186,18 +3245,6 @@ void b2ParticleSystem::LimitVelocity(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFLimitVelocity(const b2TimeStep& step)
-{
-	float32 criticalVelocitySquared = GetCriticalVelocitySquared(step);
-	const af::array& v2 = b2Dot(afVelXBuf, afVelYBuf, afVelXBuf, afVelYBuf);
-	const af::array& k = af::where(v2 > criticalVelocitySquared);
-	if (!k.isempty())
-	{
-		const af::array& s = af::sqrt(criticalVelocitySquared / v2(k));
-		afVelXBuf(k) *= s;
-		afVelYBuf(k) *= s;
-	}
-}
 
 void b2ParticleSystem::SolveGravity(const b2TimeStep& step)
 {
@@ -5209,13 +3256,6 @@ void b2ParticleSystem::SolveGravity(const b2TimeStep& step)
 		m_velocityXBuffer[i] += gravityX;
 		m_velocityYBuffer[i] += gravityY;
 	}
-}
-void b2ParticleSystem::AFSolveGravity(const b2TimeStep& step)
-{
-	float32 gravX = step.dt * m_def.gravityScale * m_world->m_gravity.x;
-	float32 gravY = step.dt * m_def.gravityScale * m_world->m_gravity.x;
-	afVelXBuf += gravX;
-	afVelYBuf += gravY;
 }
 
 void b2ParticleSystem::SolveStaticPressure(const b2TimeStep& step)
@@ -5241,11 +3281,12 @@ void b2ParticleSystem::SolveStaticPressure(const b2TimeStep& step)
 			sizeof(*m_accumulationBuf.data()) * m_count);
 		for (int32 k = 0; k < m_contactCount; k++)
 		{
-			if (m_contactFlagsBuffer[k] & b2_staticPressureParticle)
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_staticPressureParticle)
 			{
-				int32 a = m_contactIdxABuffer[k];
-				int32 b = m_contactIdxBBuffer[k];
-				float32 w = m_contactWeightBuffer[k];
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 w = contact.weight;
 				m_accumulationBuf[a] +=
 					w * m_staticPressureBuf[b]; // a <- b
 				m_accumulationBuf[b] +=
@@ -5267,50 +3308,6 @@ void b2ParticleSystem::SolveStaticPressure(const b2TimeStep& step)
 			{
 				m_staticPressureBuf[i] = 0;
 			}
-		}
-	}
-}
-void b2ParticleSystem::AFSolveStaticPressure(const b2TimeStep& step)
-{
-	AFRequestBuffer(afStaticPressureBuf, afHasStaticPresBuf);
-	float32 criticalPressure = GetCriticalPressure(step);
-	float32 pressurePerWeight = m_def.staticPressureStrength * criticalPressure;
-	float32 maxPressure = b2_maxParticlePressure * criticalPressure;
-	float32 relaxation = m_def.staticPressureRelaxation;
-	/// Compute pressure satisfying the modified Poisson equation:
-	///     Sum_for_j((p_i - p_j) * w_ij) + relaxation * p_i =
-	///     pressurePerWeight * (w_i - b2_minParticleWeight)
-	/// by iterating the calculation:
-	///     p_i = (Sum_for_j(p_j * w_ij) + pressurePerWeight *
-	///           (w_i - b2_minParticleWeight)) / (w_i + relaxation)
-	/// where
-	///     p_i and p_j are static pressure of particle i and j
-	///     w_ij is contact weight between particle i and j
-	///     w_i is sum of contact weight of particle i
-	for (int32 t = 0; t < m_def.staticPressureIterations; t++)
-	{
-		afAccumulationBuf = af::constant(0, m_count);
-
-		const af::array& k = af::where(afContactFlagsBuf & b2_staticPressureParticle);
-		if (!k.isempty())
-		{
-			const af::array& a = afContactIdxABuf(k);
-			const af::array& b = afContactIdxBBuf(k);
-			const af::array& w = afContactWeightBuf(k);
-			afAccumulationBuf(a) += w * afStaticPressureBuf(b);
-			afAccumulationBuf(b) += w * afStaticPressureBuf(a);
-			
-		}
-
-		afStaticPressureBuf = af::constant(0, m_count);
-		const af::array& k2 = af::where(afFlagBuf & b2_staticPressureParticle);
-		if (!k2.isempty())
-		{
-			const af::array& w = afWeightBuf(k2);
-			const af::array& wh = afAccumulationBuf(k2);
-			const af::array& h = (wh + pressurePerWeight * (w - b2_minParticleWeight)) /
-								 (w + relaxation);
-			afStaticPressureBuf(k2) = af::max(0.0f, af::min(h, maxPressure));
 		}
 	}
 }
@@ -5354,26 +3351,28 @@ void b2ParticleSystem::SolvePressure(const b2TimeStep& step)
 	float32 velocityPerPressure = step.dt / (m_def.density * m_particleDiameter);
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		float32 w = m_bodyContactWeightBuffer[k];
-		float32 m = m_bodyContactMassBuffer[k];
-		b2Vec2 n = b2Vec2(m_bodyContactNormalXBuffer[k], m_bodyContactNormalYBuffer[k]);
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		float32 w = contact.weight;
+		float32 m = contact.mass;
+		b2Vec2 n = contact.normal;
 		b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 		float32 h = m_accumulationBuf[a] + pressurePerWeight * w;
 		b2Vec2 f = velocityPerPressure * w * m * h * n;
 		float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
 		m_velocityXBuffer[a] -= invMass * f.x;
 		m_velocityYBuffer[a] -= invMass * f.y;
-		m_bodyBuffer[bIdx]->ApplyLinearImpulse(f, p, true);
+		b->ApplyLinearImpulse(f, p, true);
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		float32 w = m_contactWeightBuffer[k];
-		float32 m = m_contactMassBuffer[k];
-		b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		float32 w = contact.weight;
+		float32 m = contact.mass;
+		b2Vec2 n = contact.normal;
 		float32 h = m_accumulationBuf[a] + m_accumulationBuf[b];
 		b2Vec2 f = velocityPerPressure * w * m * h * n;
 		float32 massA = m_partMatMassBuf[m_partMatIdxBuffer[a]];
@@ -5384,73 +3383,6 @@ void b2ParticleSystem::SolvePressure(const b2TimeStep& step)
 		m_velocityYBuffer[b] += massA * f.y;
 	}
 }
-void b2ParticleSystem::AFSolvePressure(const b2TimeStep& step)
-{
-	// calculates pressure as a linear function of density
-	float32 criticalPressure = GetCriticalPressure(step);
-	float32 pressurePerWeight = m_def.pressureStrength * criticalPressure;
-	float32 maxPressure = b2_maxParticlePressure * criticalPressure;
-
-	const af::array& h = pressurePerWeight * af::max(0.0f, afWeightBuf - b2_minParticleWeight);
-	afAccumulationBuf = af::min(h, maxPressure);
-
-	// ignores particles which have their own repulsive force
-	if (m_allParticleFlags & k_noPressureFlags)
-		afAccumulationBuf(af::where(afFlagBuf & k_noPressureFlags)) = 0;
-
-	// static pressure
-	if (m_allParticleFlags & b2_staticPressureParticle)
-	{
-		b2Assert(!afStaticPressureBuf.isempty());
-		const af::array& k = af::where(afFlagBuf & b2_staticPressureParticle);
-		if (!k.isempty())
-			afAccumulationBuf(k) += afStaticPressureBuf(k);
-	}
-	// applies pressure between each particles in contact
-	float32 velocityPerPressure = step.dt / (m_def.density * m_particleDiameter);
-
-	// Bodies
-	/*do
-	{
-		const af::array& a = afBodyContactIdxBuf;
-		const af::array& bIdx = afBodyContactBodyIdxBuf;
-		const af::array& w = afBodyContactWeightBuf;
-		const af::array& m = afBodyContactMassBuf;
-		const af::array& nx = afBodyContactNormalXBuf;
-		const af::array& ny = afBodyContactNormalYBuf;
-		const af::array& px = afPosXBuf(a);
-		const af::array& py = afPosYBuf(a);
-		const af::array& h = afAccumulationBuf(a) + pressurePerWeight * w;
-		const af::array& fx = velocityPerPressure * w * m * h * nx;
-		const af::array& fy = velocityPerPressure * w * m * h * ny;
-		const af::array& invMass = afPartMatInvMassBuf((af::array)afPartMatIdxBuf(a));
-		afVelXBuf(a) -= invMass * fx;
-		afVelYBuf(a) -= invMass * fy;
-		//b->ApplyLinearImpulse(f, p, true);	//TODO difficult
-	} while (false);*/
-
-	// Particles
-	const af::array& ca = afContactIdxABuf;
-	const af::array& cb = afContactIdxBBuf;
-	const af::array& cw = afContactWeightBuf;
-	const af::array& cm = afContactMassBuf;
-	const af::array& nx = afContactNormalXBuf;
-	const af::array& ny = afContactNormalYBuf;
-	const af::array& ch = afAccumulationBuf(ca) + afAccumulationBuf(cb);
-	const af::array& fx = velocityPerPressure * cw * cm * ch * nx;
-	const af::array& fy = velocityPerPressure * cw * cm * ch * ny;
-	const af::array& matAIdxs = afPartMatIdxBuf(ca);
-	const af::array& matBIdxs = afPartMatIdxBuf(cb);
-	const af::array& massA = afPartMatMassBuf(matAIdxs);
-	const af::array& massB = afPartMatMassBuf(matBIdxs);
-	//cout << "SolvePressure\n";
-	//cout << "Changing Vel of " << (massB * fx).elements() << "\n";
-	//cout << "Example: " << afVelXBuf(ca).scalar<float32>() << " -= "  << (massB * fx).scalar<float32>() << "\n";
-	afVelXBuf(ca) -= massB * fx;
-	afVelYBuf(ca) -= massB * fy;
-	afVelXBuf(cb) += massA * fx;
-	afVelYBuf(cb) += massA * fy;
-}
 
 void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 {
@@ -5459,13 +3391,14 @@ void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 	float32 quadraticDamping = 1 / GetCriticalVelocity(step);
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		float32 w = m_bodyContactWeightBuffer[k];
-		float32 m = m_bodyContactMassBuffer[k];
-		b2Vec2 n = b2Vec2(m_bodyContactNormalXBuffer[k], m_bodyContactNormalYBuffer[k]);
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		float32 w = contact.weight;
+		float32 m = contact.mass;
+		b2Vec2 n = contact.normal;
 		b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
-		b2Vec2 v = m_bodyBuffer[bIdx]->GetLinearVelocityFromWorldPoint(p) -
+		b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
 				   b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
 		float32 vn = b2Dot(v, n);
 		if (vn < 0)
@@ -5476,16 +3409,17 @@ void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
 			m_velocityXBuffer[a] += invMass * f.x;
 			m_velocityYBuffer[a] += invMass * f.y;
-			m_bodyBuffer[bIdx]->ApplyLinearImpulse(-f, p, true);
+			b->ApplyLinearImpulse(-f, p, true);
 		}
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		float32 w = m_contactWeightBuffer[k];
-		float32 m = m_contactMassBuffer[k];
-		b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		float32 w = contact.weight;
+		float32 m = contact.mass;
+		b2Vec2 n = contact.normal;
 		b2Vec2 v = b2Vec2(m_velocityXBuffer[b] - m_velocityXBuffer[a], m_velocityYBuffer[b] - m_velocityYBuffer[a]);
 		float32 vn = b2Dot(v, n);
 		if (vn < 0)
@@ -5502,78 +3436,6 @@ void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveDamping(const b2TimeStep& step)
-{
-	// reduces normal velocity of each contact
-	float32 linearDamping = m_def.dampingStrength;
-	float32 quadraticDamping = 1 / GetCriticalVelocity(step);
-
-	/*do
-	{
-		af::array a = afBodyContactIdxBuf;
-		const af::array& bIdx = afBodyContactBodyIdxBuf;
-		af::array w = afBodyContactWeightBuf;
-		af::array m = afBodyContactMassBuf;
-		af::array nx = afBodyContactNormalXBuf;
-		af::array ny = afBodyContactNormalYBuf;
-		const af::array& px = afPosXBuf(a);
-		const af::array& py = afPosYBuf(a);
-		const af::array& vx = AFBodyGetLinVelXFromWorldPoint(bIdx, py) - afVelXBuf(a);
-		const af::array& vy = AFBodyGetLinVelYFromWorldPoint(bIdx, px) - afVelYBuf(a);
-		af::array vn = b2Dot(vx, vy, nx, ny);
-		const af::array& k = af::where(vn < 0);
-		if (!k.isempty())
-		{
-			a = a(k);
-			w = w(k);
-			m = m(k);
-			nx = nx(k);
-			ny = ny(k);
-			vn = vn(k);
-			const af::array& damping =
-				af::max(linearDamping * w, af::min(-quadraticDamping * vn, 0.5f));
-			const af::array& fx = damping * m * vn * nx;
-			const af::array& fy = damping * m * vn * ny;
-			const af::array& invMass = afPartMatInvMassBuf((af::array)afPartMatIdxBuf(a));
-			afVelXBuf(a) += invMass * fx;
-			afVelYBuf(a) += invMass * fy;
-			//m_bodyBuffer[bIdx]->ApplyLinearImpulse(-f, p, true);	//TODO Difficult
-		}
-	} while (false);*/
-	
-	af::array a = afContactIdxABuf;
-	af::array b = afContactIdxBBuf;
-	af::array w = afContactWeightBuf;
-	af::array m = afContactMassBuf;
-	af::array nx = afContactNormalXBuf;
-	af::array ny = afContactNormalYBuf;
-	const af::array& vx = afVelXBuf(b) - afVelXBuf(a);
-	const af::array& vy = afVelYBuf(b) - afVelYBuf(a);
-	af::array vn = b2Dot(vx, vy, nx, ny);
-	const af::array& k = af::where(vn < 0);
-	if (!k.isempty())
-	{
-		a = a(k);
-		b = b(k);
-		w = w(k);
-		m = m(k);
-		nx = nx(k);
-		ny = ny(k);
-		vn = vn(k);
-		const af::array& damping =
-			af::max(linearDamping * w, af::min(-quadraticDamping * vn, 0.5f));
-		const af::array& fx = damping * m * vn * nx;
-		const af::array& fy = damping * m * vn * ny;
-		const af::array& massA = afPartMatMassBuf((af::array)afPartMatIdxBuf(a));
-		const af::array& massB = afPartMatMassBuf((af::array)afPartMatIdxBuf(b));
-		afVelXBuf(a) += massB * fx;
-		afVelYBuf(a) += massB * fy;
-		afVelXBuf(b) -= massA * fx;
-		afVelYBuf(b) -= massA * fy;
-	}
-	
-}
-
 
 void b2ParticleSystem::SolveSlowDown(const b2TimeStep& step)
 {
@@ -5589,39 +3451,20 @@ void b2ParticleSystem::SolveSlowDown(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveSlowDown(const b2TimeStep& step)
-{
-	if (m_def.dampingStrength > 0)
-	{
-		float32 d = 1 - (step.dt * m_def.dampingStrength);
-		afVelXBuf *= d;
-		afVelYBuf *= d;
-		af::array k = af::where(afColLayBuf & (b2_Layer1ground | b2_Layer0underGround));
-		if (!k.isempty())
-		{
-			afVelXBuf(k) *= d;
-			afVelYBuf(k) *= d;
-		}
-	}
-}
 
-inline bool b2ParticleSystem::IsRigidGroup(int32 groupIdx) const
+inline bool b2ParticleSystem::IsRigidGroup(b2ParticleGroup* group) const
 {
-	return groupIdx && (m_groupFlagsBuf[groupIdx] & b2_rigidParticleGroup);
+	return group->m_groupFlags & b2_rigidParticleGroup;
 }
 
 inline b2Vec2 b2ParticleSystem::GetLinearVelocity(
-	int32 groupIdx, int32 particleIndex,
+	b2ParticleGroup* group, int32 particleIndex,
 	const b2Vec2 &point)
 {
-	if (IsRigidGroup(groupIdx))
-	{
-		return GetGroupLinearVelocityFromWorldPoint(groupIdx, point);
-	}
+	if (IsRigidGroup(group))
+		return group->GetLinearVelocityFromWorldPoint(point);
 	else
-	{
 		return b2Vec2(m_velocityXBuffer[particleIndex], m_velocityYBuffer[particleIndex]);
-	}
 }
 
 inline void b2ParticleSystem::InitDampingParameter(
@@ -5636,14 +3479,14 @@ inline void b2ParticleSystem::InitDampingParameter(
 
 inline void b2ParticleSystem::InitDampingParameterWithRigidGroupOrParticle(
 	float32* invMass, float32* invInertia, float32* tangentDistance,
-	bool isRigidGroup, int32 groupIdx, int32 particleIndex,
+	bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
 	const b2Vec2& point, const b2Vec2& normal)
 {
 	if (isRigidGroup)
 	{
 		InitDampingParameter(
 			invMass, invInertia, tangentDistance,
-			GetGroupMass(groupIdx), GetGroupInertia(groupIdx), GetGroupCenter(groupIdx),
+			group->GetMass(), group->GetInertia(), group->GetCenter(),
 			point, normal);
 	}
 	else
@@ -5670,19 +3513,19 @@ inline float32 b2ParticleSystem::ComputeDampingImpulse(
 
 inline void b2ParticleSystem::ApplyDamping(
 	float32 invMass, float32 invInertia, float32 tangentDistance,
-	bool isRigidGroup, int32 groupIdx, int32 particleIndex,
-	float32 impulse, float32 normalX, float32 normalY)
+	bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
+	float32 impulse, const b2Vec2& normal)
 {
 	if (isRigidGroup)
 	{
-		m_groupLinVelXBuf[groupIdx] += impulse * invMass * normalX;
-		m_groupLinVelYBuf[groupIdx] += impulse * invMass * normalY;
-		m_groupAngVelBuf[groupIdx] += impulse * tangentDistance * invInertia;
+		group->m_linearVelocity += impulse * invMass * normal;
+		group->m_angularVelocity += impulse * tangentDistance * invInertia;
 	}
 	else
 	{
-		m_velocityXBuffer[particleIndex] += impulse * invMass * normalX;
-		m_velocityYBuffer[particleIndex] += impulse * invMass * normalY;
+		b2Vec2 vel = impulse * invMass * normal;
+		m_velocityXBuffer[particleIndex] += vel.x;
+		m_velocityYBuffer[particleIndex] += vel.y;
 	}
 }
 
@@ -5693,17 +3536,18 @@ void b2ParticleSystem::SolveRigidDamping()
 	float32 damping = m_def.dampingStrength;
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
-		int32 aGroupIdx = m_groupIdxBuffer[a];
-		if (IsRigidGroup(aGroupIdx))
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		int32 aGroupIdx = m_partGroupIdxBuffer[a];
+		b2ParticleGroup* aGroup = m_groupBuffer[aGroupIdx];
+		if (IsRigidGroup(aGroup))
 		{
-			int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-			b2Body* b = m_bodyBuffer[bIdx];
-			b2Vec2 n = b2Vec2(m_bodyContactNormalXBuffer[k], m_bodyContactNormalYBuffer[k]);
-			float32 w = m_bodyContactWeightBuffer[k];
+			b2Body* b = contact.body;
+			b2Vec2 n = contact.normal;
+			float32 w = contact.weight;
 			b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				GetGroupLinearVelocityFromWorldPoint(aGroupIdx, p);
+				aGroup->GetLinearVelocityFromWorldPoint(p);
 			float32 vn = b2Dot(v, n);
 			if (vn < 0)
 				// The group's average velocity at particle position 'p' is pushing
@@ -5713,7 +3557,7 @@ void b2ParticleSystem::SolveRigidDamping()
 				float32 invMassB, invInertiaB, tangentDistanceB;
 				InitDampingParameterWithRigidGroupOrParticle(
 					&invMassA, &invInertiaA, &tangentDistanceA,
-					true, aGroupIdx, a, p, n);
+					true, aGroup, a, p, n);
 				InitDampingParameter(
 					&invMassB, &invInertiaB, &tangentDistanceB,
 					b->GetMass(),
@@ -5728,28 +3572,31 @@ void b2ParticleSystem::SolveRigidDamping()
 					vn);
 				ApplyDamping(
 					invMassA, invInertiaA, tangentDistanceA,
-					true, aGroupIdx, a, f, n.x, n.y);
+					true, aGroup, a, f, n);
 				b->ApplyLinearImpulse(-f * n, p, true);
 			}
 		}
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
-		float32 w = m_contactWeightBuffer[k];
-		int32 aGroupIdx = m_groupIdxBuffer[a];
-		int32 bGroupIdx = m_groupIdxBuffer[b];
-		bool aRigid = IsRigidGroup(aGroupIdx);
-		bool bRigid = IsRigidGroup(bGroupIdx);
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		b2Vec2 n = contact.normal;
+		float32 w = contact.weight;
+		int32 aGroupIdx = m_partGroupIdxBuffer[a];
+		int32 bGroupIdx = m_partGroupIdxBuffer[b];
+		b2ParticleGroup* aGroup = m_groupBuffer[aGroupIdx];
+		b2ParticleGroup* bGroup = m_groupBuffer[bGroupIdx];
+		bool aRigid = IsRigidGroup(aGroup);
+		bool bRigid = IsRigidGroup(bGroup);
 		if (aGroupIdx != bGroupIdx && (aRigid || bRigid))
 		{
 			b2Vec2 p =
 				0.5f * b2Vec2(m_positionXBuffer[a] + m_positionXBuffer[b], m_positionYBuffer[a] + m_positionYBuffer[b]);
 			b2Vec2 v =
-				GetLinearVelocity(bGroupIdx, b, p) -
-				GetLinearVelocity(aGroupIdx, a, p);
+				GetLinearVelocity(bGroup, b, p) -
+				GetLinearVelocity(aGroup, a, p);
 			float32 vn = b2Dot(v, n);
 			if (vn < 0)
 			{
@@ -5757,11 +3604,11 @@ void b2ParticleSystem::SolveRigidDamping()
 				float32 invMassB, invInertiaB, tangentDistanceB;
 				InitDampingParameterWithRigidGroupOrParticle(
 					&invMassA, &invInertiaA, &tangentDistanceA,
-					aRigid, aGroupIdx, a,
+					aRigid, aGroup, a,
 					p, n);
 				InitDampingParameterWithRigidGroupOrParticle(
 					&invMassB, &invInertiaB, &tangentDistanceB,
-					bRigid, bGroupIdx, b,
+					bRigid, bGroup, b,
 					p, n);
 				float32 f = damping * w * ComputeDampingImpulse(
 					invMassA, invInertiaA, tangentDistanceA,
@@ -5769,10 +3616,10 @@ void b2ParticleSystem::SolveRigidDamping()
 					vn);
 				ApplyDamping(
 					invMassA, invInertiaA, tangentDistanceA,
-					aRigid, aGroupIdx, a, f, n.x, n.y);
+					aRigid, aGroup, a, f, n);
 				ApplyDamping(
 					invMassB, invInertiaB, tangentDistanceB,
-					bRigid, bGroupIdx, b, -f, n.x, n.y);
+					bRigid, bGroup, b, -f, n);
 			}
 		}
 	}
@@ -5785,15 +3632,16 @@ void b2ParticleSystem::SolveExtraDamping()
 	// is effective in suppressing vibration.
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
 		if (m_flagsBuffer[a] & k_extraDampingFlags)
 		{
-			int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-			float32 m = m_bodyContactMassBuffer[k];
-			b2Vec2 n = b2Vec2(m_bodyContactNormalXBuffer[k], m_bodyContactNormalYBuffer[k]);
+			b2Body* b = contact.body;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
 			b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 v =
-				m_bodyBuffer[bIdx]->GetLinearVelocityFromWorldPoint(p) -
+				b->GetLinearVelocityFromWorldPoint(p) -
 				b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
 			float32 vn = b2Dot(v, n);
 			if (vn < 0)
@@ -5803,44 +3651,8 @@ void b2ParticleSystem::SolveExtraDamping()
 				float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
 				m_velocityXBuffer[a] += invMass * f.x;
 				m_velocityYBuffer[a] += invMass * f.y;
-				m_bodyBuffer[bIdx]->ApplyLinearImpulse(-f, p, true);
+				b->ApplyLinearImpulse(-f, p, true);
 			}
-		}
-	}
-}
-void b2ParticleSystem::AFSolveExtraDamping()
-{
-	// Applies additional damping force between bodies and particles which can
-	// produce strong repulsive force. Applying damping force multiple times
-	// is effective in suppressing vibration.
-	const af::array& k = af::where(afFlagBuf(afBodyContactIdxBuf) & k_extraDampingFlags);
-	if (!k.isempty())
-	{
-		af::array a = afBodyContactIdxBuf(k);
-		af::array bIdx = afBodyContactBodyIdxBuf(k);
-		af::array m = afBodyContactMassBuf(k);
-		af::array nx = afBodyContactNormalXBuf(k);
-		af::array ny = afBodyContactNormalYBuf(k);
-		const af::array& px = afPosXBuf(a);
-		const af::array& py = afPosYBuf(a);
-		const af::array& vx = AFBodyGetLinVelXFromWorldPoint(bIdx, py) - afVelXBuf(a);
-		const af::array& vy = AFBodyGetLinVelYFromWorldPoint(bIdx, px) - afVelYBuf(a);
-		af::array vn = b2Dot(vx, vy, nx, ny);
-		const af::array& k2 = af::where(vn < 0);
-		if (!k2.isempty())
-		{
-			a = a(k2);
-			bIdx = bIdx(k2);
-			m = m(k2);
-			nx = nx(k2);
-			ny = ny(k2);
-			vn = vn(k2);
-			const af::array& fx = 0.5f * m * vn * nx;
-			const af::array& fy = 0.5f * m * vn * ny;
-			const af::array& invMass = afPartMatInvMassBuf((af::array)afPartMatIdxBuf(a));
-			afVelXBuf(a) += invMass * fx;
-			afVelYBuf(a) += invMass * fy;
-			//m_bodyBuffer[bIdx]->ApplyLinearImpulse(-f, p, true);	// TODO difficult :/
 		}
 	}
 }
@@ -5856,66 +3668,36 @@ void b2ParticleSystem::SolveWall()
 		}
 	}
 }
-void b2ParticleSystem::AFSolveWall()
-{
-	const af::array& k = af::where(afFlagBuf & b2_wallParticle);
-	if (!k.isempty())
-	{
-		afVelXBuf(k) = 0.0f;
-		afVelYBuf(k) = 0.0f;
-	}
-}
 
 void b2ParticleSystem::SolveRigid(const b2TimeStep& step)
 {
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+	for (int32 k = 0; k < m_groupCount; k++)
 	{
-		if (m_groupFlagsBuf[groupIdx] & b2_rigidParticleGroup)
+		b2ParticleGroup* group = m_groupBuffer[k];
+		if (group)
 		{
-			UpdateGroupStatistics(groupIdx);
-			b2Rot rotation(step.dt * m_groupAngVelBuf[groupIdx]);
-			b2Vec2 center = b2Vec2(m_groupCenterXBuf[groupIdx], m_groupCenterYBuf[groupIdx]);
-			b2Vec2 linVel = b2Vec2(m_groupLinVelXBuf[groupIdx], m_groupLinVelYBuf[groupIdx]);
-			b2Transform transform(center + step.dt * linVel -
-				b2Mul(rotation, center), rotation);
-			m_groupTransformBuf[groupIdx] = b2Mul(transform, m_groupTransformBuf[groupIdx]);
-			b2Transform velocityTransform;
-			velocityTransform.p.x = step.inv_dt * transform.p.x;
-			velocityTransform.p.y = step.inv_dt * transform.p.y;
-			velocityTransform.q.s = step.inv_dt * transform.q.s;
-			velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
-			for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+			if (group->m_groupFlags & b2_rigidParticleGroup)
 			{
-				b2Vec2 vel = b2Mul(velocityTransform,
-					b2Vec2(m_positionXBuffer[i], m_positionYBuffer[i]));
-				m_velocityXBuffer[i] = vel.x;
-				m_velocityYBuffer[i] = vel.y;
+				group->UpdateStatistics();
+				b2Rot rotation(step.dt * group->m_angularVelocity);
+				b2Vec2 center = group->m_center;
+				b2Vec2 linVel = group->m_linearVelocity;
+				b2Transform transform(center + step.dt * linVel -
+					b2Mul(rotation, center), rotation);
+				group->m_transform = b2Mul(transform, group->m_transform);
+				b2Transform velocityTransform;
+				velocityTransform.p.x = step.inv_dt * transform.p.x;
+				velocityTransform.p.y = step.inv_dt * transform.p.y;
+				velocityTransform.q.s = step.inv_dt * transform.q.s;
+				velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
+				for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
+				{
+					b2Vec2 vel = b2Mul(velocityTransform,
+						b2Vec2(m_positionXBuffer[i], m_positionYBuffer[i]));
+					m_velocityXBuffer[i] = vel.x;
+					m_velocityYBuffer[i] = vel.y;
+				}
 			}
-		}
-	}
-}
-void b2ParticleSystem::AFSolveRigid(const b2TimeStep& step)
-{
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
-	{
-		if (m_groupFlagsBuf[groupIdx] & b2_rigidParticleGroup)
-		{
-			UpdateGroupStatistics(groupIdx);
-			b2Rot rotation(step.dt * m_groupAngVelBuf[groupIdx]);
-			b2Vec2 center = b2Vec2(m_groupCenterXBuf[groupIdx], m_groupCenterYBuf[groupIdx]);
-			b2Vec2 linVel = b2Vec2(m_groupLinVelXBuf[groupIdx], m_groupLinVelYBuf[groupIdx]);
-			b2Transform transform(center + step.dt * linVel -
-				b2Mul(rotation, center), rotation);
-			m_groupTransformBuf[groupIdx] = b2Mul(transform, m_groupTransformBuf[groupIdx]);
-			b2Transform velocityTransform;
-			velocityTransform.p.x = step.inv_dt * transform.p.x;
-			velocityTransform.p.y = step.inv_dt * transform.p.y;
-			velocityTransform.q.s = step.inv_dt * transform.q.s;
-			velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
-
-			af::array idxs = af::seq(m_groupFirstIdxBuf[groupIdx], m_groupLastIdxBuf[groupIdx]);
-			afVelXBuf(idxs) = b2MulX(velocityTransform, afPosXBuf, afPosYBuf)(idxs);
-			afVelYBuf(idxs) = b2MulY(velocityTransform, afPosXBuf, afPosYBuf)(idxs);
 		}
 	}
 }
@@ -5925,127 +3707,46 @@ void b2ParticleSystem::SolveElastic(const b2TimeStep& step)
 	float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
 	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		if (m_triadFlagsBuf[k] & b2_elasticParticle)
+		const b2ParticleTriad& triad = m_triadBuffer[k];
+		if (triad.flags & b2_elasticParticle)
 		{
-			int32 a = m_triadIdxABuf[k];
-			int32 b = m_triadIdxBBuf[k];
-			int32 c = m_triadIdxCBuf[k];
-			const float32 oax = m_triadPAXBuf[k];
-			const float32 oay = m_triadPAYBuf[k];
-			const float32 obx = m_triadPBXBuf[k];
-			const float32 oby = m_triadPBYBuf[k];
-			const float32 ocx = m_triadPCXBuf[k];
-			const float32 ocy = m_triadPCYBuf[k];
-			float32 pax = m_positionXBuffer[a];
-			float32 pay = m_positionYBuffer[a];
-			float32 pbx = m_positionXBuffer[b];
-			float32 pby = m_positionYBuffer[b];
-			float32 pcx = m_positionXBuffer[c];
-			float32 pcy = m_positionYBuffer[c];
-			float32 vax = m_velocityXBuffer[a];
-			float32 vay = m_velocityYBuffer[a];
-			float32 vbx = m_velocityXBuffer[b];
-			float32 vby = m_velocityYBuffer[b];
-			float32 vcx = m_velocityXBuffer[c];
-			float32 vcy = m_velocityYBuffer[c];
-			pax += step.dt * vax;
-			pay += step.dt * vay;
-			pbx += step.dt * vbx;
-			pby += step.dt * vby;
-			pcx += step.dt * vcx;
-			pcy += step.dt * vcy;
-			float32 midPointX = (float32)1 / 3 * (pax + pbx + pcx);
-			float32 midPointY = (float32)1 / 3 * (pay + pby + pcy);
-			pax -= midPointX;
-			pay -= midPointY;
-			pbx -= midPointX;
-			pby -= midPointY;
-			pcx -= midPointX;
-			pcy -= midPointY;
+			int32 a = triad.indexA;
+			int32 b = triad.indexB;
+			int32 c = triad.indexC;
+			const b2Vec2& oa = triad.pa;
+			const b2Vec2& ob = triad.pb;
+			const b2Vec2& oc = triad.pc;
+			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
+			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
+			b2Vec2 pc = b2Vec2(m_positionXBuffer[c], m_positionYBuffer[c]);
+			b2Vec2 va = b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
+			b2Vec2 vb = b2Vec2(m_velocityXBuffer[b], m_velocityYBuffer[b]);
+			b2Vec2 vc = b2Vec2(m_velocityXBuffer[c], m_velocityYBuffer[c]);
+			pa += step.dt * va;
+			pb += step.dt * vb;
+			pc += step.dt * vc;
+			b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
+			pa -= midPoint;
+			pb -= midPoint;
+			pc -= midPoint;
 			b2Rot r;
-			r.s = b2Cross(oax, oay, pax, pay) + b2Cross(obx, oby, pbx, pby) + b2Cross(ocx, ocy, pcx, pcy);
-			r.c = b2Dot(oax, oay, pax, pay) + b2Dot(obx, oby, pbx, pby) + b2Dot(ocx, ocy, pcx, pcy);
+			r.s = b2Cross(oa, pa) + b2Cross(ob, pb) + b2Cross(oc, pc);
+			r.c = b2Dot(oa, pa) + b2Dot(ob, pb) + b2Dot(oc, pc);
 			float32 r2 = r.s * r.s + r.c * r.c;
 			float32 invR = b2InvSqrt(r2);
 			r.s *= invR;
 			r.c *= invR;
-			float32 strength = elasticStrength * m_triadStrengthBuf[k];
-			float32 velX = (b2MulX(r, oax, oay) - pax);
-			float32 velY = (b2MulY(r, oax, oay) - pay);
-			m_velocityXBuffer[a] += strength * velX;
-			m_velocityYBuffer[a] += strength * velY;
-			velX = (b2MulX(r, obx, oby) - pbx);
-			velY = (b2MulY(r, obx, oby) - pby);
-			m_velocityXBuffer[b] += strength * velX;
-			m_velocityYBuffer[b] += strength * velY;
-			velX = (b2MulX(r, ocx, ocy) - pcx);
-			velY = (b2MulY(r, ocx, ocy) - pcy);
-			m_velocityXBuffer[c] += strength * velX;
-			m_velocityYBuffer[c] += strength * velY;
+			float32 strength = elasticStrength * triad.strength;
+			b2Vec2 vel = (b2Mul(r, oa) - pa);
+			m_velocityXBuffer[a] += strength * vel.x;
+			m_velocityYBuffer[a] += strength * vel.y;
+			vel = (b2Mul(r, ob) - pb);
+			m_velocityXBuffer[b] += strength * vel.x;
+			m_velocityYBuffer[b] += strength * vel.y;
+			vel = (b2Mul(r, oc) - pc);
+			m_velocityXBuffer[c] += strength * vel.x;
+			m_velocityYBuffer[c] += strength * vel.y;
 		}
-	}
-}
-void b2ParticleSystem::AFSolveElastic(const b2TimeStep& step)
-{
-	float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
-	
-	const af::array condIdxs = af::where(afTriadFlagsBuf & b2_elasticParticle);
-	if (!condIdxs.isempty())
-	{
-		const af::array& a = afTriadIdxABuf(condIdxs);
-		const af::array& b = afTriadIdxBBuf(condIdxs);
-		const af::array& c = afTriadIdxCBuf(condIdxs);
-		const af::array& oax = afTriadPAXBuf(condIdxs);
-		const af::array& oay = afTriadPAYBuf(condIdxs);
-		const af::array& obx = afTriadPBXBuf(condIdxs);
-		const af::array& oby = afTriadPBYBuf(condIdxs);
-		const af::array& ocx = afTriadPCXBuf(condIdxs);
-		const af::array& ocy = afTriadPCYBuf(condIdxs);
-		af::array pax = afPosXBuf(a);
-		af::array pay = afPosYBuf(a);
-		af::array pbx = afPosXBuf(b);
-		af::array pby = afPosYBuf(b);
-		af::array pcx = afPosXBuf(c);
-		af::array pcy = afPosYBuf(c);
-		const af::array& vax = afVelXBuf(a);
-		const af::array& vay = afVelYBuf(a);
-		const af::array& vbx = afVelXBuf(b);
-		const af::array& vby = afVelYBuf(b);
-		const af::array& vcx = afVelXBuf(c);
-		const af::array& vcy = afVelYBuf(c);
-		pax += step.dt * vax;
-		pay += step.dt * vay;
-		pbx += step.dt * vbx;
-		pby += step.dt * vby;
-		pcx += step.dt * vcx;
-		pcy += step.dt * vcy;
-		const af::array& midPointX = 1.0f / 3 * (pax + pbx + pcx);
-		const af::array& midPointY = 1.0f / 3 * (pay + pby + pcy);
-		pax -= midPointX;
-		pay -= midPointY;
-		pbx -= midPointX;
-		pby -= midPointY;
-		pcx -= midPointX;
-		pcy -= midPointY;
-		af::array rotS = b2Cross(oax, oay, pax, pay) + b2Cross(obx, oby, pbx, pby) + b2Cross(ocx, ocy, pcx, pcy);
-		af::array rotC = b2Dot(oax, oay, pax, pay) + b2Dot(obx, oby, pbx, pby) + b2Dot(ocx, ocy, pcx, pcy);
-		const af::array& r2 = rotS * rotS + rotC * rotC;
-		const af::array& invR = afInvSqrt(r2);
-		rotS *= invR;
-		rotC *= invR;
-		const af::array& strength = elasticStrength * afTriadStrengthBuf(condIdxs);
-		af::array velX = (b2MulX(rotS, rotC, oax, oay) - pax);
-		af::array velY = (b2MulY(rotS, rotC, oax, oay) - pay);
-		afVelXBuf(a) += strength * velX;
-		afVelYBuf(a) += strength * velY;
-		velX = (b2MulX(rotS, rotC, obx, oby) - pbx);
-		velY = (b2MulY(rotS, rotC, obx, oby) - pby);
-		afVelXBuf(b) += strength * velX;
-		afVelYBuf(b) += strength * velY;
-		velX = (b2MulX(rotS, rotC, ocx, ocy) - pcx);
-		velY = (b2MulY(rotS, rotC, ocx, ocy) - pcy);
-		afVelXBuf(c) += strength * velX;
-		afVelYBuf(c) += strength * velY;
 	}
 }
 
@@ -6054,10 +3755,11 @@ void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
 	float32 springStrength = step.inv_dt * m_def.springStrength;
 	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		if (m_pairFlagsBuf[k] & b2_springParticle)
+		const b2ParticlePair& pair = m_pairBuffer[k];
+		if (pair.flags & b2_springParticle)
 		{
-			int32 a = m_pairIdxABuf[k];
-			int32 b = m_pairIdxBBuf[k];
+			int32 a = pair.indexA;
+			int32 b = pair.indexB;
 			b2Vec2 pa = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
 			b2Vec2 pb = b2Vec2(m_positionXBuffer[b], m_positionYBuffer[b]);
 			b2Vec2 va = b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
@@ -6065,38 +3767,15 @@ void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
 			pa += step.dt * va;
 			pb += step.dt * vb;
 			b2Vec2 d = pb - pa;
-			float32 r0 = m_pairDistanceBuf[k];
+			float32 r0 = pair.distance;
 			float32 r1 = d.Length();
-			float32 strength = springStrength * m_pairStrengthBuf[k];
+			float32 strength = springStrength * pair.strength;
 			b2Vec2 f = strength * (r0 - r1) / r1 * d;
 			m_velocityXBuffer[a] -= f.x;
 			m_velocityYBuffer[a] -= f.y;
 			m_velocityXBuffer[b] += f.x;
 			m_velocityYBuffer[b] += f.y;
 		}
-	}
-}
-void b2ParticleSystem::AFSolveSpring(const b2TimeStep& step)
-{
-	float32 springStrength = step.inv_dt * m_def.springStrength;
-	const af::array& k = af::where(afPairFlagsBuf & b2_springParticle);
-	if (!k.isempty())
-	{
-		const af::array& a = afPairIdxABuf(k);
-		const af::array& b = afPairIdxBBuf(k);
-		const af::array& dx = (afPosXBuf(b) + step.dt * afVelXBuf(b))
-							- (afPosXBuf(a) + step.dt * afVelXBuf(a));
-		const af::array& dy = (afPosYBuf(b) + step.dt * afVelYBuf(b))
-							- (afPosYBuf(a) + step.dt * afVelYBuf(a));
-		const af::array& r0 = afPairDistanceBuf(k);
-		const af::array& r1 = AFLength(dx, dy);
-		const af::array& strength = springStrength * afPairStrengthBuf(k);
-		const af::array& fx = strength * (r0 - r1) / r1 * dx;
-		const af::array& fy = strength * (r0 - r1) / r1 * dy;
-		afVelXBuf(a) -= fx;
-		afVelYBuf(a) -= fy;
-		afVelXBuf(b) += fx;
-		afVelYBuf(b) += fy;
 	}
 }
 
@@ -6109,12 +3788,13 @@ void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_tensileParticle)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_tensileParticle)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
-			float32 w = m_contactWeightBuffer[k];
-			b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			b2Vec2 n = contact.normal;
 			b2Vec2 weightedNormal = (1 - w) * w * n;
 			m_accumulation2Buf[a] -= weightedNormal;
 			m_accumulation2Buf[b] += weightedNormal;
@@ -6128,13 +3808,14 @@ void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 	float32 maxVelocityVariation = b2_maxParticleForce * criticalVelocity;
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_tensileParticle)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_tensileParticle)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
-			float32 w = m_contactWeightBuffer[k];
-			float32 m = m_contactMassBuffer[k];
-			b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
 			float32 h = m_weightBuffer[a] + m_weightBuffer[b];
 			b2Vec2 s = m_accumulation2Buf[b] - m_accumulation2Buf[a];
 			float32 fn = b2Min(
@@ -6150,111 +3831,38 @@ void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveTensile(const b2TimeStep& step)
-{
-	b2Assert(afHasAccumulation2XBuf);
-	afAccumulation2XBuf = af::constant(0.0f, m_count);
-	afAccumulation2YBuf = af::constant(0.0f, m_count);
-	
-	const af::array& k = af::where(afContactFlagsBuf & b2_tensileParticle);
-	if (k.isempty())
-		return;
-	return;
-
-	const af::array& a = afContactIdxABuf(k);
-	const af::array& b = afContactIdxBBuf(k);
-	const vector<af::array>& aSplit = AFSeperateToUniqueIdxBufs(a);
-	const vector<af::array>& bSplit = AFSeperateToUniqueIdxBufs(b);
-
-	const af::array& w = afContactWeightBuf(k);
-	const af::array& nx = afContactNormalXBuf(k);
-	const af::array& ny = afContactNormalYBuf(k);
-	const af::array& weightedNormalX = (1 - w) * w * nx;
-	const af::array& weightedNormalY = (1 - w) * w * ny;
-
-	int32* nafA = a.host<int32>();
-	int32* nafB = b.host<int32>();
-	float32* nafWeightedNormalX = weightedNormalX.host<float32>();
-	float32* nafWeightedNormalY = weightedNormalY.host<float32>();
-	float32* nafAccumulation2XBuf = afAccumulation2XBuf.host<float32>();
-	float32* nafAccumulation2YBuf = afAccumulation2YBuf.host<float32>();
-	int32 count = a.elements();
-	for (int32 i = 0; i < count; i++)	//on CPU because overlapping idxs
-	{
-		nafAccumulation2XBuf[nafA[i]] -= nafWeightedNormalX[i];
-		nafAccumulation2YBuf[nafA[i]] -= nafWeightedNormalY[i];
-		nafAccumulation2XBuf[nafB[i]] += nafWeightedNormalX[i];
-		nafAccumulation2YBuf[nafB[i]] += nafWeightedNormalY[i];
-	}
-	CPPtoAF(m_count, nafAccumulation2XBuf, afAccumulation2XBuf);
-	CPPtoAF(m_count, nafAccumulation2YBuf, afAccumulation2YBuf);
-
-	float32 criticalVelocity = GetCriticalVelocity(step);
-	float32 pressureStrength = m_def.surfaceTensionPressureStrength
-		* criticalVelocity;
-	float32 normalStrength = m_def.surfaceTensionNormalStrength
-		* criticalVelocity;
-	float32 maxVelocityVariation = b2_maxParticleForce * criticalVelocity;
-
-	const af::array& m = afContactMassBuf(k);
-	const af::array& h = afWeightBuf(a) + afWeightBuf(b);
-	const af::array& sx = afAccumulation2XBuf(b) - afAccumulation2XBuf(a);
-	const af::array& sy = afAccumulation2YBuf(b) - afAccumulation2YBuf(a);
-	const af::array& fn = af::min(
-		pressureStrength * (h - 2) + normalStrength * b2Dot(sx, sy, nx, ny),
-		maxVelocityVariation) * w;
-	const af::array& fx = fn * nx * m;
-	const af::array& fy = fn * ny * m;
-	const af::array& massA = afPartMatMassBuf((af::array)afPartMatIdxBuf(a));
-	const af::array& massB = afPartMatMassBuf((af::array)afPartMatIdxBuf(b));
-
-
-	float32* nafFx	    = fx.host<float32>();
-	float32* nafFy	    = fy.host<float32>();
-	float32* nafMassA   = massA.host<float32>();
-	float32* nafMassB   = massB.host<float32>();
-	float32* nafVelXBuf = afVelXBuf.host<float32>();
-	float32* nafVelYBuf = afVelYBuf.host<float32>();
-	for (int32 i = 0; i < count; i++)
-	{
-		nafVelXBuf[nafA[i]] -= nafMassB[i] * nafFx[i];
-		nafVelYBuf[nafA[i]] -= nafMassB[i] * nafFy[i];
-		nafVelXBuf[nafB[i]] += nafMassA[i] * nafFx[i];
-		nafVelYBuf[nafB[i]] += nafMassA[i] * nafFy[i];
-	}
-	CPPtoAF(m_count, nafVelXBuf, afVelXBuf);
-	CPPtoAF(m_count, nafVelYBuf, afVelYBuf);
-}
 
 void b2ParticleSystem::SolveViscous()
 {
 	float32 viscousStrength = m_def.viscousStrength;
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 a = m_bodyContactIdxBuffer[k];
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
 		if (m_flagsBuffer[a] & b2_viscousParticle)
 		{
-			int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-			float32 w = m_bodyContactWeightBuffer[k];
-			float32 m = m_bodyContactMassBuffer[k];
+			b2Body* b = contact.body;
+			float32 w = contact.weight;
+			float32 m = contact.mass;
 			b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
-			b2Vec2 v = m_bodyBuffer[bIdx]->GetLinearVelocityFromWorldPoint(p) -
+			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
 				b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
 			b2Vec2 f = viscousStrength * m * w * v;
 			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
 			m_velocityXBuffer[a] += invMass * f.x;
 			m_velocityYBuffer[a] += invMass * f.y;
-			m_bodyBuffer[bIdx]->ApplyLinearImpulse(-f, p, true);
+			b->ApplyLinearImpulse(-f, p, true);
 		}
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_viscousParticle)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_viscousParticle)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
-			float32 w = m_contactWeightBuffer[k];
-			float32 m = m_contactMassBuffer[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			float32 m = contact.mass;
 			b2Vec2 v = b2Vec2(m_velocityXBuffer[b] - m_velocityXBuffer[a], m_velocityYBuffer[b] - m_velocityYBuffer[a]);
 			b2Vec2 f = viscousStrength * w * m * v;
 			float32 massA = m_partMatMassBuf[m_partMatIdxBuffer[a]];
@@ -6266,54 +3874,6 @@ void b2ParticleSystem::SolveViscous()
 		}
 	}
 }
-void b2ParticleSystem::AFSolveViscous()
-{
-
-	float32 viscousStrength = m_def.viscousStrength;
-
-	//TODO after Body Contacts
-	/*for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		int32 a = m_bodyContactIdxBuffer[k];
-		if (m_flagsBuffer[a] & b2_viscousParticle)
-		{
-			b2Body* b = m_bodyContactBodyBuffer[k];
-			float32 w = m_bodyContactWeightBuffer[k];
-			float32 m = m_bodyContactMassBuffer[k];
-			b2Vec2 p = b2Vec2(m_positionXBuffer[a], m_positionYBuffer[a]);
-			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(m_velocityXBuffer[a], m_velocityYBuffer[a]);
-			b2Vec2 f = viscousStrength * m * w * v;
-			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			m_velocityXBuffer[a] += invMass * f.x;
-			m_velocityYBuffer[a] += invMass * f.y;
-			b->ApplyLinearImpulse(-f, p, true);
-		}
-	}*/
-
-	af::array condIdxs = af::where(afContactFlagsBuf & b2_viscousParticle);
-	if (!condIdxs.isempty())
-	{
-		const af::array& a = afContactIdxABuf(condIdxs);
-		const af::array& b = afContactIdxBBuf(condIdxs);
-		const af::array& w = afContactWeightBuf(condIdxs);
-		const af::array& m = afContactMassBuf(condIdxs);
-		const af::array& vx = afVelXBuf(b) - afVelXBuf(a);
-		const af::array& vy = afVelYBuf(b) - afVelYBuf(a);
-		const af::array& fx = viscousStrength * w * m * vx;
-		const af::array& fy = viscousStrength * w * m * vy;
-		const af::array& matAIdx = afPartMatIdxBuf(a);
-		const af::array& matBIdx = afPartMatIdxBuf(b);
-		const af::array& massA = afPartMatMassBuf(matAIdx);
-		const af::array& massB = afPartMatMassBuf(matBIdx);
-		//cout << "SolveViscious\n";
-		//cout << "Changing Vel of " << (massB * fx).elements() << "\n";
-		afVelXBuf(a) += massB * fx;
-		afVelYBuf(a) += massB * fy;
-		afVelXBuf(b) += massA * fx;
-		afVelYBuf(b) += massA * fy;
-	}
-}
 
 void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
 {
@@ -6321,15 +3881,16 @@ void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
 		m_def.repulsiveStrength * GetCriticalVelocity(step);
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_repulsiveParticle)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_repulsiveParticle)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
-			if (m_groupIdxBuffer[a] != m_groupIdxBuffer[b])
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			if (m_partGroupIdxBuffer[a] != m_partGroupIdxBuffer[b])
 			{
-				float32 w = m_contactWeightBuffer[k];
-				float32 m = m_contactMassBuffer[k];
-				b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+				float32 w = contact.weight;
+				float32 m = contact.mass;
+				b2Vec2 n = contact.normal;
 				b2Vec2 f = repulsiveStrength * w * m * n;
 				float32 massA = m_partMatMassBuf[m_partMatIdxBuffer[a]];
 				float32 massB = m_partMatMassBuf[m_partMatIdxBuffer[b]];
@@ -6341,38 +3902,6 @@ void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolveRepulsive(const b2TimeStep& step)
-{
-	float32 repulsiveStrength =
-		m_def.repulsiveStrength * GetCriticalVelocity(step);
-
-	af::array k = af::where(afContactFlagsBuf & b2_repulsiveParticle);
-	if (!k.isempty())
-	{
-		af::array a = afContactIdxABuf(k);
-		af::array b = afContactIdxBBuf(k);
-		const af::array& k2 = af::where(afGroupIdxBuf(a) != afGroupIdxBuf(b));
-		{
-			k = k(k2);
-			a = a(k2);
-			b = b(k2);
-			const af::array& w = afContactWeightBuf(k);
-			const af::array& m = afContactMassBuf(k);
-			const af::array& nx = afContactNormalXBuf(k);
-			const af::array& ny = afContactNormalYBuf(k);
-			const af::array& fx = repulsiveStrength * w * m * nx;
-			const af::array& fy = repulsiveStrength * w * m * ny;
-			const af::array& matIdxA = afPartMatIdxBuf(a);
-			const af::array& matIdxB = afPartMatIdxBuf(b);
-			const af::array& massA = afPartMatMassBuf(matIdxA);
-			const af::array& massB = afPartMatMassBuf(matIdxB);
-			afVelXBuf(a) -= massB * fx;
-			afVelYBuf(a) -= massB * fy;
-			afVelXBuf(b) += massA * fx;
-			afVelYBuf(b) += massA * fy;
-		}
-	}
-}
 
 void b2ParticleSystem::SolvePowder(const b2TimeStep& step)
 {
@@ -6380,15 +3909,16 @@ void b2ParticleSystem::SolvePowder(const b2TimeStep& step)
 	float32 minWeight = 1.0f - b2_particleStride;
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_powderParticle)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_powderParticle)
 		{
-			float32 w = m_contactWeightBuffer[k];
+			float32 w = contact.weight;
 			if (w > minWeight)
 			{
-				int32 a = m_contactIdxABuffer[k];
-				int32 b = m_contactIdxBBuffer[k];
-				float32 m = m_contactMassBuffer[k];
-				b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 m = contact.mass;
+				b2Vec2 n = contact.normal;
 				b2Vec2 f = powderStrength * (w - minWeight) * m * n;
 				float32 massA = m_partMatMassBuf[m_partMatIdxBuffer[a]];
 				float32 massB = m_partMatMassBuf[m_partMatIdxBuffer[b]];
@@ -6400,37 +3930,6 @@ void b2ParticleSystem::SolvePowder(const b2TimeStep& step)
 		}
 	}
 }
-void b2ParticleSystem::AFSolvePowder(const b2TimeStep& step)
-{
-	float32 powderStrength = m_def.powderStrength * GetCriticalVelocity(step);
-	float32 minWeight = 1.0f - b2_particleStride;
-	af::array k = af::where(afContactFlagsBuf & b2_powderParticle);
-	if (!k.isempty())
-	{
-		af::array w = afContactWeightBuf(k);
-		const af::array& k2 = af::where(w > minWeight);
-		if (!k2.isempty())
-		{
-			k = k(k2);
-			w = w(k2);
-			const af::array& a = afContactIdxABuf(k);
-			const af::array& b = afContactIdxBBuf(k);
-			const af::array& m = afContactMassBuf(k);
-			const af::array& nx = afContactNormalXBuf(k);
-			const af::array& ny = afContactNormalYBuf(k);
-			const af::array& fx = powderStrength * (w - minWeight) * m * nx;
-			const af::array& fy = powderStrength * (w - minWeight) * m * ny;
-			const af::array& matIdxA = afPartMatIdxBuf(a);
-			const af::array& matIdxB = afPartMatIdxBuf(b);
-			const af::array& massA = afPartMatMassBuf(matIdxA);
-			const af::array& massB = afPartMatMassBuf(matIdxB);
-			afVelXBuf(a) -= massB * fx;
-			afVelYBuf(a) -= massB * fy;
-			afVelXBuf(b) += massA * fx;
-			afVelYBuf(b) += massA * fy;
-		}
-	}
-}
 
 void b2ParticleSystem::SolveSolid(const b2TimeStep& step)
 {
@@ -6439,13 +3938,14 @@ void b2ParticleSystem::SolveSolid(const b2TimeStep& step)
 	float32 ejectionStrength = step.inv_dt * m_def.ejectionStrength;
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		if (m_groupIdxBuffer[a] != m_groupIdxBuffer[b])
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		if (m_partGroupIdxBuffer[a] != m_partGroupIdxBuffer[b])
 		{
-			float32 w = m_contactWeightBuffer[k];
-			float32 m = m_contactMassBuffer[k];
-			b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
 			float32 h = m_depthBuffer[a] + m_depthBuffer[b];
 			b2Vec2 f = ejectionStrength * h * m * w * n;
 			float32 massA = m_partMatMassBuf[m_partMatIdxBuffer[a]];
@@ -6455,31 +3955,6 @@ void b2ParticleSystem::SolveSolid(const b2TimeStep& step)
 			m_velocityXBuffer[b] += massA * f.x;
 			m_velocityYBuffer[b] += massA * f.y;
 		}
-	}
-}
-void b2ParticleSystem::AFSolveSolid(const b2TimeStep& step)
-{
-	// applies extra repulsive force from solid particle groups
-	b2Assert(!afDepthBuf.isempty());
-	float32 ejectionStrength = step.inv_dt * m_def.ejectionStrength;
-	const af::array& k = af::where(afContactIdxABuf != afContactIdxBBuf);
-	if (!k.isempty())
-	{
-		const af::array& a = afContactIdxABuf(k);
-		const af::array& b = afContactIdxBBuf(k);
-		const af::array& w = afContactWeightBuf(k);
-		const af::array& m = afContactMassBuf(k);
-		const af::array& nx = afContactNormalXBuf(k);
-		const af::array& ny = afContactNormalYBuf(k);
-		const af::array& h = afDepthBuf(a) + afDepthBuf(b);
-		const af::array& fx = ejectionStrength * h * m * w * nx;
-		const af::array& fy = ejectionStrength * h * m * w * ny;
-		const af::array& massA = afPartMatMassBuf((af::array)afPartMatIdxBuf(a));
-		const af::array& massB = afPartMatMassBuf((af::array)afPartMatIdxBuf(b));
-		afVelXBuf(a) -= massB * fx;
-		afVelYBuf(a) -= massB * fy;
-		afVelXBuf(b) += massA * fx;
-		afVelYBuf(b) += massA * fy;
 	}
 }
 
@@ -6492,15 +3967,6 @@ void b2ParticleSystem::SolveForce(const b2TimeStep& step)
 	}
 	m_hasForce = false;
 }
-void b2ParticleSystem::AFSolveForce(const b2TimeStep& step)
-{
-	//cout << "SolveForce\n";
-	//cout << "ForceBufSize: " << afForceXBuf.elements() << "\n";
-	//cout << "VelBufSize:   " << afVelXBuf.elements() << "\n";
-	afVelXBuf += step.dt * afPartMatInvMassBuf(afPartMatIdxBuf) * afForceXBuf;
-	afVelYBuf += step.dt * afPartMatInvMassBuf(afPartMatIdxBuf) * afForceYBuf;
-	m_hasForce = false;
-}
 
 void b2ParticleSystem::SolveColorMixing()
 {
@@ -6510,8 +3976,9 @@ void b2ParticleSystem::SolveColorMixing()
 	if (strength) {
 		for (int32 k = 0; k < m_contactCount; k++)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
 			if (m_flagsBuffer[a] & m_flagsBuffer[b] &
 				b2_colorMixingParticle)
 			{
@@ -6551,10 +4018,11 @@ void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
 	// transfers heat to adjacent particles
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactMatFlagsBuffer[k] & b2_heatConductingMaterial)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.matFlags & b2_heatConductingMaterial)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
 			int32 matIdxA = m_partMatIdxBuffer[a];
 			int32 matIdxB = m_partMatIdxBuffer[b];
 			float32 conductivityA = m_partMatHeatConductivityBuf[matIdxA];
@@ -6580,10 +4048,10 @@ void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
 	// transfers heat to adjacent bodies
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 i = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		b2Body* b = m_bodyBuffer[bIdx];
-		int32 matIdxP = m_partMatIdxBuffer[i];
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		int32 matIdxP = m_partMatIdxBuffer[a];
 		b2BodyMaterial* matB = b->m_material;
 		if (m_partMatFlagsBuf[matIdxP] & matB->m_matFlags & b2_heatConductingMaterial)
 		{
@@ -6591,7 +4059,7 @@ void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
 			float32 conductivityB = matB->m_heatConductivity;
 			if (conductivityP > 0 && conductivityB > 0)
 			{
-				float32 heatP = m_heatBuffer[i];
+				float32 heatP = m_heatBuffer[a];
 				float32 heatB = b->m_heat;
 				if (abs(heatB - heatP) > 1.0f)
 				{
@@ -6600,7 +4068,7 @@ void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
 					float32 massP = m_partMatMassBuf[matIdxP];
 					float32 massB = b->GetMass();
 					float32 invCombinedMass = 0.999f / (massP + massB);
-					m_heatBuffer[i] += changeHeat * (0.001f + massB * invCombinedMass);
+					m_heatBuffer[a] += changeHeat * (0.001f + massB * invCombinedMass);
 					b->m_heat		-= changeHeat * (0.001f + massP * invCombinedMass);
 
 					/*float32 changeHeat = step.dt * (conductivityP * conductivityB)
@@ -6640,7 +4108,7 @@ void b2ParticleSystem::SolveBurning(const b2TimeStep& step)
 		if (m_flagsBuffer[k] & b2_burningParticle)
 		{
 			// loose health
-			float loss = step.dt * m_heatBuffer[k] * 0.001 * m_partMatInvStabilityBuf[m_partMatIdxBuffer[k]];
+			float loss = step.dt * m_heatBuffer[k] * 0.001f * m_partMatInvStabilityBuf[m_partMatIdxBuffer[k]];
 			if (loss > FLT_EPSILON)
 			{
 				m_healthBuffer[k] -= loss;
@@ -6657,7 +4125,8 @@ void b2ParticleSystem::SolveFlame(const b2TimeStep& step)
 		{
 			// loose health
 			int32 partMatIdx = m_partMatIdxBuffer[k];
-			float loss = step.dt * m_heatBuffer[k] * 0.001 * m_partMatInvStabilityBuf[partMatIdx];
+			float loss = step.dt * m_heatBuffer[k] * 0.001f * m_partMatInvStabilityBuf[partMatIdx];
+			loss = 0;
 			if (loss > FLT_EPSILON)
 				m_healthBuffer[k] -= loss;
 			if (m_heatBuffer[k] < m_partMatExtinguishingPointBuf[partMatIdx])
@@ -6668,13 +4137,27 @@ void b2ParticleSystem::SolveFlame(const b2TimeStep& step)
 
 void b2ParticleSystem::SolveIgnite()
 {
-	// Particle Ignition
+	for (int32 k = 0; k < m_bodyContactCount; k++)
+	{
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		if (m_flagsBuffer[a] & b2_flameParticle
+			&& b->GetFlags() & b2_inflammableBody
+			&& b->m_material->m_matFlags & b2_flammableMaterial
+			&& b->m_material->m_ignitionPoint <= b->m_heat)
+		{
+			b->AddFlags((uint16)b2_burningBody);
+		}
+	}
+
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_flameParticle && m_contactMatFlagsBuffer[k] & b2_flammableMaterial)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_flameParticle && contact.matFlags & b2_flammableMaterial)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
 			int32 matIdxA = m_partMatIdxBuffer[a];
 			int32 matIdxB = m_partMatIdxBuffer[b];
 			if (m_partMatFlagsBuf[matIdxA] & b2_flammableMaterial
@@ -6691,31 +4174,32 @@ void b2ParticleSystem::SolveIgnite()
 			}
 		}
 	}
-	// Body ignitions
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		int32 i = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		b2Body* b = m_bodyBuffer[bIdx];
-		if (m_flagsBuffer[i] & b2_flameParticle
-			&& b->GetFlags() & b2_inflammableBody
-			&& b->m_material->m_matFlags & b2_flammableMaterial
-			&& b->m_material->m_ignitionPoint <= b->m_heat)
-		{
-			b->AddFlags((int)b2_burningBody);
-		}
-	}
 }
 
 void b2ParticleSystem::SolveExtinguish()
 {
-	// Particle Extinguishing
+	for (int32 k = 0; k < m_bodyContactCount; k++)
+	{
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		int32 partMatIdx = m_partMatIdxBuffer[a];
+		if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
+			&& b->GetFlags() & b2_burningBody
+			&& b->m_heat < m_partMatBoilingPointBuf[partMatIdx])
+		{
+			b->RemFlags(b2_burningBody);
+			b->AddFlags(b2_wetBody);
+		}
+	}
+
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		if (m_contactFlagsBuffer[k] & b2_burningParticle && m_contactMatFlagsBuffer[k] & b2_extinguishingMaterial)
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		if (contact.flags & b2_burningParticle && contact.matFlags & b2_extinguishingMaterial)
 		{
-			int32 a = m_contactIdxABuffer[k];
-			int32 b = m_contactIdxBBuffer[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
 			if (m_partMatFlagsBuf[m_partMatIdxBuffer[a]] & b2_extinguishingMaterial
 				&& m_flagsBuffer[b] & b2_burningParticle)
 				m_flagsBuffer[b] &= ~b2_burningParticle;
@@ -6726,21 +4210,6 @@ void b2ParticleSystem::SolveExtinguish()
 		}
 	}
 
-	// Body Extinguishing
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		int32 i = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		b2Body* b = m_bodyBuffer[bIdx];
-		int32 partMatIdx = m_partMatIdxBuffer[i];
-		if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
-			&& b->GetFlags() & b2_burningBody
-			&& b->m_heat < m_partMatBoilingPointBuf[partMatIdx])
-		{
-			b->RemFlags(b2_burningBody);
-			b->AddFlags(b2_wetBody);
-		}
-	}
 }
 
 void b2ParticleSystem::SolveWater()
@@ -6748,15 +4217,15 @@ void b2ParticleSystem::SolveWater()
 	// make Objects wet
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32 i = m_bodyContactIdxBuffer[k];
-		int32 bIdx = m_bodyContactBodyIdxBuffer[k];
-		b2Body* b = m_bodyBuffer[bIdx];
-		if (m_flagsBuffer[i] & b2_extinguishingMaterial
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = contact.idx;
+		b2Body* b = contact.body;
+		if (m_flagsBuffer[a] & b2_extinguishingMaterial
 			&& b->GetFlags() & b2_burningBody
 			&& b->m_material->m_matFlags & b2_flammableMaterial
 			&& b->m_material->m_extinguishingPoint > b->m_heat)
 		{
-			b->RemFlags((int)b2_burningBody);
+			b->RemFlags((int16)b2_burningBody);
 		}
 	}
 }
@@ -6768,8 +4237,10 @@ void b2ParticleSystem::SolveEvaporate()
 		if (m_partMatFlagsBuf[m_partMatIdxBuffer[k]] & b2_boilingMaterial)
 		{
 			if (m_heatBuffer[k] > m_partMatBoilingPointBuf[m_partMatIdxBuffer[k]])
+			{
 				//TODO
 				DestroyParticle(k);
+			}
 		}
 	}
 }
@@ -6929,12 +4400,12 @@ void b2ParticleSystem::SolveZombie()
 				b2ParticleHandle * const handle = m_handleIndexBuffer[i];
 				if (handle)
 				{
-					handle->SetIndex(b2_invalidParticleIndex);
+					handle->SetIndex(b2_invalidIndex);
 					m_handleIndexBuffer[i] = NULL;
 					m_handleAllocator.Free(handle);
 				}
 			}
-			newIndices[i] = b2_invalidParticleIndex;
+			newIndices[i] = b2_invalidIndex;
 		}
 		else
 		{
@@ -6971,7 +4442,7 @@ void b2ParticleSystem::SolveZombie()
 				m_positionZBuffer[newCount]  = m_positionZBuffer[i];
 				m_velocityXBuffer[newCount]  = m_velocityXBuffer[i];
 				m_velocityYBuffer[newCount]  = m_velocityYBuffer[i];
-				m_groupIdxBuffer[newCount]   = m_groupIdxBuffer[i];
+				m_partGroupIdxBuffer[newCount]   = m_partGroupIdxBuffer[i];
 				m_partMatIdxBuffer[newCount] = m_partMatIdxBuffer[i];
 				if (m_hasForce)
 				{
@@ -7019,13 +4490,21 @@ void b2ParticleSystem::SolveZombie()
 		{
 			return proxyIdx < 0;
 		}
-		static bool IsContactIdxInvalid(const int32& idx)
+		static bool IsContactIdxInvalid(const b2ParticleContact& contact)
 		{
-			return idx < 0;
+			return contact.idxA < 0 || contact.idxB < 0;
 		}
-		static bool IsBodyContactInvalid(const int32& idx)
+		static bool IsBodyContactInvalid(const b2PartBodyContact& contact)
 		{
-			return idx < 0;
+			return contact.idx < 0;
+		}
+		static bool IsPairInvalid(const b2ParticlePair& pair)
+		{
+			return pair.indexA < 0 || pair.indexB < 0;
+		}
+		static bool IsTriadInvalid(const b2ParticleTriad& triad)
+		{
+			return triad.indexA < 0 || triad.indexB < 0 || triad.indexC < 0;
 		}
 	};
 
@@ -7040,75 +4519,38 @@ void b2ParticleSystem::SolveZombie()
 	// update contacts
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		m_contactIdxABuffer[k] = newIndices[m_contactIdxABuffer[k]];
-		m_contactIdxBBuffer[k] = newIndices[m_contactIdxBBuffer[k]];
+		b2ParticleContact& contact = m_partContactBuf[k];
+		contact.idxA = newIndices[contact.idxA];
+		contact.idxB = newIndices[contact.idxB];
 	}
-	RemoveFromVectorsIf(m_contactIdxABuffer, m_contactIdxBBuffer, 
-		m_contactWeightBuffer, m_contactMassBuffer, 
-		m_contactNormalXBuffer, m_contactNormalYBuffer, 
-		m_contactFlagsBuffer, m_contactMatFlagsBuffer, 
-		m_contactCount, Test::IsContactIdxInvalid, Test::IsContactIdxInvalid, true);
+	RemoveFromVectorIf(m_partContactBuf, m_contactCount, Test::IsContactIdxInvalid, true);
 
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32& idx = m_bodyContactIdxBuffer[k];
-		idx = newIndices[idx];
+		b2PartBodyContact& contact = m_bodyContactBuf[k];
+		contact.idx = newIndices[contact.idx];
 	}
-	RemoveFromVectorsIf(m_bodyContactIdxBuffer, m_bodyContactBodyIdxBuffer,
-		m_bodyContactFixtureIdxBuffer, m_bodyContactWeightBuffer, 
-		m_bodyContactNormalXBuffer, m_bodyContactNormalYBuffer, 
-		m_bodyContactMassBuffer, m_bodyContactCount, Test::IsBodyContactInvalid, true);
+	RemoveFromVectorIf(m_bodyContactBuf, m_bodyContactCount, Test::IsBodyContactInvalid, true);
 
 	// update pairs
 	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
-		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
+		b2ParticlePair& pair = m_pairBuffer[k];
+		pair.indexA = newIndices[pair.indexA];
+		pair.indexB = newIndices[pair.indexB];
 	}
-
-	auto IsPairValid = [this](int32 i) -> bool
-	{
-		return m_pairIdxABuf[i] >= 0 && m_pairIdxBBuf[i] >= 0;
-	};
-	vector<int32> idxs = GetValidIdxs(m_pairCount, IsPairValid);
-	reorder(m_pairIdxABuf, idxs);
-	reorder(m_pairIdxBBuf, idxs);
-	reorder(m_pairFlagsBuf, idxs);
-	reorder(m_pairStrengthBuf, idxs);
-	reorder(m_pairDistanceBuf, idxs);
-	m_pairCount = idxs.size();
+	RemoveFromVectorIf(m_pairBuffer, m_pairCount, Test::IsPairInvalid, true);
 
 	// update triads
 	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		m_triadIdxABuf[k] = newIndices[m_triadIdxABuf[k]];
-		m_triadIdxBBuf[k] = newIndices[m_triadIdxBBuf[k]];
-		m_triadIdxCBuf[k] = newIndices[m_triadIdxCBuf[k]];
-
+		b2ParticleTriad& triad = m_triadBuffer[k];
+		triad.indexA = newIndices[triad.indexA];
+		triad.indexB = newIndices[triad.indexB];
+		triad.indexC = newIndices[triad.indexC];
 	}
-
-	auto IsTriadValid = [this](int32 i) -> bool
-	{
-		return m_triadIdxABuf[i] >= 0 && m_triadIdxBBuf[i] >= 0 && m_triadIdxCBuf[i] >= 0;
-	};
-	idxs = GetValidIdxs(m_triadCount, IsTriadValid);
-	reorder(m_triadIdxABuf, idxs);
-	reorder(m_triadIdxBBuf, idxs);
-	reorder(m_triadIdxCBuf, idxs);
-	reorder(m_triadFlagsBuf, idxs);
-	reorder(m_triadStrengthBuf, idxs);
-	reorder(m_triadPAXBuf, idxs);
-	reorder(m_triadPAYBuf, idxs);
-	reorder(m_triadPBXBuf, idxs);
-	reorder(m_triadPBYBuf, idxs);
-	reorder(m_triadPCXBuf, idxs);
-	reorder(m_triadPCYBuf, idxs);
-	reorder(m_triadKABuf, idxs);
-	reorder(m_triadKBBuf, idxs);
-	reorder(m_triadKCBuf, idxs);
-	reorder(m_triadSBuf, idxs);
-	m_triadCount = idxs.size();
+	RemoveFromVectorIf(m_triadBuffer, m_triadCount, Test::IsTriadInvalid, true);
 
 	// Update lifetime indices.
 	if (!m_idxByExpireTimeBuf.empty())
@@ -7118,7 +4560,7 @@ void b2ParticleSystem::SolveZombie()
 		{
 			const int32 newIndex = newIndices[
 				m_idxByExpireTimeBuf[readOffset]];
-			if (newIndex != b2_invalidParticleIndex)
+			if (newIndex != b2_invalidIndex)
 			{
 				m_idxByExpireTimeBuf[writeOffset++] = newIndex;
 			}
@@ -7126,43 +4568,48 @@ void b2ParticleSystem::SolveZombie()
 	}
 
 	// update groups
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+	for (int32 k = 0; k < m_groupCount; k++)
 	{
-		int32 firstIndex = newCount;
-		int32 lastIndex = 0;
-		bool modified = false;
-		for (int32 i = m_groupFirstIdxBuf[groupIdx]; i < m_groupLastIdxBuf[groupIdx]; i++)
+		b2ParticleGroup* group = m_groupBuffer[k];
+		if (group)
 		{
-			int32 j = newIndices[i];
-			if (j >= 0) {
-				firstIndex = b2Min(firstIndex, j);
-				lastIndex = b2Max(lastIndex, j + 1);
-			} else {
-				modified = true;
-			}
-		}
-		if (firstIndex < lastIndex)
-		{
-			m_groupFirstIdxBuf[groupIdx] = firstIndex;
-			m_groupLastIdxBuf[groupIdx] = lastIndex;
-			if (modified)
+			int32 firstIndex = newCount;
+			int32 lastIndex = 0;
+			bool modified = false;
+			for (int32 i = group->m_firstIndex; i < group->m_lastIndex; i++)
 			{
-				if (m_groupFlagsBuf[groupIdx] & b2_solidParticleGroup)
-				{
-					SetGroupFlags(groupIdx,
-								  m_groupFlagsBuf[groupIdx] |
-								  b2_particleGroupNeedsUpdateDepth);
+				int32 j = newIndices[i];
+				if (j >= 0) {
+					firstIndex = b2Min(firstIndex, j);
+					lastIndex = b2Max(lastIndex, j + 1);
+				}
+				else {
+					modified = true;
 				}
 			}
-		}
-		else
-		{
-			m_groupFirstIdxBuf[groupIdx] = 0;
-			m_groupLastIdxBuf[groupIdx] = 0;
-			if (!(m_groupFlagsBuf[groupIdx] & b2_particleGroupCanBeEmpty))
+			if (firstIndex < lastIndex)
 			{
-				SetGroupFlags(groupIdx,
-					m_groupFlagsBuf[groupIdx] | b2_particleGroupWillBeDestroyed);
+				group->m_firstIndex = firstIndex;
+				group->m_lastIndex = lastIndex;
+				if (modified)
+				{
+					if (group->m_groupFlags & b2_solidParticleGroup)
+					{
+						SetGroupFlags(group,
+							group->m_groupFlags |
+							b2_particleGroupNeedsUpdateDepth);
+					}
+				}
+			}
+			else
+			{
+				group->m_firstIndex = 0;
+				group->m_lastIndex = 0;
+				if (!(group->m_groupFlags & b2_particleGroupCanBeEmpty))
+				{
+					SetGroupFlags(group,
+						group->m_groupFlags | b2_particleGroupWillBeDestroyed);
+				}
 			}
 		}
 	}
@@ -7173,195 +4620,13 @@ void b2ParticleSystem::SolveZombie()
 	m_needsUpdateAllParticleFlags = false;
 
 	// destroy bodies with no particles
-	for each (int32 groupIdx in m_realGroupIdxBuffer)
+	for (int32 k = 0; k < m_groupCount; k++)
 	{
-		if (m_groupFlagsBuf[groupIdx] & b2_particleGroupWillBeDestroyed)
-			DestroyParticleGroup(groupIdx);
-	}
-}
-void b2ParticleSystem::AFSolveZombie()
-{
-	// removes particles with zombie flag
-	uint32 allParticleFlags = 0;
-	const af::array& zombies = afFlagBuf & b2_zombieParticle;
-	const af::array& zombieIdxs = af::where(zombies);
-
-	if (zombieIdxs.isempty())
-		return;
-
-	const af::array& newIdxs = af::where(!zombies);
-	int32 newCount = newIdxs.elements();
-	af::array reorderedIdxs(m_count, af::dtype::s32);
-	reorderedIdxs(newIdxs) = af::seq(newCount);
-	reorderedIdxs(zombieIdxs) = b2_invalidParticleIndex;
-
-
-	AFDestructionListener * const destructionListener =
-		m_world->afDestructionListener;
-	if (destructionListener)
-	{
-		const af::array& condIdxs = af::where(afFlagBuf(zombieIdxs) & b2_destructionListenerParticle);
-		if (!condIdxs.isempty())
-			destructionListener->SayGoodbye(this, condIdxs);
-	}
-	// Destroy particle handle.
-	if (!afHandleIdxBuf.isempty())
-	{
-		afHandleIdxBuf(zombieIdxs) = b2_invalidParticleIndex;
-	}
-
-	// Update handle to reference new particle index.
-	if (!afHandleIdxBuf.isempty())
-		afHandleIdxBuf = afHandleIdxBuf(newIdxs);
-	afFlagBuf = afFlagBuf(newIdxs);
-	afColLayBuf = afColLayBuf(newIdxs);
-	if (!afLastBodyContactStepBuf.isempty())
-		afLastBodyContactStepBuf = afLastBodyContactStepBuf(newIdxs);
-	if (!afBodyContactCountBuf.isempty())
-		afBodyContactCountBuf = afBodyContactCountBuf(newIdxs);
-	if (!afConsecutiveContactStepsBuf.isempty())
-		afConsecutiveContactStepsBuf = afConsecutiveContactStepsBuf(newIdxs);
-	afPosXBuf = afPosXBuf(newIdxs);
-	afPosYBuf = afPosYBuf(newIdxs);
-	afPosZBuf = afPosZBuf(newIdxs);
-	afVelXBuf = afVelXBuf(newIdxs);
-	afVelYBuf = afVelYBuf(newIdxs);
-	afGroupIdxBuf = afGroupIdxBuf(newIdxs);
-	afPartMatIdxBuf = afPartMatIdxBuf(newIdxs);
-	if (m_hasForce)
-		afForceXBuf = afForceXBuf(newIdxs),
-		afForceYBuf = afForceYBuf(newIdxs);
-	if (!afStaticPressureBuf.isempty())
-		afStaticPressureBuf = afStaticPressureBuf(newIdxs);
-	if (!afDepthBuf.isempty())
-		afDepthBuf = afDepthBuf(newIdxs);
-	afHeatBuf = afHeatBuf(newIdxs);
-	afHealthBuf = afHealthBuf(newIdxs);
-	afColorBuf = afColorBuf(newIdxs);
-	if (!afUserDataBuf.isempty())
-		afUserDataBuf = afUserDataBuf(newIdxs);
-	if (!afExpireTimeBuf.isempty())
-		afExpireTimeBuf = afExpireTimeBuf(newIdxs);
-	//allParticleFlags |= flags;	//TODO FIX
-	
-
-	// update proxies
-	af::array condIdxs = newIdxs(af::where(afProxyIdxBuf(newIdxs) >= 0));
-	afProxyIdxBuf = afProxyIdxBuf(condIdxs);
-	afProxyTagBuf = afProxyTagBuf(condIdxs);
-
-	// update contacts
-	condIdxs = newIdxs(af::where(afContactIdxABuf(newIdxs) >= 0 && afContactIdxBBuf(newIdxs) >= 0));
-	afContactIdxABuf	 = afContactIdxABuf(condIdxs);
-	afContactIdxBBuf	 = afContactIdxBBuf(condIdxs);
-	afContactWeightBuf   = afContactWeightBuf(condIdxs);
-	afContactMassBuf	 = afContactMassBuf(condIdxs);
-	afContactNormalXBuf  = afContactNormalXBuf(condIdxs);
-	afContactNormalYBuf	 = afContactNormalYBuf(condIdxs);
-	afContactFlagsBuf	 = afContactFlagsBuf(condIdxs);
-	afContactMatFlagsBuf = afContactMatFlagsBuf(condIdxs);
-	m_contactCount		 = condIdxs.elements();
-	
-	// update particle-body contacts
-	condIdxs = newIdxs(af::where(afBodyContactIdxBuf(newIdxs) >= 0));
-	afBodyContactIdxBuf		= afBodyContactIdxBuf(condIdxs);
-	afBodyContactBodyIdxBuf	= afBodyContactBodyIdxBuf(condIdxs);
-	afBodyContactFixtIdxBuf = afBodyContactFixtIdxBuf(condIdxs);
-	afBodyContactWeightBuf  = afBodyContactWeightBuf(condIdxs);
-	afBodyContactNormalXBuf = afBodyContactNormalXBuf(condIdxs);
-	afBodyContactNormalYBuf = afBodyContactNormalYBuf(condIdxs);
-	afBodyContactMassBuf	= afBodyContactMassBuf(condIdxs);
-	m_bodyContactCount		= condIdxs.elements();
-
-	// update pairs
-	condIdxs = newIdxs(af::where(afPairIdxABuf(newIdxs) >= 0 && afPairIdxBBuf(newIdxs) >= 0));
-	afPairIdxABuf	  = afPairIdxABuf(condIdxs);
-	afPairIdxBBuf	  = afPairIdxBBuf(condIdxs);
-	afPairFlagsBuf	  = afPairFlagsBuf(condIdxs);
-	afPairStrengthBuf = afPairStrengthBuf(condIdxs);
-	afPairDistanceBuf = afPairDistanceBuf(condIdxs);
-	m_pairCount		  = condIdxs.elements();
-
-	// update triads
-	condIdxs = newIdxs(af::where(afTriadIdxABuf(newIdxs) >= 0 && afTriadIdxBBuf(newIdxs) >= 0 && afTriadIdxCBuf(newIdxs) >= 0));
-	afTriadIdxABuf	   = afTriadIdxABuf(condIdxs);
-	afTriadIdxBBuf	   = afTriadIdxBBuf(condIdxs);
-	afTriadIdxCBuf	   = afTriadIdxCBuf(condIdxs);
-	afTriadFlagsBuf	   = afTriadFlagsBuf(condIdxs);
-	afTriadStrengthBuf = afTriadStrengthBuf(condIdxs);
-	afTriadPAXBuf	   = afTriadPAXBuf(condIdxs);
-	afTriadPAYBuf	   = afTriadPAYBuf(condIdxs);
-	afTriadPBXBuf	   = afTriadPBXBuf(condIdxs);
-	afTriadPBYBuf	   = afTriadPBYBuf(condIdxs);
-	afTriadPCXBuf	   = afTriadPCXBuf(condIdxs);
-	afTriadPCYBuf	   = afTriadPCYBuf(condIdxs);
-	afTriadKABuf	   = afTriadKABuf(condIdxs);
-	afTriadKBBuf	   = afTriadKBBuf(condIdxs);
-	afTriadKCBuf	   = afTriadKCBuf(condIdxs);
-	afTriadSBuf		   = afTriadSBuf(condIdxs);
-	m_triadCount	   = condIdxs.elements();
-
-	// Update lifetime indices.
-	if (!afIdxByExpireTimeBuf.isempty())
-		afIdxByExpireTimeBuf = afIdxByExpireTimeBuf(newIdxs);
-
-	// update groups
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
-	{
-		int32 firstIndex = newCount;
-		int32 lastIndex = 0;
-		bool modified = false;
-		const af::array& groupPartIdxs = af::seq(m_groupFirstIdxBuf[groupIdx], m_groupLastIdxBuf[groupIdx] - 1);
-		const af::array& newgroupPartIdxs = reorderedIdxs(groupPartIdxs);
-
-		const af::array& valid = newgroupPartIdxs >= 0;
-		const af::array& validIdxs = af::where(valid);
-		const af::array& inValidIdxs = af::where(!valid);
-		if (!validIdxs.isempty())
+		if (m_groupBuffer[k])
 		{
-			const af::array& validNewGroupPartIdxs = newgroupPartIdxs(validIdxs);
-			firstIndex = af::min<int32>(validNewGroupPartIdxs);
-			lastIndex = af::max<int32>(validNewGroupPartIdxs);
+			if (m_groupBuffer[k]->m_groupFlags & b2_particleGroupWillBeDestroyed)
+				DestroyParticleGroup(k);
 		}
-		if (!inValidIdxs.isempty())
-			modified = true;
-
-		if (firstIndex < lastIndex)
-		{
-			m_groupFirstIdxBuf[groupIdx] = firstIndex;
-			m_groupLastIdxBuf[groupIdx] = lastIndex;
-			if (modified)
-			{
-				if (m_groupFlagsBuf[groupIdx] & b2_solidParticleGroup)
-				{
-					SetGroupFlags(groupIdx,
-						m_groupFlagsBuf[groupIdx] |
-						b2_particleGroupNeedsUpdateDepth);
-				}
-			}
-		}
-		else
-		{
-			m_groupFirstIdxBuf[groupIdx] = 0;
-			m_groupLastIdxBuf[groupIdx] = 0;
-			if (!(m_groupFlagsBuf[groupIdx] & b2_particleGroupCanBeEmpty))
-			{
-				SetGroupFlags(groupIdx,
-					m_groupFlagsBuf[groupIdx] | b2_particleGroupWillBeDestroyed);
-			}
-		}
-	}
-
-	// update particle count
-	m_count = newCount;
-	m_allParticleFlags = allParticleFlags;
-	m_needsUpdateAllParticleFlags = false;
-
-	// destroy bodies with no particles
-	for each (int32 groupIdx in m_realGroupIdxBuffer)
-	{
-		if (m_groupFlagsBuf[groupIdx] & b2_particleGroupWillBeDestroyed)
-			DestroyParticleGroup(groupIdx);
 	}
 }
 
@@ -7472,8 +4737,8 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 		m_velocityXBuffer.begin() + end);
 	rotate(m_velocityYBuffer.begin() + start, m_velocityYBuffer.begin() + mid,
 		m_velocityYBuffer.begin() + end);
-	rotate(m_groupIdxBuffer.begin() + start, m_groupIdxBuffer.begin() + mid,
-		m_groupIdxBuffer.begin() + end);
+	rotate(m_partGroupIdxBuffer.begin() + start, m_partGroupIdxBuffer.begin() + mid,
+		m_partGroupIdxBuffer.begin() + end);
 	rotate(m_partMatIdxBuffer.begin() + start, m_partMatIdxBuffer.begin() + mid,
 		m_partMatIdxBuffer.begin() + end);
 	if (m_hasForce)
@@ -7546,160 +4811,46 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 	// update contacts
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		m_contactIdxABuffer[k] = newIndices[m_contactIdxABuffer[k]];
-		m_contactIdxBBuffer[k] = newIndices[m_contactIdxBBuffer[k]];
+		b2ParticleContact& contact = m_partContactBuf[k];
+		contact.idxA = newIndices[contact.idxA];
+		contact.idxB = newIndices[contact.idxB];
 	}
 
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32& idx = m_bodyContactIdxBuffer[k];
-		idx = newIndices[idx];
+		b2PartBodyContact& contact = m_bodyContactBuf[k];
+		contact.idx = newIndices[contact.idx];
 	}
 
 	// update pairs
 	for (int32 k = 0; k < m_pairCount; k++)
 	{
-		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
-		m_pairIdxABuf[k] = newIndices[m_pairIdxABuf[k]];
+		b2ParticlePair& pair = m_pairBuffer[k];
+		pair.indexA = newIndices[pair.indexA];
+		pair.indexB = newIndices[pair.indexB];
 	}
 
 	// update triads
 	for (int32 k = 0; k < m_triadCount; k++)
 	{
-		m_triadIdxABuf[k] = newIndices[m_triadIdxABuf[k]];
-		m_triadIdxBBuf[k] = newIndices[m_triadIdxBBuf[k]];
-		m_triadIdxCBuf[k] = newIndices[m_triadIdxCBuf[k]];
+		b2ParticleTriad& triad = m_triadBuffer[k];
+		triad.indexA = newIndices[triad.indexA];
+		triad.indexB = newIndices[triad.indexB];
+		triad.indexC = newIndices[triad.indexC];
 	}
 
 	// update groups
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
+	for (int32 k = 0; k < m_groupCount; k++)
 	{
-		m_groupFirstIdxBuf[groupIdx] = newIndices[m_groupFirstIdxBuf[groupIdx]];
-		m_groupLastIdxBuf[groupIdx] = newIndices[m_groupLastIdxBuf[groupIdx] - 1] + 1;
-	}
-}
-void b2ParticleSystem::AFRotateBuffer(int32 start, int32 mid, int32 end)
-{
-
-	// move the particles assigned to the given group toward the end of array
-	if (start == mid || mid == end)
-		return;
-	b2Assert(mid >= start && mid <= end);
-	
-	
-	// Switch blocks between start->mid and mid->end
-	const af::array& origIdxs = af::seq(start, end);
-	const af::array& rotIdxs = af::join(afArrayDims, af::seq(mid, end), af::seq(start, mid));
-	
-	afFlagBuf(origIdxs)   = afFlagBuf(rotIdxs);
-	afColLayBuf(origIdxs) = afColLayBuf(rotIdxs);
-
-	if (afHasLastBodyContactBuf)
-		afLastBodyContactStepBuf(origIdxs) = afLastBodyContactStepBuf(rotIdxs);
-
-	if (afHasBodyContactCountBuf)
-		afBodyContactCountBuf(origIdxs) = afBodyContactCountBuf(rotIdxs);
-	
-	if (afHasConsecutiveContactStepsBuf)
-		afConsecutiveContactStepsBuf(origIdxs) = afConsecutiveContactStepsBuf(rotIdxs);
-	
-	afPosXBuf(origIdxs)		  = afPosXBuf(rotIdxs);
-	afPosYBuf(origIdxs)		  = afPosYBuf(rotIdxs);
-	afPosZBuf(origIdxs)		  = afPosZBuf(rotIdxs);
-	afVelXBuf(origIdxs)		  = afVelXBuf(rotIdxs);
-	afVelYBuf(origIdxs)		  = afVelYBuf(rotIdxs);
-	afGroupIdxBuf(origIdxs)	  = afGroupIdxBuf(rotIdxs);
-	afPartMatIdxBuf(origIdxs) = afPartMatIdxBuf(rotIdxs);
-
-	if (m_hasForce)
-	{
-		afForceXBuf(origIdxs) = afForceXBuf(rotIdxs);
-		afForceYBuf(origIdxs) = afForceYBuf(rotIdxs);
-	}
-	if (afHasStaticPresBuf)
-		afStaticPressureBuf(origIdxs) = afStaticPressureBuf(rotIdxs);
-	
-	if (afHasDepthBuf)
-		afDepthBuf(origIdxs) = afDepthBuf(rotIdxs);
-	
-	if (afHasColorBuf)
-		afColorBuf(origIdxs) = afColorBuf(rotIdxs);
-	
-	if (afHasUserDataBuf)
-		afUserDataBuf(origIdxs) = afUserDataBuf(rotIdxs);
-
-	afHeatBuf(origIdxs)   = afHeatBuf(rotIdxs);
-	afHealthBuf(origIdxs) = afHealthBuf(rotIdxs);
-
-	// Update handle indices.
-	if (afHasHandleIdxBuf)
-	{
-		afHandleIdxBuf(origIdxs) = afHandleIdxBuf(rotIdxs);
-		const af::array& handleIdxs = afHandleIdxBuf(origIdxs);
-		afHandleIdxBuf(origIdxs) = rotIdxs(handleIdxs);
-	}
-
-	if (afHasExpireTimeBuf)
-	{
-		afExpireTimeBuf(origIdxs) = afExpireTimeBuf(rotIdxs);
-		// Update expiration time buffer indices.
-		afIdxByExpireTimeBuf(origIdxs) = afIdxByExpireTimeBuf(rotIdxs);
-	}
-
-	// update proxies
-	afProxyIdxBuf(origIdxs) = afProxyIdxBuf(rotIdxs);
-
-	// update contacts
-	afContactIdxABuf(origIdxs) = afContactIdxABuf(rotIdxs);
-	afContactIdxBBuf(origIdxs) = afContactIdxBBuf(rotIdxs);
-
-	// update particle-body contacts
-	afBodyContactIdxBuf(origIdxs) = afBodyContactIdxBuf(rotIdxs);
-
-	// update pairs
-	afPairIdxABuf(origIdxs) = afPairIdxABuf(rotIdxs);
-	afPairIdxBBuf(origIdxs) = afPairIdxBBuf(rotIdxs);
-
-	// update triads
-	afTriadIdxABuf(origIdxs) = afTriadIdxABuf(rotIdxs);
-	afTriadIdxBBuf(origIdxs) = afTriadIdxBBuf(rotIdxs);
-	afTriadIdxCBuf(origIdxs) = afTriadIdxCBuf(rotIdxs);
-
-	// update groups
-	struct NewIndices
-	{
-		int32 operator[](int32 i) const
+		b2ParticleGroup* group = m_groupBuffer[k];
+		if (group)
 		{
-			if (i < start)
-			{
-				return i;
-			}
-			else if (i < mid)
-			{
-				return i + end - mid;
-			}
-			else if (i < end)
-			{
-				return i + start - mid;
-			}
-			else
-			{
-				return i;
-			}
+			group->m_firstIndex = newIndices[group->m_firstIndex];
+			group->m_lastIndex = newIndices[group->m_lastIndex - 1] + 1;
 		}
-		int32 start, mid, end;
-	} newIndices;
-	newIndices.start = start;
-	newIndices.mid = mid;
-	newIndices.end = end;
-	for each (const int32 groupIdx in m_realGroupIdxBuffer)
-	{
-		m_groupFirstIdxBuf[groupIdx] = newIndices[m_groupFirstIdxBuf[groupIdx]];
-		m_groupLastIdxBuf[groupIdx] = newIndices[m_groupLastIdxBuf[groupIdx] - 1] + 1;
 	}
 }
-
 
 /// Set the lifetime (in seconds) of a particle relative to the current
 /// time.
@@ -7866,37 +5017,11 @@ void b2ParticleSystem::SetParticleFlags(int32 index, uint32 newFlags)
 		}
 		if (newFlags & b2_colorMixingParticle)
 		{
-			RequestBuffer(m_colorBuffer, afHasColorBuf);
+			RequestBuffer(m_colorBuffer, hasColorBuf);
 		}
 		m_allParticleFlags |= newFlags;
 	}
 	*oldFlags = newFlags;
-}
-void b2ParticleSystem::AFSetParticleFlags(const af::array& idxs, uint32 newFlags)
-{
-	const af::array& oldFlags = afFlagBuf(idxs);
-
-
-	// If any flags might be removed
-	const af::array& condIdxs = af::where(oldFlags & ~newFlags);
-	if (!condIdxs.isempty())
-		m_needsUpdateAllParticleFlags = true;
-		
-	// If any flags were added
-	if (~m_allParticleFlags & newFlags)
-	{
-		if (newFlags & b2_tensileParticle)
-		{
-			 AFRequestBuffer(afAccumulation2XBuf, afHasAccumulation2XBuf);
-			 AFRequestBuffer(afAccumulation2YBuf, afHasAccumulation2YBuf);
-		}
-		if (newFlags & b2_colorMixingParticle)
-		{
-			AFRequestBuffer(afColorBuf, afHasColorBuf);
-		}
-		m_allParticleFlags |= newFlags;
-	}
-	afFlagBuf(idxs) = oldFlags | newFlags;
 }
 
 void b2ParticleSystem::AddParticleFlags(int32 index, uint32 newFlags)
@@ -7911,7 +5036,7 @@ void b2ParticleSystem::AddParticleFlags(int32 index, uint32 newFlags)
 		}
 		if (newFlags & b2_colorMixingParticle)
 		{
-			RequestBuffer(m_colorBuffer, afHasColorBuf);
+			RequestBuffer(m_colorBuffer, hasColorBuf);
 		}
 		m_allParticleFlags |= newFlags;
 	}
@@ -7919,9 +5044,9 @@ void b2ParticleSystem::AddParticleFlags(int32 index, uint32 newFlags)
 }
 
 void b2ParticleSystem::SetGroupFlags(
-	int32 groupIdx, uint32 newFlags)
+	b2ParticleGroup* group, uint32 newFlags)
 {
-	uint32& oldFlags = m_groupFlagsBuf[groupIdx];
+	uint32& oldFlags = group->m_groupFlags;
 	newFlags |= oldFlags & b2_particleGroupInternalMask;
 
 	if ((oldFlags ^ newFlags) & b2_solidParticleGroup)
@@ -7946,39 +5071,6 @@ void b2ParticleSystem::SetGroupFlags(
 	}
 	oldFlags = newFlags;
 }
-void b2ParticleSystem::AFSetGroupFlags(const af::array& afGroupIdxs, af::array& afNewFlags)
-{
-	//TODO
-
-	af::array afOldFlags = afGroupFlagsBuf(afGroupIdxs);
-	afNewFlags = afNewFlags | (afOldFlags & b2_particleGroupInternalMask != 0);
-
-	// If the b2_solidParticleGroup flag changed schedule depth update.
-	af::array afOldXorNew = afOldFlags ^ afNewFlags;
-	afNewFlags(afOldXorNew != 0) = afNewFlags(afOldXorNew != 0) | b2_particleGroupNeedsUpdateDepth;
-
-	// If any flags might be removed
-	af::array afOldWithoutNew = afOldFlags & (afNewFlags ^ MAXUINT32);
-	if (af::anyTrue<bool>(afOldWithoutNew))
-		m_needsUpdateAllGroupFlags = true;
-
-	af::array afAktualNewFlags = ~m_allGroupFlags & afNewFlags;
-
-	//TODO after bitor sum
-	/*
-	if (~m_allGroupFlags & newFlags)
-	{
-		// If any flags were added
-		if (newFlags & b2_solidParticleGroup)
-		{
-			//m_depthBuffer = RequestBuffer(m_depthBuffer);
-			m_depthBuffer.resize(m_count);
-		}
-		m_allGroupFlags |= newFlags;
-	}
-	oldFlags = newFlags;*/
-}
-
 
 static inline bool IsSignificantForce(float32 forceX, float32 forceY)
 {
@@ -7993,10 +5085,6 @@ inline bool b2ParticleSystem::ForceCanBeApplied(uint32 flags) const
 {
 	return !(flags & b2_wallParticle);
 }
-inline af::array b2ParticleSystem::AFForceCanBeApplied(const af::array& flags) const
-{
-	return !(flags & b2_wallParticle);
-}
 
 inline void b2ParticleSystem::PrepareForceBuffer()
 {
@@ -8006,15 +5094,6 @@ inline void b2ParticleSystem::PrepareForceBuffer()
 		m_forceYBuffer.resize(m_particleBufferSize);
 		std::fill(m_forceXBuffer.begin(), m_forceXBuffer.end(), 0.0f);
 		std::fill(m_forceYBuffer.begin(), m_forceYBuffer.end(), 0.0f);
-		m_hasForce = true;
-	}
-}
-inline void b2ParticleSystem::AFPrepareForceBuffer()
-{
-	if (!m_hasForce)
-	{
-		afForceXBuf = af::constant(0, m_count);
-		afForceYBuf = af::constant(0, m_count);
 		m_hasForce = true;
 	}
 }
@@ -8048,29 +5127,6 @@ void b2ParticleSystem::ApplyForce(int32 firstIndex, int32 lastIndex,
 		}
 	}
 }
-void b2ParticleSystem::AFApplyForce(int32 firstIndex, int32 lastIndex,
-	float32 forceX, float32 forceY)
-{
-	// Early out if force does nothing (optimization).
-	int32 count = lastIndex - firstIndex;
-	float32 distributedForceX = forceX / (float32)(count);
-	float32 distributedForceY = forceY / (float32)(count);
-
-	if (!m_hasForce)
-	{
-		afForceXBuf = af::constant(0.0f, m_count);
-		afForceYBuf = af::constant(0.0f, m_count);
-		m_hasForce = true;
-	}
-
-	if (IsSignificantForce(distributedForceX, distributedForceY))
-	{
-		// Distribute the force over all the particles.
-		af::array idxs = af::seq(firstIndex, lastIndex);
-		afForceXBuf(idxs) += distributedForceX;
-		afForceYBuf(idxs) += distributedForceY;
-	}
-}
 
 void b2ParticleSystem::ParticleApplyForce(int32 index, float32 forceX, float32 forceY)
 {
@@ -8080,18 +5136,6 @@ void b2ParticleSystem::ParticleApplyForce(int32 index, float32 forceX, float32 f
 		PrepareForceBuffer();
 		m_forceXBuffer[index] += forceX;
 		m_forceYBuffer[index] += forceY;
-	}
-}
-void b2ParticleSystem::AFParticleApplyForce(const af::array& idxs, const af::array& forceX, const af::array& forceY)
-{
-	const af::array& condIdxs = af::where(AFIsSignificantForce(forceX, forceY) 
-								   && AFForceCanBeApplied(afFlagBuf(idxs)));
-	if (!condIdxs.isempty())
-	{
-		const af::array& sysIdxs = idxs(condIdxs);
-		AFPrepareForceBuffer();
-		afForceXBuf(sysIdxs) += forceX(condIdxs);
-		afForceYBuf(sysIdxs) += forceY(condIdxs);
 	}
 }
 
@@ -8141,36 +5185,6 @@ void b2ParticleSystem::QueryAABB(b2QueryCallback* callback,
 			{
 				break;
 			}
-		}
-	}
-}
-void b2ParticleSystem::AFQueryAABB(afQueryCallback* callback,
-	const b2AABB& aabb) const
-{
-	if (afProxyIdxBuf.isempty())
-		return;
-
-	uint32 lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x,
-								 m_inverseDiameter * aabb.lowerBound.y);
-	uint32 upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x,
-								 m_inverseDiameter * aabb.upperBound.y);
-
-	const af::array& tagsBetweenIdxs = af::where(afProxyTagBuf >= lowerTag &&
-												 afProxyTagBuf <= upperTag);
-
-	const af::array& i = afProxyIdxBuf(tagsBetweenIdxs);
-	const af::array& px = afPosXBuf(i);
-	const af::array& py = afPosYBuf(i);
-
-	af::array k = af::where(aabb.lowerBound.x < px && px < aabb.upperBound.x &&
-							aabb.lowerBound.y < py && py < aabb.upperBound.y);
-	if (!k.isempty())
-	{
-		k = af::where(callback->AFReportParticle(this, k));
-		if (!k.isempty())
-		{
-			//here there could be something done with particles
-			return;
 		}
 	}
 }
@@ -8243,9 +5257,10 @@ float32 b2ParticleSystem::ComputeCollisionEnergy() const
 	float32 sum_v2 = 0;
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
-		int32 a = m_contactIdxABuffer[k];
-		int32 b = m_contactIdxBBuffer[k];
-		b2Vec2 n = b2Vec2(m_contactNormalXBuffer[k], m_contactNormalYBuffer[k]);
+		const b2ParticleContact& contact = m_partContactBuf[k];
+		int32 a = contact.idxA;
+		int32 b = contact.idxB;
+		b2Vec2 n = contact.normal;
 		b2Vec2 v = b2Vec2(m_velocityXBuffer[b] - m_velocityXBuffer[a], m_velocityYBuffer[b] - m_velocityYBuffer[a]);
 		float32 vn = b2Dot(v, n);
 		if (vn < 0)
@@ -8265,17 +5280,6 @@ void b2ParticleSystem::SetStuckThreshold(int32 steps)
 		RequestBuffer(m_lastBodyContactStepBuffer, hasLastBodyContactStepBuffer);
 		RequestBuffer(m_bodyContactCountBuffer, hasBodyContactCountBuffer);
 		RequestBuffer(m_consecutiveContactStepsBuffer, hasConsecutiveContactStepsBuffer);
-	}
-}
-void b2ParticleSystem::AFSetStuckThreshold(int32 steps)
-{
-	m_stuckThreshold = steps;
-
-	if (steps > 0)
-	{
-		AFRequestBuffer(afLastBodyContactStepBuf, afHasLastBodyContactBuf);
-		AFRequestBuffer(afBodyContactCountBuf, afHasBodyContactCountBuf);
-		AFRequestBuffer(afConsecutiveContactStepsBuf, afHasConsecutiveContactStepsBuf);
 	}
 }
 
