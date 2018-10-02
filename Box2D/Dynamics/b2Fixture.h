@@ -61,7 +61,6 @@ struct b2FixtureDef
 	{
 		shape = NULL;
 		userData = NULL;
-		collisionLayers = 1;
 		friction = 0.2f;
 		restitution = 0.0f;
 		density = 0.0f;
@@ -74,8 +73,6 @@ struct b2FixtureDef
 
 	/// Use this to store application specific fixture data.
 	void* userData;
-
-	uint32 collisionLayers;
 
 	/// The friction coefficient, usually in the range [0,1].
 	float32 friction;
@@ -161,9 +158,9 @@ public:
 	/// Set the user data. Use this to store your application specific data.
 	void SetUserData(void* data);
 
-	inline uint32 b2Fixture::GetCollisionLayers() const
+	inline bool b2Fixture::TestZPos(float32 z) const
 	{
-		return m_collisionLayers;
+		return m_zPos <= z && z <= m_zPos + m_height;
 	}
 
 	/// Test a point for containment in this fixture.
@@ -256,7 +253,8 @@ protected:
 
 	void* m_userData;
 
-	uint32 m_collisionLayers;
+	float32 m_zPos;
+	float32 m_height;
 };
 
 inline void b2Fixture::SetIdx(int32 idx)
@@ -357,18 +355,9 @@ inline void b2Fixture::ComputeDistance(const b2Vec2& p, float32* d, b2Vec2* n, i
 {
 	m_shape->ComputeDistance(m_body->GetTransform(), p, d, n, childIndex);
 }
-inline void b2Fixture::AFComputeDistance(const af::array& px, const af::array& py, af::array& d, af::array& nx, af::array& ny, int32 childIndex) const
-{
-	m_shape->AFComputeDistance(m_body->GetTransform(), px, py, d, nx, ny, childIndex);
-}
-
 inline bool b2Fixture::RayCast(b2RayCastOutput* output, const b2RayCastInput& input, int32 childIndex) const
 {
 	return m_shape->RayCast(output, input, m_body->GetTransform(), childIndex);
-}
-inline af::array b2Fixture::AFRayCast(afRayCastOutput* output, const afRayCastInput& input, int32 childIndex) const
-{
-	return m_shape->AFRayCast(output, input, m_body->GetTransform(), childIndex);
 }
 
 inline void b2Fixture::GetMassData(b2MassData* massData) const

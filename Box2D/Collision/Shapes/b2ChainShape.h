@@ -68,20 +68,16 @@ public:
 	/// This always return false.
 	/// @see b2Shape::TestPoint
 	bool TestPoint(const b2Transform& transform, const b2Vec2& p) const;
-	af::array AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const;
 
 	// @see b2Shape::ComputeDistance
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
-	void AFComputeDistance(const b2Transform& xf, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const;
-	
+
 	/// Implement b2Shape.
 	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
 					const b2Transform& transform, int32 childIndex) const;
-	af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
-					const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeAABB
-	void ComputeAABB(b2AABB* aabb, const b2Transform& transform, int32 childIndex) const;
+	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// Chains have zero mass.
 	/// @see b2Shape::ComputeMass

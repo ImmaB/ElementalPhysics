@@ -89,16 +89,9 @@ enum b2ParticleFlag
 	/// makes Particle ignite other inflamable Materials
 	b2_flameParticle = 1 << 22,
 	/// markes Particles that are currently controlled
-	b2_controlledParticle = 1 << 23
-};
-
-enum b2CollisionLayerMask
-{
-	b2_Layer0underGround = 1 << 0,
-	b2_Layer1ground = 1 << 1,
-	b2_Layer2kneeHigh = 1 << 2,
-	b2_Layer3breastHigh = 1 << 3,
-	b2_Layer4aboveHead = 1 << 4
+	b2_controlledParticle = 1 << 23,
+	/// markes Particles that are Air
+	b2_airParticle = 1 << 24
 };
 
 /// Small color object for each particle

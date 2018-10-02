@@ -159,7 +159,7 @@ extern "C" __declspec(dllexport) void* CreateWorld(float gravX, float gravY) {
 	world = new b2World(gravity);
     return static_cast<void*>(world);
 }
-extern "C" __declspec(dllexport) int End(void* worldPointer) {
+extern "C" __declspec(dllexport) int DestroyWorld(void* worldPointer) {
 	b2World* world = static_cast<b2World*>(worldPointer);
 	if (world)
 		delete world;
@@ -199,21 +199,28 @@ extern "C" __declspec(dllexport) void SetWorldGravity(void* worldPointer, float 
 	b2World* world = static_cast<b2World*>(worldPointer);
 	world->SetGravity(b2Vec2(x, y));
 }
-
-extern "C" __declspec(dllexport) int AddParticleMaterial(void* partSysPtr, int materialFlags, float density, float stability, float extinguishingPoint, float meltingPoint, float boilingPoint, float ignitionPoint, float heatConductivity) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleMaterialDef md;
-	md.matFlags = materialFlags;
-	md.mass = density * parts->GetParticleMass();
-	md.stability = stability;
-	md.extinguishingPoint = extinguishingPoint;
-	md.meltingPoint = meltingPoint;
-	md.boilingPoint = boilingPoint;
-	md.ignitionPoint = ignitionPoint;
-	md.heatConductivity = heatConductivity;
-	return parts->CreateParticleMaterial(md);
-	return -1;
+extern "C" __declspec(dllexport) void SetWorldDamping(void* worldPointer, float s) {
+	b2World* world = static_cast<b2World*>(worldPointer);
+	world->SetDamping(s);
 }
+
+extern "C" __declspec(dllexport) int AddParticleMaterial(void* partSysPtr, int matFlags, int partFlags, float density, float stability, float heatConductivity) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleMaterialDef md;
+	md.matFlags = matFlags;
+	md.partFlags = partFlags;
+	md.mass = density * partSys->GetParticleMass();
+	md.stability = stability;
+	md.heatConductivity = heatConductivity;
+	return partSys->CreateParticleMaterial(md);
+}
+extern "C" __declspec(dllexport) void AddParticleMatChangeMats(void* partSysPtr, int matIdx, 
+	float colderThan, int changeToColdMat, float hotterThan, int changeToHotMat, float ignitionPoint, int burnToMat) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->PartMatChangeMats(matIdx, colderThan, changeToColdMat, hotterThan, changeToHotMat, ignitionPoint, burnToMat);
+}
+
+
 extern "C" __declspec(dllexport) void* AddBodyMaterial(void* worldPointer, int materialFlags, float density, float friction, float bounciness, float stability, float extinguishingPoint, float meltingPoint, float ignitionPoint, float heatConductivity) {
 	b2World* world = static_cast<b2World*>(worldPointer);
 	b2BodyMaterialDef md;
@@ -228,7 +235,6 @@ extern "C" __declspec(dllexport) void* AddBodyMaterial(void* worldPointer, int m
 	md.heatConductivity = heatConductivity;
 	b2BodyMaterial* matPtr = world->AddBodyMaterial(md);
 	return static_cast<void*>(matPtr);
-	return NULL;
 }
 
 extern "C" __declspec(dllexport) void* GetDebug() {
@@ -252,7 +258,7 @@ extern "C" __declspec(dllexport)  float* UpdateContactListener(void* contactPoin
 
 #pragma region API Particle Systems
 
-extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, float radius, float damping, float gravityScale, int userData, float roomTemp, float heatLossRatio, float pointsPerLayer, float lowestPoint)
+extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, float radius, float damping, float gravityScale, int userData, float roomTemp, float heatLossRatio, float pointsPerLayer, int lowestLayer, int highestLayer)
 {
 	b2World* world = static_cast<b2World*>(worldPtr);
 	const b2ParticleSystemDef particleSystemDef;
@@ -264,7 +270,8 @@ extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, flo
 	partSys->SetRoomTemperature(roomTemp);
 	partSys->SetHeatLossRatio(heatLossRatio);
 	partSys->SetPointsPerLayer(pointsPerLayer);
-	partSys->SetLowestPoint(lowestPoint);
+	partSys->SetLowestLayer(lowestLayer);
+	partSys->SetHighestLayer(highestLayer);
 	partSys->CalcLayerValues();
 	partSys->MyIndex = userData;
 	return static_cast<void*>(partSys);
@@ -296,31 +303,10 @@ extern "C" __declspec(dllexport) void SolveEnd(void* partSysPtr) {
 	partSys->SolveEnd();
 }
 
-extern "C" __declspec(dllexport) void StepParticleInit(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveInit();
-}
-extern "C" __declspec(dllexport) void StepParticleIteration(void* partSysPtr, int32 iteration) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIteration(iteration);
-}
-extern "C" __declspec(dllexport) void StepParticleEnd(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveEnd();
-}
-
 extern "C" __declspec(dllexport)  void SetStaticPressureIterations(void* systemPointer,int iterations)
 {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
     parts->SetStaticPressureIterations(iterations);
-}
-extern "C" __declspec(dllexport)  void SetAllParticleLifetimes(void* systemPointer, float time) {
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-    int numberOfParticles = parts->GetParticleCount();
-    for (int i = 0; i < numberOfParticles; ++i) {
-        parts->SetParticleLifetime(i, time);
-    }
-    parts->SetDestructionByAge(true);
 }
 extern "C" __declspec(dllexport)  void SetDestructionByAge(void* systemPointer, bool toggle) {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
@@ -345,46 +331,6 @@ extern "C" __declspec(dllexport)  int DestroyParticlesInShape(void* systemPointe
     return parts->DestroyParticlesInShape(*shape, transform, call);
 }
 
-extern "C" __declspec(dllexport)  int* GetParticlesInShape(void* systemPointer, void* shapePointer, float x, float y, float rot)
-{
-    if (returnArray != NULL)
-    {
-        delete returnArray;
-    }
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-    b2Shape* shape = static_cast<b2Shape*>(shapePointer);
-    b2Vec2 position = b2Vec2(x, y);
-    b2Rot rotation = b2Rot(rot);
-    b2Transform transform = b2Transform(position, rotation);
-    
-    const float* posXBuf = parts->GetPositionXBuffer();
-	const float* posYBuf = parts->GetPositionYBuffer();
-	uint32* layers = parts->GetCollisionLayerBuffer();
-    int numparts = parts->GetParticleCount();
-    
-    std::vector<int> infoVector;
-    int count = 0;
-    
-    for (int i = 0; i < numparts; i++)
-    {
-        if (shape->m_layerMask & layers[i] && shape->TestPoint(transform, b2Vec2(posXBuf[i], posYBuf[i])))
-        {
-            infoVector.push_back(i);
-            count++;
-        }
-    }
-    
-    returnArray = new int[count + 1];
-    returnArray[0] = count;
-    for (int i = 0; i < count; i++)
-    {
-        returnArray[i + 1] = infoVector[i];
-    }
-    
-    return returnArray;
-}
-
-
 extern "C" __declspec(dllexport)  void DeleteParticleSystem(void* worldPointer, void* partSysPtr) {
     b2World* world = static_cast<b2World*>(worldPointer);
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
@@ -402,64 +348,7 @@ extern "C" __declspec(dllexport)  void SetAllParticleFlags(void* partSysPtr, int
         partSys->SetParticleFlags(i, flags);
     }
 }
-/*extern "C" __declspec(dllexport)  int* GetParticleSystemContacts(void* partSysPtr) {
-    
-    if (returnArray != NULL)
-    {
-        delete returnArray;
-    }
-    
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    int numContacts = partSys->GetContactCount();
-    const int32* contactIdxAList = partSys->GetContactIdxAs();
-	const int32* contactIdxBList = partSys->GetContactIdxBs();
-    int32* userdata = partSys->GetUserDataBuffer();
-    
-    returnArray = new int[(numContacts * 4) + 1];
-    returnArray[0] = numContacts;
-    for (int i = 0; i < numContacts; ++i)
-    {
-        returnArray[(i * 4) + 1] = contactIdxAList[i];
-        returnArray[(i * 4) + 2] = contactIdxBList[i];
-        returnArray[(i * 4) + 3] = (int64)(userdata[contactIdxAList[i]]);
-        returnArray[(i * 4) + 4] = (int64)(userdata[contactIdxBList[i]]);
-    }
-    return returnArray;
-}*/
-/*extern "C" __declspec(dllexport)  float* GetParticleSystemBodyContacts(void* partSysPtr) {
-    
-    if (positionArray != NULL)
-    {
-        delete positionArray;
-    }
-    
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    
-    int count = partSys->GetBodyContactCount();
-    const int32* contactIdxs		  = partSys->GetBodyContactIdxs();
-	b2Body** contactBodys			  = partSys->GetBodyContactBodys();
-	b2Fixture** contactFixtures		  = partSys->GetBodyContactFixtures();
-	const float32* contactNormalXs	  = partSys->GetBodyContactNormalXs();
-	const float32* contactNormalYs	  = partSys->GetBodyContactNormalYs();
-	const float32* contactWeights	  = partSys->GetBodyContactWeights();
-    int32* userdata = partSys->GetUserDataBuffer();
-    
-    positionArray = new float[(count*7) +1];
-    positionArray[0] = (float)count;
-    
-    for (int i = 0; i < count; ++i)
-    {
-        positionArray[(i * 7) + 1] = (float)contactIdxs[i];
-        positionArray[(i * 7) + 2] = (float)((int64)(userdata[contactIdxs[i]]));
-        positionArray[(i * 7) + 3] = (float)((int64)(contactBodys[i]->GetUserData()));
-        positionArray[(i * 7) + 4] = (float)((int64)(contactFixtures[i]->GetUserData()));
-        positionArray[(i * 7) + 5] = contactNormalXs[i];
-        positionArray[(i * 7) + 6] = contactNormalYs[i];
-        positionArray[(i * 7) + 7] = contactWeights[i];
-    }
-    
-    return positionArray;
-}*/
+
 extern "C" __declspec(dllexport)  int GetStuckCandidateCount(void* partSysPtr) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     return partSys->GetStuckCandidateCount();
@@ -494,9 +383,9 @@ extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointe
     pd.color = col;
     parts->CreateParticle(pd);
 }
-extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer, int groupIdx, int flags, float posX, float posY, float posZ, float velX, float velY, int col, float lifetime, float health, float heat, int userdata) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-	b2ParticleGroup* group = parts->GetParticleGroups()[groupIdx];
+extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* partSysPtr, int groupIdx, int flags, float posX, float posY, float posZ, float velX, float velY, int col, float lifetime, float health, float heat, int userdata) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleGroup* group = partSys->GetParticleGroups()[groupIdx];
 	b2ParticleDef pd;
 	pd.flags = flags;
 	pd.positionX = posX;
@@ -511,29 +400,11 @@ extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* systemPointer
 	pd.groupIdx = groupIdx;
 	pd.matIdx = group->GetMaterialIdx();
 	pd.userData = group->GetUserData();
-	parts->CreateParticle(pd);
-}
-extern "C" __declspec(dllexport)  void DestroySelectedParticles(void* partSysPtr, int* indexArray) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    for (int i = 1; i < indexArray[0]+1; ++i) {
-        partSys->DestroyParticle(indexArray[i]);
-    }
+	partSys->CreateParticle(pd);
 }
 
-extern "C" __declspec(dllexport)  void SetSelectedParticleFlags(void* partSysPtr, int* indexArray, int flags) {
+extern "C" __declspec(dllexport)  void AddFlagsToPartsInShape(void* partSysPtr, int flags, void* shapePtr, float shapeX, float shapeY, float shapeRot) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	for (int i = 1; i < indexArray[0] + 1; ++i) {
-		partSys->SetParticleFlags(indexArray[i], flags);
-	}
-}
-extern "C" __declspec(dllexport)  void AddSelectedParticleFlags(void* systemPointer, int* indexArray, int flags) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-	for (int i = 1; i < indexArray[0] + 1; ++i) {
-		parts->AddParticleFlags(indexArray[i], flags);
-	}
-}
-extern "C" __declspec(dllexport)  void AddParticleFlagsInShape(void* systemPointer, void* shapePtr, float shapeX, float shapeY, float shapeRot, int flags) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
 	b2Shape* shape = static_cast<b2Shape*>(shapePtr);
 	b2Vec2 position = b2Vec2(shapeX, shapeY);
 	b2Rot rotation = b2Rot(shapeRot);
@@ -541,101 +412,66 @@ extern "C" __declspec(dllexport)  void AddParticleFlagsInShape(void* systemPoint
 	b2ParticleFlag pf;
 	pf = static_cast<b2ParticleFlag>(flags);
 
-	const float32* posX = parts->GetPositionXBuffer();
-	const float32* posY = parts->GetPositionYBuffer();
-	int numparts = parts->GetParticleCount();
-	for (int i = 0; i < numparts; i++)
+	const float32* posX = partSys->GetPositionXBuffer();
+	const float32* posY = partSys->GetPositionYBuffer();
+
+	b2AABB aabb;
+	int32 childCount = shape->GetChildCount();
+	for (int32 childIndex = 0; childIndex < childCount; childIndex++)
 	{
-		if (shape->TestPoint(transform, b2Vec2(posX[i], posY[i])))
+		shape->ComputeAABB(aabb, transform, childIndex);
+		b2ParticleSystem::InsideBoundsEnumerator enumerator =
+			partSys->GetInsideBoundsEnumerator(aabb);
+
+		int32 i;
+		while ((i = enumerator.GetNext()) >= 0)
 		{
-			parts->AddParticleFlags(i, pf);
+			if (shape->TestPoint(transform, b2Vec2(posX[i], posY[i])))
+			{
+				partSys->AddParticleFlags(i, pf);
+			}
 		}
 	}
 }
-
-extern "C" __declspec(dllexport)  void SetSelectedParticleUserData(void* partSysPtr, int* indexArray, int ud) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	int32* datas = partSys->GetUserDataBuffer();
-	for (int i = 1; i < indexArray[0] + 1; ++i)
-	{
-		datas[indexArray[i]] = ud;
-	}
-}
-extern "C" __declspec(dllexport)  void SetSelectedParticleTemperature(void* partSysPtr, int* indexArray, float t) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	float* datas = partSys->GetHeatBuffer();
-	for (int i = 1; i < indexArray[0] + 1; ++i)
-	{
-		datas[indexArray[i]] = t;
-	}
-}
-
-extern "C" __declspec(dllexport)  void ApplyForceToSelectedParticles(void* partSysPtr, int* indexArray, float x, float y) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    for (int i = 1; i < indexArray[0]+1; ++i) {
-        partSys->ParticleApplyForce(indexArray[i], x, y);
-    }
-}
-extern "C" __declspec(dllexport)  void ApplyLinearImpulseToSelectedParticles(void* partSysPtr, int* indexArray, float x, float y) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    b2Vec2 force = b2Vec2(x, y);
-    for (int i = 1; i < indexArray[0]+1; ++i) {
-        partSys->ParticleApplyLinearImpulse(indexArray[i], force);
-    }
-}
-extern "C" __declspec(dllexport)  void ExplodeSelectedParticles(void* partSysPtr, int* indexArray, float centreX, float centreY, float strenght) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    float32* ppbx = partSys->GetPositionXBuffer();
-	float32* ppby = partSys->GetPositionYBuffer();
-    for (int i = 1; i < indexArray[0]+1; ++i)
-    {
-        int ind = indexArray[i];
-        b2Vec2 force = b2Vec2(ppbx[ind] - centreX, ppby[ind] - centreY);
-        force.Normalize();
-        force *= strenght;
-        partSys->ParticleApplyForce(ind, force.x, force.y);
-    }
-}
-extern "C" __declspec(dllexport)  void ExplodeParticlesInShape(void* partSysPtr, float centreX, float centreY, void* shapePtr, float shapeX, float shapeY, float shapeRot, float strenght) {
+extern "C" __declspec(dllexport)  void AddFlagsToPartsWithMatInShape(void* partSysPtr, int flags, int matIdx, void* shapePtr, float shapeX, float shapeY, float shapeRot) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape* shape = static_cast<b2Shape*>(shapePtr);
 	b2Vec2 position = b2Vec2(shapeX, shapeY);
 	b2Rot rotation = b2Rot(shapeRot);
 	b2Transform transform = b2Transform(position, rotation);
+	b2ParticleFlag pf;
+	pf = static_cast<b2ParticleFlag>(flags);
 
 	const float32* posX = partSys->GetPositionXBuffer();
 	const float32* posY = partSys->GetPositionYBuffer();
-	int numparts = partSys->GetParticleCount();
-	for (int i = 0; i < numparts; i++)
+	const int32* matIdxs = partSys->GetPartMatIdxBuffer();
+
+	b2AABB aabb;
+	int32 childCount = shape->GetChildCount();
+	for (int32 childIndex = 0; childIndex < childCount; childIndex++)
 	{
-		if (shape->TestPoint(transform, b2Vec2(posX[i], posY[i])))
+		shape->ComputeAABB(aabb, transform, childIndex);
+		b2ParticleSystem::InsideBoundsEnumerator enumerator =
+			partSys->GetInsideBoundsEnumerator(aabb);
+
+		int32 i;
+		while ((i = enumerator.GetNext()) >= 0)
 		{
-			b2Vec2 force = b2Vec2(posX[i] - centreX, posY[i] - centreY);
-			force.Normalize();
-			force *= strenght;
-			partSys->ParticleApplyForce(i, force.x, force.y);
+			if (matIdxs[i] == matIdx && shape->TestPoint(transform, b2Vec2(posX[i], posY[i])))
+			{
+				partSys->AddParticleFlags(i, pf);
+			}
 		}
 	}
 }
-extern "C" __declspec(dllexport)  void ExplodeParticlesWithFlag(void* partSysPtr, float centreX, float centreY, int partFlags, float strenght) {
+
+extern "C" __declspec(dllexport)  void RemoveFlagsFromAll(void* partSysPtr, int flags) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	float32* posX = partSys->GetPositionXBuffer();
-	float32* posY = partSys->GetPositionYBuffer();
-	b2ParticleFlag bf;
-	bf = static_cast<b2ParticleFlag>(partFlags);
-	const uint32* FlagBuffer = partSys->GetFlagsBuffer();
-	
-	int numparts = partSys->GetParticleCount();
-	for (int i = 0; i < numparts; i++)
-	{
-		if (FlagBuffer[i] & partFlags)
-		{
-			b2Vec2 force = b2Vec2(posX[i] - centreX, posY[i] - centreY);
-			force.Normalize();
-			force *= strenght;
-			partSys->ParticleApplyForce(i, force.x, force.y);
-		}
-	}
+	partSys->RemovePartFlagsFromAll(flags);
+}
+extern "C" __declspec(dllexport)  void ApplyForceInDirIfHasFlag(void* partSysPtr, float posX, float posY, float posZ, float strength, int flag) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->ApplyForceInDirIfHasFlag(posX, posY, posZ, strength, flag);
 }
 
 enum WhichDataToGet
@@ -647,14 +483,14 @@ enum WhichDataToGet
 	GetWeights = 1 << 4,
 	GetVelocities = 1 << 5,
 	GetUserData = 1 << 6,
-	GetHeat = 1 << 7
+	GetHeat = 1 << 7,
+	GetMaterials = 1 << 8
 };
-extern "C" __declspec(dllexport)  float* GetSelectedParticlesDetails(void* partSysPtr, int* indexArray, bool position, bool color, bool age, bool weight, bool velocity, bool userdata, bool heat, bool health)
-{
-	//TODO
-	return 0;
-}
-extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int whichDataMask, float** partPosXPtr, float** partPosYPtr, float** partPosZPtr, int** partColorPtr,  float** partLifeTimePtr, float** partHealthPtr, float** partWeightPtr, float** partVelocityXPtr, float**  partVelocityYPtr, int**  partUserDataPtr, float**  partHeatPtr) {
+extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int whichDataMask, 
+		float** partPosXPtr, float** partPosYPtr, float** partPosZPtr, 
+		int** partColorPtr,  float** partLifeTimePtr, float** partHealthPtr, float** partWeightPtr,
+		float** partVelocityXPtr, float**  partVelocityYPtr, int**  partUserDataPtr, 
+		float**  partHeatPtr, int** partMatPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	int partNum = partSys->GetParticleCount();
 	int floatArraySize = partNum * sizeof(float);
@@ -699,14 +535,17 @@ extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int
 	{
 		memcpy(*partHeatPtr, partSys->GetHeatBuffer(), intArraySize);
 	}
-
+	if (whichDataMask & GetMaterials)
+	{
+		memcpy(*partMatPtr, partSys->GetPartMatIdxBuffer(), intArraySize);
+	}
 }
 #pragma endregion
 
 #pragma region ParticleGroups
 
-extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, int layer, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
-	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
+extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape* m_shape = static_cast<b2Shape*>(shape);
 	b2ParticleGroupFlag bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
 	b2ParticleFlag bf = static_cast<b2ParticleFlag>(partFlags);
@@ -715,7 +554,6 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.groupFlags = bgf;
 	pd.matIdx = matIdx;
 	pd.collisionGroup = collisionGroup;
-	pd.layer = layer;
 	pd.shape = m_shape;
 	pd.angle = angle;
 	pd.strength = strength;
@@ -727,7 +565,7 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	int ret = parts->CreateParticleGroup(pd);
+	int ret = partSys->CreateParticleGroup(pd);
 	return ret;
 }
 extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
@@ -760,50 +598,6 @@ extern "C" __declspec(dllexport)  void JoinParticleGroups(void* partSysPtr, int 
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     system->JoinParticleGroups(groupAIdx, groupBIdx);
 }
-extern "C" __declspec(dllexport)  int* AreParticlesInGroup(void* groupPointer, int* indices) {
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-    std::vector<int> flags;
-    for (int i = 1; i < indices[0]+1; ++i) {
-        flags.push_back(group->ContainsParticle(indices[i]) ? 1 : 0);
-    }
-    int* flagArray = &flags[0];
-    return flagArray;
-}
-extern "C" __declspec(dllexport)  void SetParticleFlagsInGroup(void* partSysPtr, void* groupPointer, int flags) {
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    int numParts = system->GetParticleCount();
-    for (int i = 0; i < numParts; ++i) {
-        if (group->ContainsParticle(i)) {
-            system->SetParticleFlags(i, flags);
-        }
-    }
-}
-extern "C" __declspec(dllexport)  void SetParticleLifetimesInGroup(void* partSysPtr, void* groupPointer, int lifetime) {
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    int numParts = system->GetParticleCount();
-    for (int i = 0; i < numParts; ++i) {
-        if (group->ContainsParticle(i)) {
-            system->SetParticleLifetime(i, lifetime);
-        }
-    }
-}
-extern "C" __declspec(dllexport)  int GetParticleGroupCount(void* groupPointer)
-{
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-    return group->GetParticleCount();
-}
-extern "C" __declspec(dllexport)  int GetParticleGroupFirstIndex(void* groupPointer)
-{
-	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-	return group->GetFirstIndex();
-}
-extern "C" __declspec(dllexport)  int GetParticleGroupLastIndex(void* groupPointer)
-{
-	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-	return group->GetLastIndex();
-}
 extern "C" __declspec(dllexport)  void ApplyForceToParticleGroup(void* groupPointer, float forceX, float forceY) {
     b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
     group->ApplyForce(forceX, forceY);
@@ -813,51 +607,6 @@ extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticleGroup(void* g
     b2Vec2 impulse = b2Vec2(forceX, forceY);
     group->ApplyLinearImpulse(impulse);
 }
-extern "C" __declspec(dllexport)  float* GetParticleGroupPosition(void* particleGroupPointer)
-{
-    
-    if (positionArray != NULL)
-    {
-        delete positionArray;
-    }
-    
-    b2ParticleGroup* pGroup = static_cast<b2ParticleGroup*>(particleGroupPointer);
-    b2Vec2 vec = pGroup->GetPosition();
-    positionArray = new float[2];
-    positionArray[0] = vec.x;
-    positionArray[1] = vec.y;
-    
-    return positionArray;
-}
-extern "C" __declspec(dllexport)  float* GetPGVelocity(void* partSysPtr, int pgIdx)
-{
-    //TODO
-    return positionArray;
-}
-extern "C" __declspec(dllexport)  int* GetParticleGroupParticles(void* particleGroupPointer)
-{
-	if (returnArray != NULL)
-	{
-		delete returnArray;
-	}
-	b2ParticleGroup* pGroup = static_cast<b2ParticleGroup*>(particleGroupPointer);
-
-	std::vector<int> infoVector;
-	int count = 0;
-	for (int i = pGroup->GetBufferIndex(); i < pGroup->GetBufferIndex() + pGroup->GetParticleCount(); i++)
-	{
-		infoVector.push_back(i);
-		count++;
-	}
-	returnArray = new int[count + 1];
-	returnArray[0] = count;
-	for (int i = 0; i < count; i++)
-	{
-		returnArray[i + 1] = infoVector[i];
-	}
-
-	return returnArray;
-}
 extern "C" __declspec(dllexport)  void DeleteParticlesInGroup(void* particleGroupPointer) {
     b2ParticleGroup* pGroup = static_cast<b2ParticleGroup*>(particleGroupPointer);
     pGroup->DestroyParticles();
@@ -865,53 +614,6 @@ extern "C" __declspec(dllexport)  void DeleteParticlesInGroup(void* particleGrou
 
 #pragma endregion
 
-#pragma region Particles Superceded
-
-extern "C" __declspec(dllexport)  void SetSingleParticleLifetime(void* systemPointer, int index, float time) {
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-    parts->SetParticleLifetime(index, time);
-}
-/*
- extern "C"  int* GetParticlesInShape(void* systemPointer, void* shapePointer, float x, float y, float rot) {
- b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
- b2Shape* shape = static_cast<b2Shape*>(shapePointer);
- b2Vec2 position = b2Vec2(x, y);
- b2Rot rotation = b2Rot(rot);
- b2Transform transform = b2Transform(position, rotation);
- std::vector<int> ints = parts->GetParticlesInShape(*shape, transform);
- int* arr = &ints[0];
- int* arr1 = new int[1];
- arr1[0] = 42;
- return arr1;
- }
- */
-extern "C" __declspec(dllexport)  void SetParticleFlagsUpToLimit(void* partSysPtr, int flags, int limit) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    for (int i = 0; i < limit; ++i) {
-        partSys->SetParticleFlags(i, flags);
-    }
-}
-
-extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticles(void* partSysPtr, int first, int last, float impulseX, float impulseY) {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    b2Vec2 impulse = b2Vec2(impulseX, impulseY);
-    system->ApplyLinearImpulse(first, last, impulse);
-}
-extern "C" __declspec(dllexport)  void ApplyForceToParticles(void* partSysPtr, int first, int last, float impulseX, float impulseY) {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    system->ApplyForce(first, last, impulseX, impulseY);
-}
-extern "C" __declspec(dllexport)  void ApplyForceToParticle(void* partSysPtr, int index, float impulseX, float impulseY) {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    system->ParticleApplyForce(index, impulseX, impulseY);
-}
-extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticle(void* partSysPtr, int index, float impulseX, float impulseY) {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    b2Vec2 impulse = b2Vec2(impulseX, impulseY);
-    system->ParticleApplyLinearImpulse(index, impulse);
-}
-
-#pragma endregion
 
 #pragma region Shapes
 
@@ -923,22 +625,24 @@ extern "C" __declspec(dllexport)  bool IsPointInShape(void* shapePointer, float 
 	b2Transform transform = b2Transform(position, rotation);
 	return shape->TestPoint(transform, position);
 }
-extern "C" __declspec(dllexport)  void* GetBoxShapeDef(float width, float height, float centreX, float centreY, float angle, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetBoxShapeDef(float width, float height, float centreX, float centreY, float angle, float zPos, float zHeight) {
     b2Vec2 centre = b2Vec2(centreX, centreY);
     b2PolygonShape* shape = new b2PolygonShape();
     shape->SetAsBox(width, height, centre, angle);
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport)  void* GetCircleShapeDef(float radius, float centreX, float centreY, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetCircleShapeDef(float radius, float centreX, float centreY, float zPos, float zHeight) {
     b2Vec2 centre = b2Vec2(centreX, centreY);
     b2CircleShape* shape = new b2CircleShape();
     shape->m_p = centre;
     shape->m_radius = radius;
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport)  void* GetChainShapeDef(float* vertArray, bool loop, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetChainShapeDef(float* vertArray, bool loop, float zPos, float zHeight) {
     b2ChainShape* shape = new b2ChainShape();
     int numberOfVertices = vertArray[0];
     b2Vec2* vertices = new b2Vec2[numberOfVertices];
@@ -956,10 +660,11 @@ extern "C" __declspec(dllexport)  void* GetChainShapeDef(float* vertArray, bool 
     else {
         shape->CreateChain(vertices, numberOfVertices);
     }
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport)  void* GetPolygonShapeDef(float* vertArray, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetPolygonShapeDef(float* vertArray, float zPos, float zHeight) {
     b2PolygonShape* shape = new b2PolygonShape();
     int numberOfVertices = vertArray[0];
     b2Vec2* vertices = new b2Vec2[numberOfVertices];
@@ -972,18 +677,20 @@ extern "C" __declspec(dllexport)  void* GetPolygonShapeDef(float* vertArray, int
     }
     
     shape->Set(vertices, numberOfVertices);
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport)  void* GetEdgeShapeDef(float x1, float y1, float x2, float y2, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetEdgeShapeDef(float x1, float y1, float x2, float y2, float zPos, float zHeight) {
     b2Vec2 vec1 = b2Vec2(x1, y1);
     b2Vec2 vec2 = b2Vec2(x2, y2);
     b2EdgeShape* shape = new b2EdgeShape();
     shape->Set(vec1, vec2);
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport)  void* GetEllipseShapeDef(float outerRadius, float divisions, int layerMask) {
+extern "C" __declspec(dllexport)  void* GetEllipseShapeDef(float outerRadius, float divisions, float zPos, float zHeight) {
     /*b2ChainShape* chainShape;
      std::vector<b2Vec2> vertices;
      const float32 SPIKE_DEGREE = 2 * 3.14159265358979323846f / 180;
@@ -1013,7 +720,8 @@ extern "C" __declspec(dllexport)  void* GetEllipseShapeDef(float outerRadius, fl
     }
     
     shape->Set(vertices, numberOfVertices);
-	shape->m_layerMask = layerMask;
+	shape->m_zPos = zPos;
+	shape->m_height = zHeight;
     return static_cast<void*>(shape);
     
 }
@@ -1130,26 +838,6 @@ extern "C" __declspec(dllexport)  int* GetBodyContacts(void* bodyPointer)
     }
     
     return returnArray;
-    
-}
-extern "C" __declspec(dllexport)  int GetBodyContactsCount(void* bodyPointer)
-{
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    //b2ContactEdge * contacts =  m_body->GetContactList() ;
-    
-    int numconts = 0;
-    //std::vector<int> conts;
-    //conts.push_back(numconts);
-    
-    for ( b2ContactEdge* ce =  m_body->GetContactList(); ce; ce = ce->next)
-    {
-        numconts++;
-        //conts.push_back((int)ce->other->GetUserData());
-    }
-    //conts[0] = numconts;
-    
-    //int* returnArray = &conts[0];
-    return numconts;
     
 }
 extern "C" __declspec(dllexport)  void ApplyForceToCentreOfBody(void* bodyPointer, float impulseX, float impulseY) {
@@ -1340,18 +1028,15 @@ extern "C" __declspec(dllexport)  void DeleteBody(void* worldPtr, int idx) {
 
 #pragma region Fixture
 
-extern "C" __declspec(dllexport)  int AddFixture(void* worldPtr, int bodyIdx, int shapeType, void* shapePointer, int collisionLayers, bool isSensor, int userData) {
+extern "C" __declspec(dllexport)  int AddFixture(void* worldPtr, int bodyIdx, int shapeType, void* shapePointer, bool isSensor, int userData) {
 	b2World* world = static_cast<b2World*>(worldPtr);
 	b2Body* body = world->GetBodyBuffer()[bodyIdx];
-	b2CollisionLayerMask clm;
-	clm = static_cast<b2CollisionLayerMask>(collisionLayers);
     b2FixtureDef fd;
 	body->GetMaterial()->m_density;
 	body->GetMaterial()->m_friction;
 	fd.isSensor = isSensor;
 	body->GetMaterial()->m_bounciness;
     fd.userData = (void*)userData;
-	fd.collisionLayers = clm;
     if (shapeType == 0) {
         b2PolygonShape* aShape = static_cast<b2PolygonShape*>(shapePointer);
         b2PolygonShape shape = *aShape;

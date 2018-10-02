@@ -151,6 +151,19 @@ void b2ContactManager::Collide()
 			continue;
 		}
 
+
+		float zPosA = fixtureA->m_zPos;
+		float zPosB = fixtureB->m_zPos;
+		float heightA = fixtureA->m_height;
+		float heightB = fixtureB->m_height;
+
+		// Fixtures Height has to overlap
+		if (zPosA > zPosB + heightB || zPosB > zPosA + heightA)
+		{
+			c = c->GetNext();
+			continue;
+		}
+
 		int32 proxyIdA = fixtureA->m_proxies[indexA].proxyId;
 		int32 proxyIdB = fixtureB->m_proxies[indexB].proxyId;
 		bool overlap = m_broadPhase.TestOverlap(proxyIdA, proxyIdB);

@@ -614,7 +614,7 @@ void b2World::Solve(const b2TimeStep& step)
 			}
 
 			b2Profile profile;
-			island.Solve(&profile, step, m_gravity, m_allowSleep);
+			island.Solve(&profile, step, m_gravity, m_dampingStrength, m_allowSleep);
 			m_profile.solveInit += profile.solveInit;
 			m_profile.solveVelocity += profile.solveVelocity;
 			m_profile.solvePosition += profile.solvePosition;
@@ -1105,7 +1105,7 @@ void b2World::QueryShapeAABB(b2QueryCallback* callback, const b2Shape& shape,
                              const b2Transform& xf) const
 {
 	b2AABB aabb;
-	shape.ComputeAABB(&aabb, xf, 0);
+	shape.ComputeAABB(aabb, xf, 0);
 	QueryAABB(callback, aabb);
 }
 

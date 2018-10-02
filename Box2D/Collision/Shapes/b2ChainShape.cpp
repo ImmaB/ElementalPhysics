@@ -147,25 +147,12 @@ void b2ChainShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float
 	GetChildEdge(&edge, childIndex);
 	edge.ComputeDistance(xf, p, distance, normal, 0);
 }
-void b2ChainShape::AFComputeDistance(const b2Transform& xf, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const
-{
-	b2EdgeShape edge;
-	GetChildEdge(&edge, childIndex);
-	edge.AFComputeDistance(xf, px, py, distance, normalX, normalY, 0);
-}
 
 bool b2ChainShape::TestPoint(const b2Transform& xf, const b2Vec2& p) const
 {
 	B2_NOT_USED(xf);
 	B2_NOT_USED(p);
 	return false;
-}
-af::array b2ChainShape::AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const
-{
-	B2_NOT_USED(xf);
-	B2_NOT_USED(px);
-	B2_NOT_USED(py);
-	return af::constant(0, px.elements(), af::dtype::b8);
 }
 
 bool b2ChainShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
@@ -187,27 +174,8 @@ bool b2ChainShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
 
 	return edgeShape.RayCast(output, input, xf, 0);
 }
-af::array b2ChainShape::AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
-	const b2Transform& xf, int32 childIndex) const
-{
-	b2Assert(childIndex < m_count);
 
-	b2EdgeShape edgeShape;
-
-	int32 i1 = childIndex;
-	int32 i2 = childIndex + 1;
-	if (i2 == m_count)
-	{
-		i2 = 0;
-	}
-
-	edgeShape.m_vertex1 = m_vertices[i1];
-	edgeShape.m_vertex2 = m_vertices[i2];
-
-	return edgeShape.AFRayCast(output, input, xf, 0);
-}
-
-void b2ChainShape::ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childIndex) const
+void b2ChainShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childIndex) const
 {
 	b2Assert(childIndex < m_count);
 
@@ -221,8 +189,8 @@ void b2ChainShape::ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childI
 	b2Vec2 v1 = b2Mul(xf, m_vertices[i1]);
 	b2Vec2 v2 = b2Mul(xf, m_vertices[i2]);
 
-	aabb->lowerBound = b2Min(v1, v2);
-	aabb->upperBound = b2Max(v1, v2);
+	aabb.lowerBound = b2Min(v1, v2);
+	aabb.upperBound = b2Max(v1, v2);
 }
 
 void b2ChainShape::ComputeMass(b2MassData* massData, float32 density) const

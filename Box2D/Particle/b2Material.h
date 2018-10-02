@@ -15,12 +15,12 @@ class b2ParticleGroup;
 
 enum b2MaterialFlag
 {
-	b2_extinguishingMaterial = 1 << 0,
-	b2_meltingMaterial = 1 << 1,
-	b2_boilingMaterial = 1 << 2,
-	b2_flammableMaterial = 1 << 3,
-	b2_heatConductingMaterial = 1 << 4,
-	b2_electricityConductingMaterial = 1 << 5,
+	b2_extinguishingMaterial			= 1 << 0,
+	b2_changeWhenColdMaterial			= 1 << 1,
+	b2_changeWhenHotMaterial			= 1 << 2,
+	b2_flammableMaterial				= 1 << 3,
+	b2_heatConductingMaterial			= 1 << 4,
+	b2_electricityConductingMaterial	= 1 << 5,
 };
 
 

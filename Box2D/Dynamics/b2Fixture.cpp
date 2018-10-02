@@ -42,7 +42,8 @@ void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx,
 	m_userData = def->userData;
 	m_friction = def->friction;
 	m_restitution = def->restitution;
-	m_collisionLayers = def->collisionLayers;
+	m_zPos = def->shape->m_zPos;
+	m_height = def->shape->m_height;
 
 	m_body = body;
 	m_bodyIdx = bodyIdx;
@@ -130,7 +131,7 @@ void b2Fixture::CreateProxies(b2BroadPhase* broadPhase, const b2Transform& xf)
 	for (int32 i = 0; i < m_proxyCount; ++i)
 	{
 		b2FixtureProxy* proxy = m_proxies + i;
-		m_shape->ComputeAABB(&proxy->aabb, xf, i);
+		m_shape->ComputeAABB(proxy->aabb, xf, i);
 		proxy->proxyId = broadPhase->CreateProxy(proxy->aabb, proxy);
 		proxy->fixture = this;
 		proxy->fixtureIdx = m_idx;
@@ -164,8 +165,8 @@ void b2Fixture::Synchronize(b2BroadPhase* broadPhase, const b2Transform& transfo
 
 		// Compute an AABB that covers the swept shape (may miss some rotation effect).
 		b2AABB aabb1, aabb2;
-		m_shape->ComputeAABB(&aabb1, transform1, proxy->childIndex);
-		m_shape->ComputeAABB(&aabb2, transform2, proxy->childIndex);
+		m_shape->ComputeAABB(aabb1, transform1, proxy->childIndex);
+		m_shape->ComputeAABB(aabb2, transform2, proxy->childIndex);
 	
 		proxy->aabb.Combine(aabb1, aabb2);
 

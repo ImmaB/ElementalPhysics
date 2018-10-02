@@ -264,13 +264,10 @@ struct b2ParticleSystemDef
 };
 struct b2ParticleMaterialDef
 {
-	uint32 matFlags;
+	uint32  matFlags;
+	uint32  partFlags;
 	float32 mass;
 	float32 stability;
-	float32 extinguishingPoint;
-	float32 meltingPoint;
-	float32 boilingPoint;
-	float32 ignitionPoint;
 	float32 heatConductivity;
 };
 
@@ -295,7 +292,7 @@ public:
 	int MyIndex;
 	void SetIndex(int ind);
 
-	void SetStep(b2TimeStep step) 
+	void SetStep(b2TimeStep step)
 	{
 		m_step = step;
 	}
@@ -326,26 +323,18 @@ public:
 	/// @return the index of the particle.
 	int32 CreateParticle(const b2ParticleDef& def);
 
-	const uint32 GetLayerMaskFromZ(float32 z);
+	const int32 GetLayerFromZ(float32 z);
 
 	/// Retrieve a handle to the particle at the specified index.
 	/// Please see #b2ParticleHandle for why you might want a handle.
 	const b2ParticleHandle* GetParticleHandleFromIndex(const int32 index);
 
 	/// Destroy a particle.
-	/// The particle is removed after the next simulation step (see
-	/// b2World::Step()).
-	void DestroyParticle(int32 index)
-	{
-		DestroyParticle(index, false);
-	}
-
-	/// Destroy a particle.
 	/// The particle is removed after the next step.
 	/// @param Index of the particle to destroy.
 	/// @param Whether to call the destruction listener just before the
 	/// particle is destroyed.
-	void DestroyParticle(int32 index, bool callDestructionListener);
+	void DestroyParticle(int32 index, bool callDestructionListener = false);
 
 	/// Destroy the Nth oldest particle in the system.
 	/// The particle is removed after the next b2World::Step().
@@ -386,6 +375,9 @@ public:
 	                              bool callDestructionListener);
 
 	int32 CreateParticleMaterial(const b2ParticleMaterialDef& def);
+	void PartMatChangeMats(int32 matIdx, float32 colderThan, int32 changeToColdMat,
+						   float32 hotterThan, int32 changeToHotMat,
+						   float32 ignitionPoint, int32 burnToMat);
 
 	/// Create a particle group whose properties have been defined. No
 	/// reference to the definition is retained.
@@ -487,13 +479,11 @@ public:
 	float32 GetRoomTemperature() const;
 
 	void SetHeatLossRatio(float32 heatLossRatio);
-	//float32 GetHeatLossRatio() const;
 
 	void SetPointsPerLayer(float32 pointsPerLayer);
-	//float32 GetPointsPerLayer() const;
 
-	void SetLowestPoint(float32 lowestLayer);
-	//float32 GetLowestPoint() const;
+	void SetLowestLayer(int32 l);
+	void SetHighestLayer(int32 l);
 
 	void CalcLayerValues();
 
@@ -536,6 +526,9 @@ public:
 	int32* GetGroupIdxBuffer();
 	const int32* GetGroupIdxBuffer() const;
 
+	int32* GetPartMatIdxBuffer();
+	const int32* GetPartMatIdxBuffer() const;
+
 	/// Get the weight of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle positions array.
@@ -565,12 +558,13 @@ public:
 	/// @return the pointer to the head of the particle-flags array.
 	const uint32* GetFlagsBuffer() const;
 
-	const uint32* GetCollisionLayerBuffer() const;
-	uint32* GetCollisionLayerBuffer();
+	const int32* GetHeightLayerBuffer() const;
+	int32* GetHeightLayerBuffer();
 
 	/// Set flags for a particle. See the b2ParticleFlag enum.
 	void SetParticleFlags(int32 index, uint32 flags);
 	void AddParticleFlags(int32 index, uint32 flags);
+	void RemovePartFlagsFromAll(uint32 flags);
 	/// Get flags for a particle. See the b2ParticleFlag enum.
 	uint32 GetParticleFlags(const int32 index);
 
@@ -743,7 +737,9 @@ public:
 	/// @param lastIndex the last particle to be modified.
 	/// @param force the world force vector, usually in Newtons (N).
 	void ApplyForce(int32 firstIndex, int32 lastIndex, float32 forceX, float32 forceY);
-	
+	void ApplyForceInDirIfHasFlag(float32 posX, float32 posY, float32 posZ,
+		float32 strength, uint32 flag);
+
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();
 	const b2ParticleSystem* GetNext() const;
@@ -890,7 +886,7 @@ private:
 			return true;
 		}
 	}; 
-
+public:
 	/// InsideBoundsEnumerator enumerates all particles inside the given bounds.
 	class InsideBoundsEnumerator
 	{
@@ -919,6 +915,7 @@ private:
 		int32 m_lastPos;
 	};
 
+private:
 	/// Node of linked lists of connected particles
 	struct ParticleListNode
 	{
@@ -1027,8 +1024,10 @@ private:
 
 	void ComputeDepth();
 
+public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
 
+private:
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
@@ -1079,7 +1078,8 @@ private:
 	void SolveIgnite();
 	void SolveExtinguish();
 	void SolveWater();
-	void SolveEvaporate();
+	void SolveAir();
+	void SolveChangeMat();
 	void SolveFreeze();
 	void SolveDestroyDead();
 	void SolveZombie();
@@ -1183,6 +1183,7 @@ private:
 	int32 m_allGroupFlags;
 	bool m_needsUpdateAllGroupFlags;
 	bool m_hasForce;
+	bool m_hasDepth;
 	int32 m_iterationIndex;
 	float32 m_inverseDensity;
 	float32 m_particleDiameter;
@@ -1194,8 +1195,8 @@ private:
 
 	float32 m_pointsPerLayer;
 	float32 m_invPointsPerLayer;
-	float32 m_lowestPoint;
-	float32 m_layerGraphB;
+	int32 m_lowestLayer;
+	int32 m_highestLayer;
 
 	int32 m_count;
 	int32 m_particleBufferSize;
@@ -1217,18 +1218,19 @@ private:
 	/// Maps particle indicies to  handles.
 	bool hasHandleIndexBuffer;
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
-	vector<uint32>	m_flagsBuffer,
-					m_collisionLayerBuffer;
+	vector<uint32>	m_flagsBuffer;
 	vector<float32> m_positionXBuffer,
 					m_positionYBuffer,
-					m_positionZBuffer,
-					m_velocityXBuffer,
+					m_positionZBuffer;
+	vector<int32>	m_heightLayerBuffer;
+	vector<float32> m_velocityXBuffer,
 					m_velocityYBuffer,
 					m_weightBuffer,
 					m_heatBuffer,
 					m_healthBuffer,
 					m_forceXBuffer,
-					m_forceYBuffer;
+					m_forceYBuffer,
+					m_forceZBuffer;
 
 	bool hasColorBuf;
 	vector<int32>	m_colorBuffer;
@@ -1257,14 +1259,17 @@ private:
 	//vector<int32>	m_groupUserDataBuf;
 			
 	vector<uint32>  m_partMatFlagsBuf;
+	vector<uint32>  m_partMatPartFlagsBuf;
 	vector<float32> m_partMatMassBuf;
 	vector<float32> m_partMatInvMassBuf;
 	vector<float32> m_partMatStabilityBuf;
 	vector<float32> m_partMatInvStabilityBuf;
-	vector<float32> m_partMatExtinguishingPointBuf;
-	vector<float32> m_partMatMeltingPointBuf;
-	vector<float32> m_partMatBoilingPointBuf;
+	vector<float32> m_partMatColderThanBuf;
+	vector<int32>   m_partMatChangeToColdMatBuf;
+	vector<float32> m_partMatHotterThanBuf;
+	vector<int32>   m_partMatChangeToHotMatBuf;
 	vector<float32> m_partMatIgnitionPointBuf;
+	vector<int32>   m_partMatBurnToMatBuf;
 	vector<float32> m_partMatHeatConductivityBuf;
 
 	/// When any particles have the flag b2_staticPressureParticle,
@@ -1491,15 +1496,18 @@ inline void b2ParticleSystem::SetPointsPerLayer(float32 pointsPerLayer)
 	m_pointsPerLayer = pointsPerLayer;
 }
 
-inline void b2ParticleSystem::SetLowestPoint(float32 lowestPoint)
+inline void b2ParticleSystem::SetLowestLayer(int32 l)
 {
-	m_lowestPoint = lowestPoint;
+	m_lowestLayer = l;
+}
+inline void b2ParticleSystem::SetHighestLayer(int32 l)
+{
+	m_highestLayer = l;
 }
 
 inline void b2ParticleSystem::CalcLayerValues()
 {
 	m_invPointsPerLayer = 1 / m_pointsPerLayer;
-	m_layerGraphB = -m_lowestPoint / m_pointsPerLayer;
 }
 
 
@@ -1684,13 +1692,13 @@ inline const uint32* b2ParticleSystem::GetFlagsBuffer() const
 	return m_flagsBuffer.data();
 }
 
-inline const uint32* b2ParticleSystem::GetCollisionLayerBuffer() const
+inline const int32* b2ParticleSystem::GetHeightLayerBuffer() const
 {
-	return m_collisionLayerBuffer.data();
+	return m_heightLayerBuffer.data();
 }
-inline uint32* b2ParticleSystem::GetCollisionLayerBuffer()
+inline int32* b2ParticleSystem::GetHeightLayerBuffer()
 {
-	return m_collisionLayerBuffer.data();
+	return m_heightLayerBuffer.data();
 }
 
 inline const int32* b2ParticleSystem::GetColorBuffer() const
@@ -1705,6 +1713,15 @@ inline const int32* b2ParticleSystem::GetGroupIdxBuffer() const
 inline int32* b2ParticleSystem::GetGroupIdxBuffer()
 {
 	return m_partGroupIdxBuffer.data();
+}
+
+inline const int32* b2ParticleSystem::GetPartMatIdxBuffer() const
+{
+	return m_partMatIdxBuffer.data();
+}
+inline int32* b2ParticleSystem::GetPartMatIdxBuffer()
+{
+	return m_partMatIdxBuffer.data();
 }
 
 inline const float32* b2ParticleSystem::GetWeightBuffer() const

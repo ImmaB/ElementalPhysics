@@ -70,7 +70,11 @@ public:
 	/// @param xf the shape world transform.
 	/// @param p a point in world coordinates.
 	virtual bool TestPoint(const b2Transform& xf, const b2Vec2& p) const = 0;
-	virtual af::array AFTestPoints(const b2Transform& xf, const af::array& px, const af::array& py) const = 0;
+
+	bool TestZPos(float32 z) const
+	{
+		return m_zPos <= z && z <= m_zPos + m_height;
+	}
 
 	/// Compute the distance from the current shape to the specified point. This only works for convex shapes.
 	/// @param xf the shape world transform.
@@ -78,7 +82,6 @@ public:
 	/// @param distance returns the distance from the current shape.
 	/// @param normal returns the direction in which the distance increases.
 	virtual void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const= 0;
-	virtual void AFComputeDistance(const b2Transform& xf, const af::array& px, const af::array& py, af::array& distance, af::array& normalX, af::array& normalY, int32 childIndex) const = 0;
 
 	/// Cast a ray against a child shape.
 	/// @param output the ray-cast results.
@@ -87,14 +90,12 @@ public:
 	/// @param childIndex the child shape index
 	virtual bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
 						const b2Transform& transform, int32 childIndex) const = 0;
-	virtual af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input,
-		const b2Transform& transform, int32 childIndex) const = 0;
 
 	/// Given a transform, compute the associated axis aligned bounding box for a child shape.
 	/// @param aabb returns the axis aligned box.
 	/// @param xf the world transform of the shape.
 	/// @param childIndex the child shape
-	virtual void ComputeAABB(b2AABB* aabb, const b2Transform& xf, int32 childIndex) const = 0;
+	virtual void ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childIndex) const = 0;
 
 	/// Compute the mass properties of this shape using its dimensions and density.
 	/// The inertia tensor is computed about the local origin.
@@ -104,7 +105,8 @@ public:
 
 	Type m_type;
 	float32 m_radius;
-	int32 m_layerMask;
+	float32 m_zPos;
+	float32 m_height;
 };
 
 inline b2Shape::Type b2Shape::GetType() const

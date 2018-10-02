@@ -496,21 +496,18 @@ inline af::array b2Dot(const float32& ax, const float32& ay, const af::array& bx
 {
 	return ax * bx + ay * by;
 }
-inline void AFNormalize(af::array& vx, af::array& vy)
+inline void Normalize(float32& x, float32& y)
 {
-	const af::array& length = af::sqrt(vx * vx + vy * vy);
-	vx /= length;
-	vy /= length;
+	float32 length = sqrt(x * x + y * y);
+	x /= length;
+	y /= length;
 }
-inline void AFNormalize(af::array& vx, af::array& vy, const af::array& idxs)
+inline void Normalize(float32& x, float32& y, float32& z)
 {
-	const af::array& length = af::sqrt(vx(idxs) * vx(idxs) + vy(idxs) * vy(idxs));
-	vx(idxs) /= length;
-	vy(idxs) /= length;
-}
-inline af::array AFLength(const af::array& x, const af::array& y)
-{
-	return af::sqrt(x * x + y * y);
+	float32 length = sqrt(x * x + y * y + z * z);
+	x /= length;
+	y /= length;
+	z /= length;
 }
 
 /// Perform the cross product on two vectors. In 2D this produces a scalar.

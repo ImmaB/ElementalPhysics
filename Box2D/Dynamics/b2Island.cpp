@@ -180,7 +180,7 @@ b2Island::~b2Island()
 	m_allocator->Free(m_bodies);
 }
 
-void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& gravity, bool allowSleep)
+void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep)
 {
 	b2Timer timer;
 
@@ -215,6 +215,12 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 			// v2 = v1 * 1 / (1 + c * dt)
 			v *= 1.0f / (1.0f + h * b->m_linearDamping);
 			w *= 1.0f / (1.0f + h * b->m_angularDamping);
+
+
+			// General Damping	TODO on Floor?
+			float32 d = 1.0f - (h * damping);
+			v *= d;
+			w *= d;
 		}
 
 		m_positions[i].c = c;

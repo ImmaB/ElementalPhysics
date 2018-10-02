@@ -85,6 +85,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir);C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -97,13 +99,13 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <WholeProgramOptimization>true</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>$(AF_PATH)/include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(AF_PATH)/include;$(VULKAN_SDK)/Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>afopencl.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories);$(VULKAN_SDK)/Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>afcpu.lib;vulkan-1.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -120,7 +122,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <AdditionalIncludeDirectories>$(AF_PATH)/include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(AF_PATH)/include;$(VULKAN_SDK)/Include</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FloatingPointModel>Precise</FloatingPointModel>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
@@ -129,8 +131,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>afcpu.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories);$(VULKAN_SDK)/Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>afcpu.lib;vulkan-1.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -145,7 +147,7 @@
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>$(AF_PATH)/include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(AF_PATH)/include;$(VULKAN_SDK)/Include</AdditionalIncludeDirectories>
       <WholeProgramOptimization>true</WholeProgramOptimization>
     </ClCompile>
     <Link>
@@ -153,8 +155,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>afopencl.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories);$(VULKAN_SDK)/Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>afcpu.lib;vulkan-1.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -169,7 +171,7 @@
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>$(AF_PATH)/include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(AF_PATH)/include;$(VULKAN_SDK)/Include</AdditionalIncludeDirectories>
       <WholeProgramOptimization>true</WholeProgramOptimization>
       <FloatingPointModel>Precise</FloatingPointModel>
       <OpenMPSupport>true</OpenMPSupport>
@@ -179,8 +181,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>afopencl.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(AF_PATH)/lib;%(AdditionalLibraryDirectories);$(VULKAN_SDK)/Lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>afcpu.lib;vulkan-1.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -233,7 +235,6 @@
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2RopeJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2WeldJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2WheelJoint.cpp" />
-    <ClCompile Include="..\Box2D\Particle\AFVoronoiDiagram.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2Particle.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2ParticleAssembly.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2ParticleGroup.cpp" />
@@ -241,6 +242,7 @@
     <ClCompile Include="..\Box2D\Particle\b2VoronoiDiagram.cpp" />
     <ClCompile Include="..\Box2D\Rope\b2Rope.cpp" />
     <ClCompile Include="..\Source.cpp" />
+    <ClCompile Include="VkCompute.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Box2D\Box2D.h" />
@@ -296,7 +298,6 @@
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2RopeJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2WeldJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2WheelJoint.h" />
-    <ClInclude Include="..\Box2D\Particle\AFVoronoiDiagram.h" />
     <ClInclude Include="..\Box2D\Particle\b2Material.h" />
     <ClInclude Include="..\Box2D\Particle\b2Particle.h" />
     <ClInclude Include="..\Box2D\Particle\b2ParticleAssembly.h" />
@@ -305,9 +306,12 @@
     <ClInclude Include="..\Box2D\Particle\b2StackQueue.h" />
     <ClInclude Include="..\Box2D\Particle\b2VoronoiDiagram.h" />
     <ClInclude Include="..\Box2D\Rope\b2Rope.h" />
+    <ClInclude Include="VkCompute.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\Test\vulkan_minimal_compute\shaders\solvePosition.comp" />
     <None Include="..\Box2D\Particle\b2ParticleAssembly.neon.s" />
+    <None Include="shader\shader.comp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

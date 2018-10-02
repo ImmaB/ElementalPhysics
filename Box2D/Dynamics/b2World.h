@@ -53,6 +53,14 @@ public:
 	/// Destruct the world. All physics entities are destroyed and all heap memory is released.
 	~b2World();
 
+	/// Damping is used to reduce the velocity of particles. The damping
+	/// parameter can be larger than 1.0f but the damping effect becomes
+	/// sensitive to the time step when the damping parameter is large.
+	void SetDamping(float32 damping);
+
+	/// Get damping for particles
+	float32 GetDamping() const;
+
 	/// Register a destruction listener. The listener is owned by you and must
 	/// remain in scope.
 	void SetDestructionListener(b2DestructionListener* listener);
@@ -337,6 +345,7 @@ private:
 	int32 m_jointCount;
 
 	b2Vec2 m_gravity;
+	float32 m_dampingStrength;
 	bool m_allowSleep;
 
 	b2DestructionListener* m_destructionListener;
@@ -360,6 +369,16 @@ private:
 	const b2Version *m_liquidFunVersion;
 	const char *m_liquidFunVersionString;
 };
+
+inline void b2World::SetDamping(float32 damping)
+{
+	m_dampingStrength = damping;
+}
+
+inline float32 b2World::GetDamping() const
+{
+	return m_dampingStrength;
+}
 
 inline std::vector<b2Body*> b2World::GetBodyBuffer()
 {
