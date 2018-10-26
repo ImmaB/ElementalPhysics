@@ -148,7 +148,7 @@ void b2ChainShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float
 	edge.ComputeDistance(xf, p, distance, normal, 0);
 }
 
-bool b2ChainShape::TestPoint(const b2Transform& xf, const b2Vec2& p) const
+bool b2ChainShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
 {
 	B2_NOT_USED(xf);
 	B2_NOT_USED(p);

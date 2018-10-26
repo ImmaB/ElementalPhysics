@@ -22,8 +22,6 @@
 #include <Box2D/Common/b2Settings.h>
 #include <Box2D/Common/b2IntrusiveList.h>
 
-#include <arrayfire.h>
-
 struct b2Color;
 class b2ParticleGroup;
 class b2ParticleMaterial;
@@ -290,11 +288,8 @@ struct b2ParticleDef
 	b2ParticleDef()
 	{
 		flags = 0;
-		positionX = 0.0f;
-		positionY = 0.0f;
-		positionZ = 0.0f;
-		velocityX = 0.0f;
-		velocityY = 0.0f;
+		position = b2Vec3_zero;
+		velocity = b2Vec3_zero;
 		color = 0;
 		lifetime = 0.0f;
 		userData = NULL;
@@ -320,77 +315,13 @@ struct b2ParticleDef
 	uint32 flags;
 
 	/// The world position of the particle.
-	float32 positionX;
-	float32 positionY;
-	float32 positionZ;
+	b2Vec3 position;
 
 	/// The linear velocity of the particle in world co-ordinates.
-	float32 velocityX;
-	float32 velocityY;
+	b2Vec3 velocity;
 
 	/// The color of the particle.
 	int32	color;
-
-	float32 heat;
-	float32 health;
-
-	/// Lifetime of the particle in seconds.  A value <= 0.0f indicates a
-	/// particle with infinite lifetime.
-	float32 lifetime;
-
-	/// Use this to store application-specific body data.
-	int32 userData;
-
-	/// An existing particle group to which the particle will be added.
-	int32 groupIdx;
-
-	int32 matIdx;
-};
-struct afParticleDef
-{
-	afParticleDef()
-	{
-		flags = 0;
-		//positionX = 0.0f;
-		//positionY = 0.0f;
-		positionZ = 0.0f;
-		//velocityX = 0.0f;
-		//velocityY = 0.0f;
-		color = 0;
-		lifetime = 0.0f;
-		userData = NULL;
-		groupIdx = b2_invalidIndex;
-		matIdx = b2_invalidIndex;
-		heat = 0.0f;
-		health = 1.0f;
-	}
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	/// Set position with direct floats
-	void SetPosition(float32 x, float32 y);
-
-	/// Set color with direct ints.
-	void SetColor(int32 r, int32 g, int32 b, int32 a);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-	/// \brief Specifies the type of particle (see #b2ParticleFlag).
-	///
-	/// A particle may be more than one type.
-	/// Multiple types are chained by logical sums, for example:
-	/// pd.flags = b2_elasticParticle | b2_viscousParticle
-	uint32 flags;
-
-	/// The world position of the particle.
-	af::array positionX;
-	af::array positionY;
-	af::array positionZ;
-
-	/// The linear velocity of the particle in world co-ordinates.
-	af::array velocityX;
-	af::array velocityY;
-
-	/// The color of the particle.
-	af::array color;
 
 	float32 heat;
 	float32 health;

@@ -61,9 +61,6 @@
     <Filter Include="Quelldateien\Collision\Shapes">
       <UniqueIdentifier>{2aa6dab1-a6d6-42fb-810b-07918bb09cae}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Quelldateien\Vulkan">
-      <UniqueIdentifier>{7691afc5-a8c4-4899-a25f-7697d2b70157}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Headerdateien\Vulkan">
       <UniqueIdentifier>{418567fd-8e02-44fc-b830-f117cc5697b8}</UniqueIdentifier>
     </Filter>
@@ -236,9 +233,6 @@
     </ClCompile>
     <ClCompile Include="..\Box2D\Common\b2GlobalVariables.cpp">
       <Filter>Quelldateien\Common</Filter>
-    </ClCompile>
-    <ClCompile Include="VkCompute.cpp">
-      <Filter>Quelldateien\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -433,8 +427,6 @@
     <None Include="..\Box2D\Particle\b2ParticleAssembly.neon.s">
       <Filter>Quelldateien\Particle</Filter>
     </None>
-    <None Include="shader\shader.comp">
-      <Filter>Quelldateien\Vulkan</Filter>
-    </None>
+    <None Include="..\..\Test\vulkan_minimal_compute\shaders\solvePosition.comp" />
   </ItemGroup>
 </Project>

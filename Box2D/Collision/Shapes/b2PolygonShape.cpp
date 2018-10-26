@@ -261,7 +261,7 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 	m_centroid = ComputeCentroid(m_vertices, m);
 }
 
-bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec2& p) const
+bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
 {
 	b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
 

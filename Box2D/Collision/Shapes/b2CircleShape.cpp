@@ -33,7 +33,7 @@ int32 b2CircleShape::GetChildCount() const
 	return 1;
 }
 
-bool b2CircleShape::TestPoint(const b2Transform& transform, const b2Vec2& p) const
+bool b2CircleShape::TestPoint(const b2Transform& transform, const b2Vec3& p) const
 {
 	b2Vec2 center = transform.p + b2Mul(transform.q, m_p);
 	b2Vec2 d = p - center;

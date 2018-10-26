@@ -21,7 +21,6 @@
 
 #include <Box2D/Common/b2Settings.h>
 #include <math.h>
-#include <arrayfire.h>
 
 /// This function is used to ensure that a floating point number is not a NaN or infinity.
 inline bool b2IsValid(float32 x)
@@ -61,7 +60,7 @@ struct b2Vec2
 
 	/// Construct using coordinates.
 	b2Vec2(float32 x, float32 y) : x(x), y(y) {}
-
+	
 	/// Set this vector to all zeros.
 	void SetZero() { x = 0.0f; y = 0.0f; }
 
@@ -177,6 +176,12 @@ struct b2Vec3
 	/// Construct using coordinates.
 	b2Vec3(float32 x, float32 y, float32 z) : x(x), y(y), z(z) {}
 
+	/// Construct using b2Vec2 und float.
+	b2Vec3(b2Vec2 v, float32 z) : x(v.x), y(v.y), z(z) {}
+
+	/// Construct using b2Vec2 und float.
+	b2Vec3(b2Vec2 v) : x(v.x), y(v.y), z(0) {}
+
 	/// Set this vector to all zeros.
 	void SetZero() { x = 0.0f; y = 0.0f; z = 0.0f; }
 
@@ -204,6 +209,12 @@ struct b2Vec3
 		x *= s; y *= s; z *= s;
 	}
 
+	/// Multiply this vector by a scalar.
+	void operator /= (float32 s)
+	{
+		x /= s; y /= s; z /= s;
+	}
+
 		/// Get the length of this vector (the norm).
 	float32 Length() const
 	{
@@ -225,6 +236,9 @@ struct b2Vec3
 
 		return length;
 	}
+
+	/// conversion to b2Vec2 (type-cast operator)
+	operator b2Vec2() { return b2Vec2(x, y); }
 
 	float32 x, y, z;
 };
@@ -478,6 +492,7 @@ struct b2Sweep
 
 /// Useful constant
 extern const b2Vec2 b2Vec2_zero;
+extern const b2Vec3 b2Vec3_zero;
 
 /// Perform the dot product on two vectors.
 inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b)
@@ -485,14 +500,6 @@ inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b)
 	return a.x * b.x + a.y * b.y;
 }
 inline float32 b2Dot(const float32& ax, const float32& ay, const float32& bx, const float32& by)
-{
-	return ax * bx + ay * by;
-}
-inline af::array b2Dot(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
-{
-	return ax * bx + ay * by;
-}
-inline af::array b2Dot(const float32& ax, const float32& ay, const af::array& bx, const af::array& by)
 {
 	return ax * bx + ay * by;
 }
@@ -515,13 +522,14 @@ inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b)
 {
 	return a.x * b.y - a.y * b.x;
 }
+
 inline float32 b2Cross(const float32& ax, const float32& ay, const float32& bx, const float32& by)
 {
 	return ax * by - ay * bx;
 }
-inline af::array b2Cross(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
+inline float32 b2Cross2D(const b2Vec3& a, const b2Vec3& b)
 {
-	return ax * by - ay * bx;
+	return a.x * b.y - a.y * b.x;
 }
 
 /// Perform the cross product on a vector and a scalar. In 2D this produces
@@ -536,22 +544,6 @@ inline b2Vec2 b2Cross(const b2Vec2& a, float32 s)
 inline b2Vec2 b2Cross(float32 s, const b2Vec2& a)
 {
 	return b2Vec2(-s * a.y, s * a.x);
-}
-inline af::array b2CrossX(float32 s, const af::array& y)
-{
-	return -s * y;
-}
-inline af::array b2CrossY(float32 s, const af::array& x)
-{
-	return s * x;
-}
-inline af::array b2CrossX(const af::array& s, const af::array& y)
-{
-	return -s * y;
-}
-inline af::array b2CrossY(const af::array& s, const af::array& x)
-{
-	return s * x;
 }
 
 /// Multiply a matrix times a vector. If a rotation matrix is provided,
@@ -600,12 +592,6 @@ inline float32 b2Distance(const b2Vec2& a, const b2Vec2& b)
 	b2Vec2 c = a - b;
 	return c.Length();
 }
-inline af::array afDistance(const af::array& ax, const af::array& ay, const af::array& bx, const af::array& by)
-{
-	af::array cx = ax - bx;
-	af::array cy = ay - by;
-	return af::sqrt(cx * cx + cy * cy);
-}
 
 inline float32 b2DistanceSquared(const b2Vec2& a, const b2Vec2& b)
 {
@@ -617,17 +603,47 @@ inline b2Vec3 operator * (float32 s, const b2Vec3& a)
 {
 	return b2Vec3(s * a.x, s * a.y, s * a.z);
 }
+inline b2Vec3 operator * (const b2Vec3& a, float32 s)
+{
+	return b2Vec3(s * a.x, s * a.y, s * a.z);
+}
+inline b2Vec3 operator / (const b2Vec3& a, float32 s)
+{
+	return b2Vec3(a.x / s, a.y / s, a.z / s);
+}
 
 /// Add two vectors component-wise.
 inline b2Vec3 operator + (const b2Vec3& a, const b2Vec3& b)
 {
 	return b2Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
+inline b2Vec3 operator + (const b2Vec3& a, const b2Vec2& b)
+{
+	return b2Vec3(a.x + b.x, a.y + b.y, a.z);
+}
+inline b2Vec2 operator + (const b2Vec2& a, const b2Vec3& b)
+{
+	return b2Vec2(a.x + b.x, a.y + b.y);
+}
 
 /// Subtract two vectors component-wise.
 inline b2Vec3 operator - (const b2Vec3& a, const b2Vec3& b)
 {
 	return b2Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+inline b2Vec3 operator - (const b2Vec3& a, const b2Vec2& b)
+{
+	return b2Vec3(a.x - b.x, a.y - b.y, a.z);
+}
+inline b2Vec2 operator - (const b2Vec2& a, const b2Vec3& b)
+{
+	return b2Vec2(a.x - b.x, a.y - b.y);
+}
+
+inline float32 b2Distance(const b2Vec3& a, const b2Vec3& b)
+{
+	b2Vec3 c = a - b;
+	return c.Length();
 }
 
 /// Perform the dot product on two vectors.
@@ -641,6 +657,7 @@ inline b2Vec3 b2Cross(const b2Vec3& a, const b2Vec3& b)
 {
 	return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
 }
+
 
 inline b2Mat22 operator + (const b2Mat22& A, const b2Mat22& B)
 {
@@ -712,38 +729,21 @@ inline float32 b2MulY(const b2Rot& q, float32 x, float32 y)
 {
 	return q.s * x + q.c * y;
 }
-inline af::array b2MulX(const b2Rot& q, const af::array x, const af::array y)
-{
-	return q.c * x - q.s * y;
-}
-inline af::array b2MulY(const b2Rot& q, const af::array x, const af::array y)
-{
-	return q.s * x + q.c * y;
-}
-inline af::array b2MulX(const af::array& rotS, const af::array& rotC, const af::array x, const af::array y)
-{
-	return rotC * x - rotS * y;
-}
-inline af::array b2MulY(const af::array& rotS, const af::array& rotC, const af::array x, const af::array y)
-{
-	return rotS * x + rotC * y;
-}
 
 /// Inverse rotate a vector
 inline b2Vec2 b2MulT(const b2Rot& q, const b2Vec2& v)
 {
 	return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y);
 }
-inline af::array b2MulTX(const b2Rot& q, const af::array& vx, const af::array& vy)
-{
-	return q.c * vx + q.s * vy;
-}
-inline af::array b2MulTY(const b2Rot& q, const af::array& vx, const af::array& vy)
-{
-	return -q.s * vx + q.c * vy;
-}
 
 inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec2& v)
+{
+	float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x;
+	float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y;
+
+	return b2Vec2(x, y);
+}
+inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec3& v)
 {
 	float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x;
 	float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y;
@@ -758,14 +758,6 @@ inline float32 b2MulY(const b2Transform& T, float32 x, float32 y)
 {
 	return (T.q.s * x + T.q.c * y) + T.p.y;
 }
-inline af::array b2MulX(const b2Transform& T, const af::array& x, const af::array& y)
-{
-	return (T.q.c * x - T.q.s * y) + T.p.x;
-}
-inline af::array b2MulY(const b2Transform& T, const af::array& x, const af::array& y)
-{
-	return (T.q.s * x + T.q.c * y) + T.p.y;
-}
 
 inline b2Vec2 b2MulT(const b2Transform& T, const b2Vec2& v)
 {
@@ -775,14 +767,6 @@ inline b2Vec2 b2MulT(const b2Transform& T, const b2Vec2& v)
 	float32 y = (-T.q.s * px + T.q.c * py);
 
 	return b2Vec2(x, y);
-}
-inline af::array b2MulTX(const b2Transform& T, const af::array& x, const af::array& y)
-{
-	return (T.q.c * (x - T.p.x) + T.q.s * (y - T.p.y));
-}
-inline af::array b2MulTY(const b2Transform& T, const af::array& x, const af::array& y)
-{
-	return (-T.q.s * (x - T.p.x) + T.q.c * (y - T.p.y));
 }
 
 // v2 = A.q.Rot(B.q.Rot(v1) + B.p) + A.p
@@ -831,6 +815,10 @@ inline b2Vec2 b2Min(const b2Vec2& a, const b2Vec2& b)
 {
 	return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y));
 }
+inline b2Vec2 b2Min(const b2Vec3& a, const b2Vec3& b)
+{
+	return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y));
+}
 
 template <typename T>
 inline T b2Max(T a, T b)
@@ -839,6 +827,10 @@ inline T b2Max(T a, T b)
 }
 
 inline b2Vec2 b2Max(const b2Vec2& a, const b2Vec2& b)
+{
+	return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y));
+}
+inline b2Vec2 b2Max(const b2Vec3& a, const b2Vec3& b)
 {
 	return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y));
 }

@@ -41,7 +41,7 @@ int32 b2EdgeShape::GetChildCount() const
 	return 1;
 }
 
-bool b2EdgeShape::TestPoint(const b2Transform& xf, const b2Vec2& p) const
+bool b2EdgeShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
 {
 	B2_NOT_USED(xf);
 	B2_NOT_USED(p);

@@ -170,13 +170,11 @@ public:
 	/// Compute the distance from this fixture.
 	/// @param p a point in world coordinates.
 	void ComputeDistance(const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
-	void AFComputeDistance(const af::array& px, const af::array& py, af::array& d, af::array& nx, af::array& ny, int32 childIndex) const;
 
 	/// Cast a ray against this shape.
 	/// @param output the ray-cast results.
 	/// @param input the ray-cast input parameters.
 	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input, int32 childIndex) const;
-	af::array AFRayCast(afRayCastOutput* output, const afRayCastInput& input, int32 childIndex) const;
 
 	/// Get the mass data for this fixture. The mass data is based on the density and
 	/// the shape. The rotational inertia is about the shape's origin. This operation

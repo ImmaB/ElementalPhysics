@@ -21,7 +21,6 @@
 #define B2_WORLD_CALLBACKS_H
 
 #include <Box2D/Common/b2Settings.h>
-#include <arrayfire.h>
 
 struct b2Vec2;
 struct b2Transform;
@@ -119,10 +118,9 @@ public:
 	/// b2ParticleSystem::GetUserDataBuffer() or
 	/// b2ParticleSystem::GetParticleHandleFromIndex() to determine which
 	/// particle has been destroyed.
-	virtual void SayGoodbye(b2ParticleSystem* particleSystem, af::array idxs)
+	virtual void SayGoodbye(b2ParticleSystem* particleSystem)
 	{
 		B2_NOT_USED(particleSystem);
-		B2_NOT_USED(idxs);
 	}
 };
 
@@ -300,16 +298,6 @@ public:
 	/// Called for each fixture found in the query AABB.
 	/// @return false to terminate the query.
 	virtual bool AFReportFixture(int32 fixtureIdx) = 0;
-
-	/// Called for each particle found in the query AABB.
-	/// @return false to terminate the query.
-	virtual af::array AFReportParticle(const b2ParticleSystem* particleSystem,
-		const af::array& idxs)
-	{
-		B2_NOT_USED(particleSystem);
-		B2_NOT_USED(idxs);
-		return af::constant(0, idxs.elements(), af::dtype::b8);
-	}
 
 	/// Cull an entire particle system from b2World::QueryAABB. Ignored for
 	/// b2ParticleSystem::QueryAABB.

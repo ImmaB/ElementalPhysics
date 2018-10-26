@@ -23,7 +23,6 @@
 #include <Box2D/Common/b2BlockAllocator.h>
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Collision/b2Collision.h>
-#include <arrayfire.h>
 
 /// This holds the mass data computed for a shape.
 struct b2MassData
@@ -69,7 +68,7 @@ public:
 	/// Test a point for containment in this shape. This only works for convex shapes.
 	/// @param xf the shape world transform.
 	/// @param p a point in world coordinates.
-	virtual bool TestPoint(const b2Transform& xf, const b2Vec2& p) const = 0;
+	virtual bool TestPoint(const b2Transform& xf, const b2Vec3& p) const = 0;
 
 	bool TestZPos(float32 z) const
 	{

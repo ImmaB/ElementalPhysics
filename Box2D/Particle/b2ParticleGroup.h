@@ -267,7 +267,7 @@ public:
 	void SetUserData(int32 data);
 
 	/// Call b2ParticleSystem::ApplyForce for every particle in the group.
-	void ApplyForce(float32 forceX, float32 forceY);
+	void ApplyForce(const b2Vec3& force);
 
 	/// Call b2ParticleSystem::ApplyLinearImpulse for every particle in the
 	/// group.

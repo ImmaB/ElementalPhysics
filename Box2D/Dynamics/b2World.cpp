@@ -1264,16 +1264,15 @@ void b2World::DrawParticleSystem(const b2ParticleSystem& system)
 	if (particleCount)
 	{
 		float32 radius = system.GetRadius();
-		const float32* posXBuf = system.GetPositionXBuffer();
-		const float32* posYBuf = system.GetPositionYBuffer();
+		const b2Vec3* posBuf = system.GetPositionBuffer();
 		if (system.m_colorBuffer.data())
 		{
 			const int32* colorBuffer = system.GetColorBuffer();
-			m_debugDraw->DrawParticles(posXBuf, posYBuf, radius, colorBuffer, particleCount);
+			m_debugDraw->DrawParticles(posBuf, radius, colorBuffer, particleCount);
 		}
 		else
 		{
-			m_debugDraw->DrawParticles(posXBuf, posYBuf, radius, NULL, particleCount);
+			m_debugDraw->DrawParticles(posBuf, radius, NULL, particleCount);
 		}
 	}
 }

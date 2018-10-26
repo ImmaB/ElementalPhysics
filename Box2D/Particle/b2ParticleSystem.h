@@ -26,9 +26,7 @@
 #include <array> 
 #include <numeric>
 #include <process.h>
-
-#include <arrayfire.h>
-#include <af/compatible.h>
+#include <Windows.h>
 #include <chrono>
 
 static const int32  MAX_CONTACTS_PER_PARTICLE = 10;
@@ -305,14 +303,6 @@ public:
 	float32 GetTimeDif(Time start, Time end);
 	float32 GetTimeDif(Time start);
 
-private:
-	template <class T>
-	void AFtoCPP(const int32& count, const af::array& arr, vector<T>& vec);
-	template <class T>
-	void CPPtoAF(const int32& count, const vector<T>& vec, af::array& arr);
-	template <class T>
-	void CPPtoAF(const int32& count, const T* vec, af::array& arr);
-
 public:
 	/// Create a particle whose properties have been defined.
 	/// No reference to the definition is retained.
@@ -499,20 +489,14 @@ public:
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle positions array.
-	float32* GetPositionXBuffer();
-	const float32* GetPositionXBuffer() const;
-	float32* GetPositionYBuffer();
-	const float32* GetPositionYBuffer() const;
-	float32* GetPositionZBuffer();
-	const float32* GetPositionZBuffer() const;
+	b2Vec3* GetPositionBuffer();
+	const b2Vec3* GetPositionBuffer() const;
 
 	/// Get the velocity of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle velocities array.
-	float32* GetVelocityXBuffer();
-	const float32* GetVelocityXBuffer() const;
-	float32* GetVelocityYBuffer();
-	const float32* GetVelocityYBuffer() const;
+	b2Vec3* GetVelocityBuffer();
+	const b2Vec3* GetVelocityBuffer() const;
 
 	/// Get the color of each particle
 	/// Array is length GetParticleCount()
@@ -581,8 +565,8 @@ public:
 	/// @param buffer is a pointer to a block of memory.
 	/// @param size is the number of values in the block.
 	void SetFlagsBuffer(uint32* buffer, int32 capacity);
-	void SetPositionBuffer(float* bufferX, float* bufferY, int32 capacity);
-	void SetVelocityBuffer(float* bufferX, float* bufferY, int32 capacity);
+	void SetPositionBuffer(b2Vec3* buffer, int32 capacity);
+	void SetVelocityBuffer(b2Vec3* buffer, int32 capacity);
 	void SetColorBuffer(int32* buffer, int32 capacity);
 	void SetUserDataBuffer(int32* buffer, int32 capacity);
 
@@ -724,10 +708,14 @@ public:
 	void ApplyLinearImpulse(int32 firstIndex, int32 lastIndex,
 							const b2Vec2& impulse);
 
+	/// Distribute force between 2 Particles, using their mass
+	void DistributeForce(int32 a, int32 b, const b2Vec2& f);
+	void DistributeForceDamp(int32 a, int32 b, const b2Vec2& f);
+
 	/// Apply a force to the center of a particle.
 	/// @param index the particle that will be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ParticleApplyForce(int32 index, float32 forceX, float32 forceY);
+	void ParticleApplyForce(int32 index, const b2Vec3& force);
 	
 	/// Distribute a force across several particles. The particles must not be
 	/// wall particles. Note that the force is distributed across all the
@@ -736,9 +724,8 @@ public:
 	/// @param firstIndex the first particle to be modified.
 	/// @param lastIndex the last particle to be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ApplyForce(int32 firstIndex, int32 lastIndex, float32 forceX, float32 forceY);
-	void ApplyForceInDirIfHasFlag(float32 posX, float32 posY, float32 posZ,
-		float32 strength, uint32 flag);
+	void ApplyForce(int32 firstIndex, int32 lastIndex, const b2Vec3& force);
+	void ApplyForceInDirIfHasFlag(const b2Vec3& pos, float32 strength, uint32 flag);
 
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();
@@ -842,7 +829,7 @@ private:
 	/// Used for detecting particle contacts
 	struct Proxy
 	{
-		int32 index;
+		int32 idx;
 		uint32 tag;
 		friend inline bool operator<(const Proxy &a, const Proxy &b)
 		{
@@ -891,17 +878,11 @@ public:
 	class InsideBoundsEnumerator
 	{
 	public:
-		const b2ParticleSystem *m_partSys;
 		/// Construct an enumerator with bounds of tags and a range of proxies.
-		/*/
 		InsideBoundsEnumerator(
 			uint32 lower, uint32 upper,
 			const Proxy* first, const Proxy* last);
-		/*/
-		InsideBoundsEnumerator(const b2ParticleSystem* partSys,
-			uint32 lower, uint32 upper,
-			int32 firstPos, int32 lastPos);
-		//*/
+		
 		/// Get index of the next particle. Returns b2_invalidParticleIndex if
 		/// there are no more particles.
 		int32 GetNext();
@@ -911,8 +892,8 @@ public:
 		/// The lower and upper bound of y component in the tag.
 		uint32 m_yLower, m_yUpper;
 		/// The range of proxies.
-		int32 m_firstPos;
-		int32 m_lastPos;
+		const Proxy* m_first;
+		const Proxy* m_last;
 	};
 
 private:
@@ -976,10 +957,10 @@ private:
 	void ResizeTriadBuffers(int32 size);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const b2Vec2& position);
+		const b2Transform& xf, const b2Vec3& position);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const b2Vec2& position, const float32 height, int32 color);
+		const b2Transform& xf, const b2Vec3& position, int32 color);
 	void CreateParticlesStrokeShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
@@ -1089,7 +1070,7 @@ private:
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
 	void RotateBuffer(int32 start, int32 mid, int32 end);
-
+	
 	template <class T1, class UnaryPredicate>
 	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
 		int32& size, UnaryPredicate pred, bool adjustSize = true);
@@ -1219,18 +1200,13 @@ private:
 	bool hasHandleIndexBuffer;
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
-	vector<float32> m_positionXBuffer,
-					m_positionYBuffer,
-					m_positionZBuffer;
+	vector<b2Vec3> m_positionBuffer,
+				   m_velocityBuffer,
+				   m_forceBuffer;
 	vector<int32>	m_heightLayerBuffer;
-	vector<float32> m_velocityXBuffer,
-					m_velocityYBuffer,
-					m_weightBuffer,
+	vector<float32> m_weightBuffer,
 					m_heatBuffer,
-					m_healthBuffer,
-					m_forceXBuffer,
-					m_forceYBuffer,
-					m_forceZBuffer;
+					m_healthBuffer;
 
 	bool hasColorBuf;
 	vector<int32>	m_colorBuffer;
@@ -1312,9 +1288,7 @@ private:
 	vector<int32>  m_findContactBottomLeftTagBuf;
 	vector<int32>  m_findContactBottomRightTagBuf;
 
-	vector<int32>  m_proxyIdxBuffer;
-	vector<uint32> m_proxyTagBuffer;
-	af::array afProxyIdxBuf, afProxyTagBuf, sortedProxyTagIdxs;
+	vector<Proxy>  m_proxyBuffer;
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
@@ -1599,46 +1573,22 @@ inline float32 b2ParticleSystem::GetParticleInvMass() const
 	return m_inverseDensity * inverseStride * inverseStride;
 }
 
-inline float32* b2ParticleSystem::GetPositionXBuffer()
+inline b2Vec3* b2ParticleSystem::GetPositionBuffer()
 {
-	return m_positionXBuffer.data();
+	return m_positionBuffer.data();
 }
-inline float32* b2ParticleSystem::GetPositionYBuffer()
+inline const b2Vec3* b2ParticleSystem::GetPositionBuffer() const
 {
-	return m_positionYBuffer.data();
-}
-inline float32* b2ParticleSystem::GetPositionZBuffer()
-{
-	return m_positionZBuffer.data();
-}
-inline const float* b2ParticleSystem::GetPositionXBuffer() const
-{
-	return m_positionXBuffer.data();
-}
-inline const float* b2ParticleSystem::GetPositionYBuffer() const
-{
-	return m_positionYBuffer.data();
-}
-inline const float* b2ParticleSystem::GetPositionZBuffer() const
-{
-	return m_positionZBuffer.data();
+	return m_positionBuffer.data();
 }
 
-inline float32* b2ParticleSystem::GetVelocityXBuffer()
+inline b2Vec3* b2ParticleSystem::GetVelocityBuffer()
 {
-	return m_velocityXBuffer.data();
+	return m_velocityBuffer.data();
 }
-inline float32* b2ParticleSystem::GetVelocityYBuffer()
+inline const b2Vec3* b2ParticleSystem::GetVelocityBuffer() const
 {
-	return m_velocityYBuffer.data();
-}
-inline const float32* b2ParticleSystem::GetVelocityXBuffer() const
-{
-	return m_velocityXBuffer.data();
-}
-inline const float32* b2ParticleSystem::GetVelocityYBuffer() const
-{
-	return m_velocityYBuffer.data();
+	return m_velocityBuffer.data();
 }
 
 inline float32* b2ParticleSystem::GetWeightBuffer()
@@ -1754,6 +1704,17 @@ inline void b2ParticleSystem::ParticleApplyLinearImpulse(int32 index,
 														 const b2Vec2& impulse)
 {
 	ApplyLinearImpulse(index, index + 1, impulse);
+}
+
+inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const b2Vec2& f) 
+{
+	m_velocityBuffer[a] -= m_partMatMassBuf[m_partMatIdxBuffer[b]] * f;
+	m_velocityBuffer[b] += m_partMatMassBuf[m_partMatIdxBuffer[a]] * f;
+}
+inline void b2ParticleSystem::DistributeForceDamp(int32 a, int32 b, const b2Vec2& f)
+{
+	m_velocityBuffer[a] += m_partMatMassBuf[m_partMatIdxBuffer[b]] * f;
+	m_velocityBuffer[b] -= m_partMatMassBuf[m_partMatIdxBuffer[a]] * f;
 }
 
 

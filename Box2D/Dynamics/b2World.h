@@ -28,7 +28,6 @@
 #include <Box2D/Dynamics/b2TimeStep.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <Box2D/Particle/b2Material.h>
-#include <arrayfire.h>
 
 struct b2AABB;
 struct b2BodyDef;
