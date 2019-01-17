@@ -313,6 +313,7 @@
     <ClInclude Include="..\Box2D\Particle\b2StackQueue.h" />
     <ClInclude Include="..\Box2D\Particle\b2VoronoiDiagram.h" />
     <ClInclude Include="..\Box2D\Rope\b2Rope.h" />
+    <ClInclude Include="..\Box2D\Sorting\ampFunctions.h" />
     <ClInclude Include="VkCompute.h" />
   </ItemGroup>
   <ItemGroup>

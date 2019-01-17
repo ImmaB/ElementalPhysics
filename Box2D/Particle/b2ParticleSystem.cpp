@@ -398,9 +398,7 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_bodyBuffer(bodyBuffer),
 	m_fixtureBuffer(fixtureBuffer)
-
 {
-
 	//AllocConsole();
 	//FILE* fp;
 	//freopen_s(&fp, "CONOUT$", "w", stdout);
@@ -2128,7 +2126,13 @@ void b2ParticleSystem::UpdateProxies()
 // tractable.
 void b2ParticleSystem::SortProxies()
 {
-	std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
+	concurrency::array<Proxy, 1> tmpProxies(m_count, std::begin(m_proxyBuffer));
+	auto sortedPtr = amp::sort(tmpProxies);
+	concurrency::copy(*sortedPtr, m_proxyBuffer.data());
+	
+	
+	
+	//std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
 }
 
 template<class T>

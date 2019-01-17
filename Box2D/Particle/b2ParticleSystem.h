@@ -18,6 +18,7 @@
 #ifndef B2_PARTICLE_SYSTEM_H
 #define B2_PARTICLE_SYSTEM_H
 
+#include <Box2D/Amp/ampFunctions.h>
 #include <Box2D/Common/b2SlabAllocator.h>
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Particle/b2Particle.h>
@@ -28,6 +29,7 @@
 #include <process.h>
 #include <Windows.h>
 #include <chrono>
+#include <amp.h>
 
 static const int32  MAX_CONTACTS_PER_PARTICLE = 10;
 
@@ -132,6 +134,41 @@ struct b2ParticleTriad
 	/// Values used for calculation.
 	b2Vec2 pa, pb, pc;
 	float32 ka, kb, kc, s;
+};
+
+
+/// Used for detecting particle contacts
+struct Proxy
+{
+	int32 idx;
+	uint32 tag;
+	friend inline bool operator<(const Proxy &a, const Proxy &b)
+	{
+		return a.tag < b.tag;
+	}
+	friend inline bool operator<(uint32 a, const Proxy &b)
+	{
+		return a < b.tag;
+	}
+	friend inline bool operator<(const Proxy &a, uint32 b)
+	{
+		return a.tag < b;
+	}
+};
+
+struct ProxyKeyIndex {
+	unsigned int k;
+	int i;
+	ProxyKeyIndex() restrict(cpu, amp) { }
+	ProxyKeyIndex(Proxy key, int index) restrict(cpu, amp)
+		: k(key.tag), i(index) { }
+	bool operator<(const ProxyKeyIndex& other) restrict(cpu, amp) {
+		return k < other.k;
+	}
+};
+
+template<> struct amp::key_index_type<Proxy> {
+	typedef ProxyKeyIndex type;
 };
 
 struct b2ParticleSystemDef
@@ -826,24 +863,6 @@ private:
 		int32 userSuppliedCapacity;
 	};
 
-	/// Used for detecting particle contacts
-	struct Proxy
-	{
-		int32 idx;
-		uint32 tag;
-		friend inline bool operator<(const Proxy &a, const Proxy &b)
-		{
-			return a.tag < b.tag;
-		}
-		friend inline bool operator<(uint32 a, const Proxy &b)
-		{
-			return a < b.tag;
-		}
-		friend inline bool operator<(const Proxy &a, uint32 b)
-		{
-			return a.tag < b;
-		}
-	};
 
 	/// Class for filtering pairs or triads.
 	class ConnectionFilter

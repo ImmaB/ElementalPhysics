@@ -64,6 +64,9 @@
     <Filter Include="Headerdateien\Vulkan">
       <UniqueIdentifier>{418567fd-8e02-44fc-b830-f117cc5697b8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\Amp">
+      <UniqueIdentifier>{d5301a46-8f97-4b42-b32f-1ad66a004224}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Source.cpp">
@@ -421,6 +424,9 @@
     </ClInclude>
     <ClInclude Include="VkCompute.h">
       <Filter>Headerdateien\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Box2D\Sorting\ampFunctions.h">
+      <Filter>Headerdateien\Amp</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
