@@ -1227,9 +1227,9 @@ private:
 	bool hasHandleIndexBuffer;
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
-	Concurrency::array<b2Vec3> m_positionBuffer,
-							   m_velocityBuffer,
-							   m_forceBuffer;
+	vector<b2Vec3>	m_positionBuffer,
+					m_velocityBuffer,
+					m_forceBuffer;
 	vector<int32>	m_heightLayerBuffer;
 	vector<float32> m_weightBuffer,
 					m_heatBuffer,

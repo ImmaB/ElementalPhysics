@@ -400,10 +400,10 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	vector<b2Fixture*>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_bodyBuffer(bodyBuffer),
-	m_fixtureBuffer(fixtureBuffer),
-	m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView)
+	m_fixtureBuffer(fixtureBuffer)
+	//m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	//m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	//m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView)
 {
 	//AllocConsole();
 	//FILE* fp;
@@ -601,17 +601,21 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	m_bodyContactCountBuffer.resize(size);
 	m_consecutiveContactStepsBuffer.resize(size);
 
-	auto& newPosBuffer = Concurrency::array<b2Vec3>(size);
-	m_positionBuffer.copy_to(newPosBuffer);
-	m_positionBuffer = newPosBuffer;
+	m_positionBuffer.resize(size);
+	m_velocityBuffer.resize(size);
+	m_forceBuffer.resize(size);
 
-	auto& newVelBuffer = Concurrency::array<b2Vec3>(size);
-	m_velocityBuffer.copy_to(newVelBuffer);
-	m_velocityBuffer = newVelBuffer;
-
-	auto& newVForBuffer = Concurrency::array<b2Vec3>(size);
-	m_forceBuffer.copy_to(newVForBuffer);
-	m_forceBuffer = newVForBuffer;
+	//auto& newPosBuffer = Concurrency::array<b2Vec3>(size);
+	//m_positionBuffer.copy_to(newPosBuffer);
+	//m_positionBuffer = newPosBuffer;
+	//
+	//auto& newVelBuffer = Concurrency::array<b2Vec3>(size);
+	//m_velocityBuffer.copy_to(newVelBuffer);
+	//m_velocityBuffer = newVelBuffer;
+	//
+	//auto& newVForBuffer = Concurrency::array<b2Vec3>(size);
+	//m_forceBuffer.copy_to(newVForBuffer);
+	//m_forceBuffer = newVForBuffer;
 
 	m_weightBuffer.resize(size);
 	m_staticPressureBuf.resize(size);
@@ -1945,8 +1949,8 @@ inline bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 	const int32& colGroupB = m_groupBuffer[m_partGroupIdxBuffer[b]]->m_collisionGroup;
 	if (colGroupA > 0 && colGroupA != colGroupB) return false;
 
-	b2Vec3 d = m_positionBuffer[b] - m_positionBuffer[a];
-	float32 distBtParticlesSq = d * d;
+	const b2Vec3 d = m_positionBuffer[b] - m_positionBuffer[a];
+	const float32 distBtParticlesSq = d * d;
 	if (distBtParticlesSq > m_squaredDiameter) return false;
 
 	b2ParticleContact& contact = m_partContactBuf[contactCount];
@@ -1956,11 +1960,11 @@ inline bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 	contact.idxA = a;
 	contact.idxB = b;
 	contact.flags = m_flagsBuffer[a] | m_flagsBuffer[b];
-	int32 matAIdx = m_partMatIdxBuffer[a];
-	int32 matBIdx = m_partMatIdxBuffer[b];
+	const int32 matAIdx = m_partMatIdxBuffer[a];
+	const int32 matBIdx = m_partMatIdxBuffer[b];
 	contact.matFlags = m_partMatFlagsBuf[matAIdx] | m_partMatFlagsBuf[matBIdx];
 	contact.weight = 1 - distBtParticlesSq * invD * m_inverseDiameter;
-	float32 invM = 1 / (m_partMatMassBuf[matAIdx] + m_partMatMassBuf[matBIdx]);
+	const float32 invM = 1 / (m_partMatMassBuf[matAIdx] + m_partMatMassBuf[matBIdx]);
 	contact.mass = invM > 0 ? invM : 0;
 	contact.normal = invD * b2Vec2(d);
 	return true;
@@ -1985,7 +1989,10 @@ inline bool checkReducePrecondition(unsigned cnt)
 void b2ParticleSystem::AmpFindContacts()
 {
 	b2Assert(checkReducePrecondition(stgProxies.extent[0]));
-	
+
+	if (m_contactBufferSize <= m_count * MAX_CONTACTS_PER_PARTICLE)
+		ResizeContactBuffers(m_count * MAX_CONTACTS_PER_PARTICLE * 2);
+
 	Concurrency::array_view<b2ParticleContact> contacts(m_count * MAX_CONTACTS_PER_PARTICLE);
 	{
 		const int32 cnt = m_count;
@@ -2000,11 +2007,18 @@ void b2ParticleSystem::AmpFindContacts()
 		Concurrency::array_view<const int32>	matIdxs(m_partMatIdxBuffer);
 		Concurrency::array_view<const uint32>	matFlags(m_partMatFlagsBuf);
 		Concurrency::array_view<const float32>	matMasses(m_partMatMassBuf);
+		//Concurrency::array_view<const b2ParticleGroup>	groups(m_groupBuffer);
+		//Concurrency::array_view<const int32>	groupIdxs(m_partGroupIdxBuffer);
 		const float32 invDiameter = m_inverseDiameter;
+		const float32 sqrDiameter = m_squaredDiameter;
 		const auto addContact = [=](const uint32 & a, const uint32 & b, b2ParticleContact& contact) restrict(amp) -> bool {
-			const b2Vec3 d = positions[a] - positions[b];
+			//const int32 colGroupA = groups[groupIdxs[a]].m_collisionGroup;
+			//const int32 colGroupB = groups[groupIdxs[b]].m_collisionGroup;
+			//if (colGroupA > 0 && colGroupA != colGroupB) return false;
+			
+			const b2Vec3 d = positions[b] - positions[a];
 			const float32 distBtParticlesSq = d * d;
-			if (distBtParticlesSq > 10 && false) return false;
+			if (distBtParticlesSq > sqrDiameter) return false;
 
 			const float32 invD = b2InvSqrt(distBtParticlesSq);
 			contact.idxA = a;
@@ -2070,20 +2084,23 @@ void b2ParticleSystem::AmpFindContacts()
 		Concurrency::parallel_for_each(e.tile<TILE_SIZE>(), [=](Concurrency::tiled_index<TILE_SIZE> tIdx) restrict(amp)
 		{
 			const uint32 i = tIdx.global[0];
-			if (i < cnt) {
-				const uint32 contactCnt = contactCnts(tIdx.tile[0], tIdx.local[0]);
-				uint32 contactCntSum = contactCntSums[i];
-				for (uint32 halfStride = threadCnt / 2, stride = threadCnt; halfStride > 1; stride = halfStride, halfStride /= 2)
+			if (i >= cnt) return;
+			const uint32 contactCnt = contactCnts(tIdx.tile[0], tIdx.local[0]);
+			if (!contactCnt) return;
+			uint32 contactCntSum = contactCntSums[i];
+			for (uint32 halfStride = threadCnt / 2, stride = threadCnt; halfStride > 1; stride = halfStride, halfStride /= 2)
+			{
+				if ((i % stride) >= halfStride)
 				{
 					const uint32 strideRelIdx = (i % halfStride) + 1;
-					if (strideRelIdx != halfStride && (i % stride) >= stride)
+					if (strideRelIdx != halfStride)
 						contactCntSum += contactCntSums[i - strideRelIdx];
 				}
-				uint32 writeIdx = contactCntSum - contactCnt;
-				const auto& localContactsRef = localContacts[i];
-				for (uint32 i = 0; i < contactCnt; i++)
-					contacts[writeIdx + i] = localContactsRef[i];
 			}
+			uint32 writeIdx = contactCntSum - contactCnt;
+			const auto& localContactsRef = localContacts[i];
+			for (uint32 i = 0; i < contactCnt; i++)
+				contacts[writeIdx + i] = localContactsRef[i];
 		});
 		copy(contactCntSums.section(threadCnt - 1, 1), &m_contactCount);
 	}
@@ -3015,10 +3032,10 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 
 	// While findBodyContactsThread is running
 	//clock_t clockPartContacts = clock();
-	//if (m_accelerate)
+	if (m_accelerate)
 		AmpFindContacts();
-	//else
-	//	FindContacts();
+	else
+		FindContacts();
 	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
 
 	WaitForSingleObject(findBodyContactsThread, INFINITE);
@@ -4953,25 +4970,24 @@ void b2ParticleSystem::SetFlagsBuffer(uint32* buffer, int32 capacity)
 
 void b2ParticleSystem::SetPositionBuffer(b2Vec3* buffer, int32 capacity)
 {
-	Concurrency::copy(buffer, buffer + capacity, m_positionBuffer);
+	m_positionBuffer.assign(buffer, buffer + capacity);
+	//Concurrency::copy(buffer, buffer + capacity, m_positionBuffer);
 }
 
 void b2ParticleSystem::SetVelocityBuffer(b2Vec3* buffer, int32 capacity)
 {
-	Concurrency::copy(buffer, buffer + capacity, m_velocityBuffer);
+	m_velocityBuffer.assign(buffer, buffer + capacity);
+	//Concurrency::copy(buffer, buffer + capacity, m_velocityBuffer);
 }
 
-void b2ParticleSystem::SetColorBuffer(int32* buffer,
-											  int32 capacity)
+void b2ParticleSystem::SetColorBuffer(int32* buffer, int32 capacity)
 {
 	m_colorBuffer.assign(buffer, buffer + capacity);
-	//SetUserOverridableBuffer(&m_colorBuffer, buffer, capacity);
 }
 
 void b2ParticleSystem::SetUserDataBuffer(int32* buffer, int32 capacity)
 {
 	m_userDataBuffer.assign(buffer, buffer + capacity);
-	//SetUserOverridableBuffer(&m_userDataBuffer, buffer, capacity);
 }
 
 void b2ParticleSystem::SetParticleFlags(int32 index, uint32 newFlags)
