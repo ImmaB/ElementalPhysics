@@ -269,7 +269,6 @@ public:
 	void Dump();
 
 
-	b2ParticleMaterial* m_particleMaterialList;
 	b2BodyMaterial* m_bodyMaterialList;
 
 	int32 m_allMaterialFlags;

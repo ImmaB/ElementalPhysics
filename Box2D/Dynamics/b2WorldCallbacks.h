@@ -32,7 +32,6 @@ class b2ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
 class b2ParticleGroup;
-class b2ParticleMaterial;
 class b2BodyMaterial;
 struct b2ParticleContact;
 struct b2PartBodyContact;
@@ -57,12 +56,6 @@ public:
 	virtual void SayGoodbye(b2ParticleGroup* group)
 	{
 		B2_NOT_USED(group);
-	}
-
-	/// Called when any particle material is about to be destroyed.
-	virtual void SayGoodbye(b2ParticleMaterial* mat)
-	{
-		B2_NOT_USED(mat);
 	}
 	/// Called when any fixture material is about to be destroyed.
 	virtual void SayGoodbye(b2BodyMaterial* mat)
@@ -99,12 +92,6 @@ public:
 	virtual void SayGoodbye(int32 groupIdx)
 	{
 		B2_NOT_USED(groupIdx);
-	}
-
-	/// Called when any particle material is about to be destroyed.
-	virtual void SayGoodbye(b2ParticleMaterial* mat)
-	{
-		B2_NOT_USED(mat);
 	}
 	/// Called when any fixture material is about to be destroyed.
 	virtual void SayGoodbye(b2BodyMaterial* mat)

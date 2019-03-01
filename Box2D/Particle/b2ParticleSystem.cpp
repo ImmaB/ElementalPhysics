@@ -44,7 +44,6 @@
 
 using namespace std;
 
-static const uint32 afArrayDims = 1;
 static const uint32 xTruncBits = 12;
 static const uint32 yTruncBits = 12;
 static const uint32 tagBits = 8u * sizeof(uint32);
@@ -359,6 +358,10 @@ static inline uint32 computeRelativeTag(uint32 tag, int32 x, int32 y)
 {
 	return tag + (y << yShift) + (x << xShift);
 }
+static inline uint32 computeRelativeTag(uint32 tag, uint32 x, uint32 y) restrict(amp)
+{
+	return tag + (y << yShift) + (x << xShift);
+}
 
 b2ParticleSystem::InsideBoundsEnumerator::InsideBoundsEnumerator(
 	uint32 lower, uint32 upper, const Proxy* first, const Proxy* last)
@@ -392,12 +395,15 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 }
 
 b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
-								   b2World* world, 
-								   vector<b2Body*>& bodyBuffer,
-								   vector<b2Fixture*>& fixtureBuffer) :
+	b2World* world,
+	vector<b2Body*>& bodyBuffer,
+	vector<b2Fixture*>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_bodyBuffer(bodyBuffer),
-	m_fixtureBuffer(fixtureBuffer)
+	m_fixtureBuffer(fixtureBuffer),
+	m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView)
 {
 	//AllocConsole();
 	//FILE* fp;
@@ -594,9 +600,19 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	m_lastBodyContactStepBuffer.resize(size);
 	m_bodyContactCountBuffer.resize(size);
 	m_consecutiveContactStepsBuffer.resize(size);
-	m_positionBuffer.resize(size);
-	m_velocityBuffer.resize(size);
-	m_forceBuffer.resize(size);
+
+	auto& newPosBuffer = Concurrency::array<b2Vec3>(size);
+	m_positionBuffer.copy_to(newPosBuffer);
+	m_positionBuffer = newPosBuffer;
+
+	auto& newVelBuffer = Concurrency::array<b2Vec3>(size);
+	m_velocityBuffer.copy_to(newVelBuffer);
+	m_velocityBuffer = newVelBuffer;
+
+	auto& newVForBuffer = Concurrency::array<b2Vec3>(size);
+	m_forceBuffer.copy_to(newVForBuffer);
+	m_forceBuffer = newVForBuffer;
+
 	m_weightBuffer.resize(size);
 	m_staticPressureBuf.resize(size);
 	m_accumulationBuf.resize(size);
@@ -1175,9 +1191,9 @@ int32 b2ParticleSystem::CreateParticleGroup(
 
 
 	// Create pairs and triads between particles in the group->
-	ConnectionFilter filter;
-	UpdateContacts(true);
-	UpdatePairsAndTriads(firstIndex, lastIndex, filter);
+	// ConnectionFilter filter;
+	// UpdateContacts(true);
+	// UpdatePairsAndTriads(firstIndex, lastIndex, filter);
 
 	return groupIdx;
 
@@ -1883,106 +1899,73 @@ b2ParticleSystem::GetInsideBoundsEnumerator(const b2AABB& aabb) const
 		m_inverseDiameter * aabb.upperBound.y + 1);
 
 	const Proxy* beginProxy = m_proxyBuffer.data();
-	const Proxy* endProxy = beginProxy + m_count;
+	const Proxy* endProxy	= beginProxy + m_count;
 	const Proxy* firstProxy = std::lower_bound(beginProxy, endProxy, lowerTag);
-	const Proxy* lastProxy = std::upper_bound(firstProxy, endProxy, upperTag);
+	const Proxy* lastProxy	= std::upper_bound(firstProxy, endProxy, upperTag);
 
 	return InsideBoundsEnumerator(lowerTag, upperTag, firstProxy, lastProxy);
 }
 
 void b2ParticleSystem::FindContacts()
 {
+	if (m_contactBufferSize <= m_count * MAX_CONTACTS_PER_PARTICLE)
+		ResizeContactBuffers(m_count * MAX_CONTACTS_PER_PARTICLE * 2);
 	m_contactCount = 0;
 
-	for (int32 i = 0; i < m_count; i++)
+	for (int a = 0, c = 0; a < m_count; a++)
 	{
-		const uint32& tag = m_proxyBuffer[i].tag;
-		m_findContactRightTagBuf[i]		  = computeRelativeTag(tag,  1, 0);
-		m_findContactBottomLeftTagBuf[i]  = computeRelativeTag(tag, -1, 1);
-		m_findContactBottomRightTagBuf[i] = computeRelativeTag(tag,  1, 1);
-	}
-
-	//Time t = Clock::now();
-	const int end = m_count;
-	for (int a = 0, c = 0; a < end; a++)
-	{
-		const int32 aIdx = m_proxyBuffer[a].idx;
-		//const uint32 aTag = m_proxyTagBuffer[a];
-		const uint32 rightTag = m_findContactRightTagBuf[a];
 		int32 aContactCount = 0;
-		for (int b = a + 1; b < end; b++)
+		const int32 aIdx = m_proxyBuffer[a].idx;
+		const uint32& aTag = m_proxyBuffer[a].tag;
+		const uint32 rightTag = computeRelativeTag(aTag, 1, 0);
+		for (int b = a + 1; b < m_count; b++)
 		{
 			if (rightTag < m_proxyBuffer[b].tag) break;
-			int32 bIdx = m_proxyBuffer[b].idx;
-			if (!ShouldCollide(aIdx, bIdx)) break;
-			AddContact(aIdx, bIdx, m_contactCount);
-			if (++aContactCount >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
+			if (AddContact(aIdx, m_proxyBuffer[b].idx, m_contactCount)
+				&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) goto cnt;
 		}
-		const uint32 bottomLeftTag = m_findContactBottomLeftTagBuf[a];
-		for (; c < end; c++)
-		{
+
+		const uint32 bottomLeftTag = computeRelativeTag(aTag, -1, 1);
+		for (; c < m_count; c++)
 			if (bottomLeftTag <= m_proxyBuffer[c].tag) break;
-		}
-		const uint32 bottomRightTag = m_findContactBottomRightTagBuf[a];
-		for (int b = c; b < end; b++)
+
+		const uint32 bottomRightTag = computeRelativeTag(aTag, 1, 1);
+		for (int b = c; b < m_count; b++)
 		{
 			if (bottomRightTag < m_proxyBuffer[b].tag) break;
-			int32 bIdx = m_proxyBuffer[b].idx;
-			if (!ShouldCollide(aIdx, bIdx)) break;
-			AddContact(aIdx, bIdx, m_contactCount);
-			//m_findContactIdxABuf[a][aContactCount] = aIdx;
-			//m_findContactIdxBBuf[a][aContactCount] = bIdx;
-			if (++aContactCount >= MAX_CONTACTS_PER_PARTICLE) goto cnt;
+			if (AddContact(aIdx, m_proxyBuffer[b].idx, m_contactCount)
+				&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) goto cnt;
 		}
 		cnt:;
 	}
-	//cout << "FillBuffer " << GetTimeDif(t) << "ms\n";
-
-	//t = Clock::now();
-	//for (int i = 0; i < m_count; i++)
-	//	for (int j = 0; j < m_findContactCountBuf[i]; j++)
-	//		AddContact(m_findContactIdxABuf[i][j], m_findContactIdxBBuf[i][j], m_contactCount);
-	//cout << "AddContacts " << GetTimeDif(t) << "ms\n";
-
-	//std::snprintf(debugString, 64, "contactCount: %d", m_contactCount);
 }
-inline void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
+inline bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 {
+	const int32& colGroupA = m_groupBuffer[m_partGroupIdxBuffer[a]]->m_collisionGroup;
+	const int32& colGroupB = m_groupBuffer[m_partGroupIdxBuffer[b]]->m_collisionGroup;
+	if (colGroupA > 0 && colGroupA != colGroupB) return false;
+
 	b2Vec3 d = m_positionBuffer[b] - m_positionBuffer[a];
-	float32 distBtParticlesSq = (d.x * d.x) + (d.y * d.y);			//dot product
-	if (distBtParticlesSq < m_squaredDiameter)
-	{
-		if (m_contactBufferSize <= contactCount)
-			ResizeContactBuffers(contactCount * 2);
-		b2ParticleContact& contact = m_partContactBuf[contactCount];
-		contactCount++;
+	float32 distBtParticlesSq = d * d;
+	if (distBtParticlesSq > m_squaredDiameter) return false;
 
-		float32 invD = b2InvSqrt(distBtParticlesSq);
-		contact.idxA = a;
-		contact.idxB = b;
-		contact.flags = m_flagsBuffer[a] | m_flagsBuffer[b];
-		int32 matAIdx = m_partMatIdxBuffer[a];
-		int32 matBIdx = m_partMatIdxBuffer[b];
-		contact.matFlags = m_partMatFlagsBuf[matAIdx] | m_partMatFlagsBuf[matBIdx];
-		contact.weight = 1 - distBtParticlesSq * invD * m_inverseDiameter;
-		float32 invM = 1 / (m_partMatMassBuf[matAIdx] + m_partMatMassBuf[matBIdx]);
-		contact.mass = invM > 0 ? invM : 0;
-		contact.normal = invD * b2Vec2(d);
-	
-	}
-}
-inline bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const
-{
-	if (std::abs(m_heightLayerBuffer[a] - m_heightLayerBuffer[b]) > 1) return false;
-	int32 colGroupA = m_groupBuffer[m_partGroupIdxBuffer[a]]->m_collisionGroup;
-	int32 colGroupB = m_groupBuffer[m_partGroupIdxBuffer[b]]->m_collisionGroup;
+	b2ParticleContact& contact = m_partContactBuf[contactCount];
+	contactCount++;
 
-	//if (colGroupA < 0)
-	//	return colGroupA != colGroupB;
-	if (colGroupA > 0)
-		return colGroupA == colGroupB;
+	float32 invD = b2InvSqrt(distBtParticlesSq);
+	contact.idxA = a;
+	contact.idxB = b;
+	contact.flags = m_flagsBuffer[a] | m_flagsBuffer[b];
+	int32 matAIdx = m_partMatIdxBuffer[a];
+	int32 matBIdx = m_partMatIdxBuffer[b];
+	contact.matFlags = m_partMatFlagsBuf[matAIdx] | m_partMatFlagsBuf[matBIdx];
+	contact.weight = 1 - distBtParticlesSq * invD * m_inverseDiameter;
+	float32 invM = 1 / (m_partMatMassBuf[matAIdx] + m_partMatMassBuf[matBIdx]);
+	contact.mass = invM > 0 ? invM : 0;
+	contact.normal = invD * b2Vec2(d);
 	return true;
 }
+
 inline bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const
 {
 	if (!f->TestZPos(m_positionBuffer[i].z))
@@ -1992,6 +1975,121 @@ inline bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const
 	if (f->GetFilterData().groupIndex >= 0)				return true;
 	if (partColGroup != f->GetFilterData().groupIndex)	return true;
 	return false;
+}
+
+
+inline bool checkReducePrecondition(unsigned cnt)
+{
+	return cnt >= TILE_SIZE && (cnt & (cnt - 1)) == 0;
+}
+void b2ParticleSystem::AmpFindContacts()
+{
+	b2Assert(checkReducePrecondition(stgProxies.extent[0]));
+	
+	Concurrency::array_view<b2ParticleContact> contacts(m_count * MAX_CONTACTS_PER_PARTICLE);
+	{
+		const int32 cnt = m_count;
+		const uint32 threadCnt = m_proxyBuffer.size();
+
+		Concurrency::array_view<b2ParticleContact, 2> localContacts(threadCnt, MAX_CONTACTS_PER_PARTICLE);
+		Concurrency::array_view<uint32, 2>			  contactCnts(threadCnt / TILE_SIZE, TILE_SIZE);
+		Concurrency::array_view<uint32>				  contactCntSums(threadCnt);
+
+		Concurrency::array_view<const b2Vec3>	positions(m_positionBuffer);
+		Concurrency::array_view<const uint32>	flags(m_flagsBuffer);
+		Concurrency::array_view<const int32>	matIdxs(m_partMatIdxBuffer);
+		Concurrency::array_view<const uint32>	matFlags(m_partMatFlagsBuf);
+		Concurrency::array_view<const float32>	matMasses(m_partMatMassBuf);
+		const float32 invDiameter = m_inverseDiameter;
+		const auto addContact = [=](const uint32 & a, const uint32 & b, b2ParticleContact& contact) restrict(amp) -> bool {
+			const b2Vec3 d = positions[a] - positions[b];
+			const float32 distBtParticlesSq = d * d;
+			if (distBtParticlesSq > 10 && false) return false;
+
+			const float32 invD = b2InvSqrt(distBtParticlesSq);
+			contact.idxA = a;
+			contact.idxB = b;
+			contact.flags = flags[a] | flags[b];
+			const int32 matAIdx = matIdxs[a];
+			const int32 matBIdx = matIdxs[b];
+			contact.matFlags = matFlags[matAIdx] | matFlags[matBIdx];
+			contact.weight = 1 - distBtParticlesSq * invD * invDiameter;
+			float32 invM = 1 / (matMasses[matAIdx] + matMasses[matBIdx]);
+			contact.mass = invM > 0 ? invM : 0;
+			contact.normal = invD * b2Vec2(d);
+			return true;
+		};
+
+		const Concurrency::extent<1> e(threadCnt);
+		Concurrency::array_view<const Proxy> proxies(m_proxyBuffer);
+		Concurrency::parallel_for_each(e.tile<TILE_SIZE>(), [=](Concurrency::tiled_index<TILE_SIZE> tIdx) restrict(amp)
+		{
+			const uint32 globalIdx = tIdx.global[0];
+			const uint32 localIdx = tIdx.local[0];
+			const uint32 tileIdx = tIdx.tile[0];
+
+			uint32 localContactCnt = 0;
+			if (globalIdx < cnt) {
+				auto& contacts = localContacts[globalIdx];
+
+				const Proxy aProxy = proxies[globalIdx];
+				const int32 aIdx = aProxy.idx;
+				const uint32 rightTag = computeRelativeTag(aProxy.tag, 1, 0);
+				for (uint32 b = globalIdx + 1; b < cnt; b++)
+				{
+					if (rightTag < proxies[b].tag) break;
+					if (addContact(aIdx, proxies[b].idx, contacts[localContactCnt])
+						&& ++localContactCnt == MAX_CONTACTS_PER_PARTICLE) break;
+				}
+				// Optimisable by finding better start value that tIdx.global
+				const uint32 bottomLeftTag = computeRelativeTag(proxies[globalIdx].tag, -1, 1);
+				uint32 c = globalIdx + 1;
+				for (; c < cnt; c++)
+					if (bottomLeftTag <= proxies[c].tag) break;
+
+				const uint32 bottomRightTag = computeRelativeTag(aProxy.tag, 1, 1);
+				for (uint32 b = c; b < cnt; b++)
+				{
+					if (bottomRightTag < proxies[b].tag) break;
+					if (addContact(aIdx, proxies[b].idx, contacts[localContactCnt])
+						&& ++localContactCnt == MAX_CONTACTS_PER_PARTICLE) break;
+				}
+			}
+			contactCnts(tileIdx, localIdx) = contactCntSums(globalIdx) = localContactCnt;
+		});
+
+		// Reduce Contactarray to eliminate empty slots
+		for (uint32 stride = 2, halfStride = 1; stride <= threadCnt; halfStride = stride, stride *= 2)
+		{
+			Concurrency::parallel_for_each(Concurrency::extent<1>(threadCnt / stride), [=](Concurrency::index<1> idx) restrict(amp)
+			{
+				const uint32 i = (idx[0] + 1) * stride - 1;
+				contactCntSums[i] += contactCntSums[i - halfStride];
+			});
+		}
+		Concurrency::parallel_for_each(e.tile<TILE_SIZE>(), [=](Concurrency::tiled_index<TILE_SIZE> tIdx) restrict(amp)
+		{
+			const uint32 i = tIdx.global[0];
+			if (i < cnt) {
+				const uint32 contactCnt = contactCnts(tIdx.tile[0], tIdx.local[0]);
+				uint32 contactCntSum = contactCntSums[i];
+				for (uint32 halfStride = threadCnt / 2, stride = threadCnt; halfStride > 1; stride = halfStride, halfStride /= 2)
+				{
+					const uint32 strideRelIdx = (i % halfStride) + 1;
+					if (strideRelIdx != halfStride && (i % stride) >= stride)
+						contactCntSum += contactCntSums[i - strideRelIdx];
+				}
+				uint32 writeIdx = contactCntSum - contactCnt;
+				const auto& localContactsRef = localContacts[i];
+				for (uint32 i = 0; i < contactCnt; i++)
+					contacts[writeIdx + i] = localContactsRef[i];
+			}
+		});
+		copy(contactCntSums.section(threadCnt - 1, 1), &m_contactCount);
+	}
+	copy(contacts.section(0, m_contactCount), m_partContactBuf.data());
+	
+	// gpuAccelView.wait();
 }
 
 static inline bool b2ParticleContactIsZombie(const b2ParticleContact& contact)
@@ -2126,13 +2224,16 @@ void b2ParticleSystem::UpdateProxies()
 // tractable.
 void b2ParticleSystem::SortProxies()
 {
-	concurrency::array<Proxy, 1> tmpProxies(m_count, std::begin(m_proxyBuffer));
-	auto sortedPtr = amp::sort(tmpProxies);
-	concurrency::copy(*sortedPtr, m_proxyBuffer.data());
-	
-	
-	
-	//std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
+	//if (m_accelerate)
+	//{
+	//	concurrency::array<Proxy, 1> tmpProxies(m_count, std::begin(m_proxyBuffer));
+	//	auto sortedPtr = amp::sort(tmpProxies);
+	//	concurrency::copy(*sortedPtr, m_proxyBuffer.data());
+	//}
+	//else
+	//{
+		std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
+	//}
 }
 
 template<class T>
@@ -2899,32 +3000,36 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 	if (m_paused)
 		return;
 
-
+	UpdateProxies();
+	
 	Time sortStart = Clock::now();
 	// Update Proxy Tags and Sort by Tags
-	UpdateProxies();
 	SortProxies();
 	float32 sortTime = GetTimeDif(sortStart);
 
+
 	//find Body COntacts in seperate Thread
-	//Time findStart = Clock::now();
+	Time findStart = Clock::now();
 	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
-	UpdateBodyContacts();
+	//UpdateBodyContacts();
 
 	// While findBodyContactsThread is running
 	//clock_t clockPartContacts = clock();
-	FindContacts();
+	//if (m_accelerate)
+		AmpFindContacts();
+	//else
+	//	FindContacts();
 	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
 
 	WaitForSingleObject(findBodyContactsThread, INFINITE);
-	//float32 findTime = GetTimeDif(findStart);
+	float32 findTime = GetTimeDif(findStart);
 
 
 	if (exceptZombie)
 	{
 		RemoveFromVectorIf(m_partContactBuf, m_contactCount, b2ParticleContactIsZombie, true);
 	}
-	//snprintf(debugString, 64, "Sort %fms  find %fms", sortTime, findTime);
+	snprintf(debugString, 64, "Sort %fms  find %fms", sortTime, findTime);
 }
 
 void b2ParticleSystem::SolveIteration(int32 iteration)
@@ -2937,29 +3042,7 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 
 	//clock_t clockSolve = clock();
 
-	ComputeWeight(
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	);
+	ComputeWeight();
 
 	if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
 		ComputeDepth();
@@ -4635,18 +4718,18 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 					m_consecutiveContactStepsBuffer.begin() + mid,
 					m_consecutiveContactStepsBuffer.begin() + end);
 	}
-	rotate(m_positionBuffer.begin() + start, m_positionBuffer.begin() + mid,
-		m_positionBuffer.begin() + end);
-	rotate(m_velocityBuffer.begin() + start, m_velocityBuffer.begin() + mid,
-		m_velocityBuffer.begin() + end);
+	rotate(m_positionBuffer.data() + start, m_positionBuffer.data() + mid,
+		m_positionBuffer.data() + end);
+	rotate(m_velocityBuffer.data() + start, m_velocityBuffer.data() + mid,
+		m_velocityBuffer.data() + end);
 	rotate(m_partGroupIdxBuffer.begin() + start, m_partGroupIdxBuffer.begin() + mid,
 		m_partGroupIdxBuffer.begin() + end);
 	rotate(m_partMatIdxBuffer.begin() + start, m_partMatIdxBuffer.begin() + mid,
 		m_partMatIdxBuffer.begin() + end);
 	if (m_hasForce)
 	{
-		rotate(m_forceBuffer.begin() + start, m_forceBuffer.begin() + mid,
-			m_forceBuffer.begin() + end);
+		rotate(m_forceBuffer.data() + start, m_forceBuffer.data() + mid,
+			m_forceBuffer.data() + end);
 	}
 	if (!m_staticPressureBuf.empty())
 	{
@@ -4870,12 +4953,12 @@ void b2ParticleSystem::SetFlagsBuffer(uint32* buffer, int32 capacity)
 
 void b2ParticleSystem::SetPositionBuffer(b2Vec3* buffer, int32 capacity)
 {
-	m_positionBuffer.assign(buffer, buffer + capacity);
+	Concurrency::copy(buffer, buffer + capacity, m_positionBuffer);
 }
 
 void b2ParticleSystem::SetVelocityBuffer(b2Vec3* buffer, int32 capacity)
 {
-	m_velocityBuffer.assign(buffer, buffer + capacity);
+	Concurrency::copy(buffer, buffer + capacity, m_velocityBuffer);
 }
 
 void b2ParticleSystem::SetColorBuffer(int32* buffer,

@@ -258,11 +258,12 @@ extern "C" __declspec(dllexport)  float* UpdateContactListener(void* contactPoin
 
 #pragma region API Particle Systems
 
-extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, float radius, float damping, float gravityScale, int userData, float roomTemp, float heatLossRatio, float pointsPerLayer, int lowestLayer, int highestLayer)
+extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, bool accelerate, float radius, float damping, float gravityScale, int userData, float roomTemp, float heatLossRatio, float pointsPerLayer, int lowestLayer, int highestLayer)
 {
 	b2World* world = static_cast<b2World*>(worldPtr);
 	const b2ParticleSystemDef particleSystemDef;
 	b2ParticleSystem* partSys = world->CreateParticleSystem(&particleSystemDef);
+	partSys->SetAccelerate(accelerate);
 	partSys->SetRadius(radius);
 	partSys->SetDamping(damping);
 	partSys->SetGravityScale(gravityScale);
@@ -275,6 +276,10 @@ extern "C" __declspec(dllexport)  void* CreateParticleSystem(void* worldPtr, flo
 	partSys->CalcLayerValues();
 	partSys->MyIndex = userData;
 	return static_cast<void*>(partSys);
+}
+extern "C" __declspec(dllexport)  void SetAccelerate(void* partsysPointer, bool acc) {
+	b2ParticleSystem* sys = static_cast<b2ParticleSystem*>(partsysPointer);
+	sys->SetAccelerate(acc);
 }
 extern "C" __declspec(dllexport)  void SetParticleSystemIndex(void* partsysPointer, int userData) {
 	b2ParticleSystem* sys = static_cast<b2ParticleSystem*>(partsysPointer);

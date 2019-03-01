@@ -15,8 +15,7 @@
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 */
-#ifndef B2_PARTICLE_SYSTEM_H
-#define B2_PARTICLE_SYSTEM_H
+#pragma once
 
 #include <Box2D/Amp/ampFunctions.h>
 #include <Box2D/Common/b2SlabAllocator.h>
@@ -31,7 +30,8 @@
 #include <chrono>
 #include <amp.h>
 
-static const int32  MAX_CONTACTS_PER_PARTICLE = 10;
+#define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
+#define MAX_CONTACTS_PER_PARTICLE	10
 
 typedef std::chrono::high_resolution_clock Clock;
 typedef std::chrono::time_point<std::chrono::steady_clock> Time;
@@ -48,7 +48,6 @@ class b2World;
 class b2Body;
 class b2Shape;
 class b2ParticleGroup;
-class b2ParticleMaterial;
 class b2BlockAllocator;
 class b2StackAllocator;
 class b2QueryCallback;
@@ -175,6 +174,7 @@ struct b2ParticleSystemDef
 {
 	b2ParticleSystemDef()
 	{
+		accelerate = true;
 		strictContactCheck = false;
 		density = 1.0f;
 		gravityScale = 1.0f;
@@ -200,6 +200,8 @@ struct b2ParticleSystemDef
 		destroyByAge = true;
 		lifetimeGranularity = 1.0f / 60.0f;
 	}
+
+	bool accelerate;
 
 	/// Enable strict Particle/Body contact check.
 	/// See SetStrictContactCheck for details.
@@ -310,6 +312,7 @@ struct b2ParticleMaterialDef
 class b2ParticleSystem
 {
 private:
+	bool m_accelerate;
 	b2TimeStep m_step;
 	b2TimeStep subStep;
 
@@ -513,6 +516,8 @@ public:
 	void SetHighestLayer(int32 l);
 
 	void CalcLayerValues();
+
+	void SetAccelerate(const bool acc);
 
 	/// Change the particle radius.
 	/// You should set this only once, on world start.
@@ -1030,10 +1035,10 @@ public:
 private:
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
-	void b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
-	bool b2ParticleSystem::ShouldCollide(int32 a, int32 b) const;
+	bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
 	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
 	void FindContacts();
+	void AmpFindContacts();
 	void UpdateProxies();
 	void SortProxies();
 	template<class T>
@@ -1176,6 +1181,9 @@ private:
 	int32 m_bodyCount;
 	vector<b2Fixture*>& m_fixtureBuffer;
 
+	Concurrency::accelerator_view m_cpuAccelView = Concurrency::accelerator(Concurrency::accelerator::cpu_accelerator).default_view;
+	Concurrency::accelerator_view m_gpuAccelView = Concurrency::accelerator(Concurrency::accelerator::default_accelerator).default_view;
+
 	bool m_paused;
 	int32 m_timestamp;
 	int32 m_allParticleFlags;
@@ -1219,9 +1227,9 @@ private:
 	bool hasHandleIndexBuffer;
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
-	vector<b2Vec3> m_positionBuffer,
-				   m_velocityBuffer,
-				   m_forceBuffer;
+	Concurrency::array<b2Vec3> m_positionBuffer,
+							   m_velocityBuffer,
+							   m_forceBuffer;
 	vector<int32>	m_heightLayerBuffer;
 	vector<float32> m_weightBuffer,
 					m_heatBuffer,
@@ -1252,7 +1260,7 @@ private:
 	//vector<float32> m_groupAngVelBuf;
 	//vector<b2Transform> m_groupTransformBuf;
 	//vector<int32>	m_groupUserDataBuf;
-			
+	
 	vector<uint32>  m_partMatFlagsBuf;
 	vector<uint32>  m_partMatPartFlagsBuf;
 	vector<float32> m_partMatMassBuf;
@@ -1308,6 +1316,7 @@ private:
 	vector<int32>  m_findContactBottomRightTagBuf;
 
 	vector<Proxy>  m_proxyBuffer;
+	// concurrency::array<Proxy, 1> m_ampProxyBuffer;
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
@@ -1503,6 +1512,11 @@ inline void b2ParticleSystem::CalcLayerValues()
 	m_invPointsPerLayer = 1 / m_pointsPerLayer;
 }
 
+
+inline void b2ParticleSystem::SetAccelerate(const bool acc)
+{
+	m_accelerate = acc;
+}
 
 inline void b2ParticleSystem::SetRadius(float32 radius)
 {
@@ -1810,5 +1824,4 @@ inline int b2ParticleSystem::CopyBuffer(int startIndex, int numParticles,
 
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
-#endif
 

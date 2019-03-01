@@ -24,7 +24,6 @@
 
 struct b2Color;
 class b2ParticleGroup;
-class b2ParticleMaterial;
 
 /// @file
 
