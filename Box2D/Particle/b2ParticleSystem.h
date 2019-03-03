@@ -967,7 +967,7 @@ private:
 		UserOverridableBuffer<T>* buffer, int32 oldCapacity, int32 newCapacity,
 		bool deferred);
 	template <typename T> void RequestBuffer(vector<T>& buf, bool& hasBuf);
-
+	
 	/// Reallocate the handle / index map and schedule the allocation of a new
 	/// pool for handle allocation.
 	void ReallocateHandleBuffers(int32 newCapacity);
@@ -1320,6 +1320,8 @@ private:
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
+	Concurrency::array<b2ParticleContact> m_ampContacts;
+	// Concurrency::array<b2PartBodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 

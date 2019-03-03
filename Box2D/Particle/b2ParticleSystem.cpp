@@ -400,15 +400,13 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	vector<b2Fixture*>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_bodyBuffer(bodyBuffer),
-	m_fixtureBuffer(fixtureBuffer)
+	m_fixtureBuffer(fixtureBuffer),
+	m_ampContacts(TILE_SIZE, m_gpuAccelView)
+	//m_ampBodyCntacts(TILE_SIZE, m_gpuAccelView)
 	//m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 	//m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 	//m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView)
 {
-	//AllocConsole();
-	//FILE* fp;
-	//freopen_s(&fp, "CONOUT$", "w", stdout);
-
 	b2Assert(def);
 	m_paused = false;
 	m_timestamp = 0;
@@ -529,6 +527,14 @@ template <typename T> T* b2ParticleSystem::ReallocateBuffer(
 							oldCapacity, newCapacity, deferred);
 }
 
+void atomic_add(float32& dest, const float32 add) restrict(amp)
+{
+	float32 expected = dest;
+	float32 newValue = expected + add;
+	while (!Concurrency::atomic_compare_exchange((uint32*)& dest, (uint32*)& expected, reinterpret_cast<uint32&>(newValue)))
+		newValue = expected + add;
+}
+
 /// Reallocate the handle / index map and schedule the allocation of a new
 /// pool for handle allocation.
 void b2ParticleSystem::ReallocateHandleBuffers(int32 newCapacity)
@@ -570,7 +576,7 @@ static int32 LimitCapacity(int32 capacity, int32 maxCount)
 
 void b2ParticleSystem::ResizePartMatBuffers(int32 size)
 {
-	if (!size) size = b2_minPartMatBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minPartMatBufferCapacity;
 	m_partMatFlagsBuf.resize(size);
 	m_partMatPartFlagsBuf.resize(size);
 	m_partMatMassBuf.resize(size);
@@ -589,7 +595,7 @@ void b2ParticleSystem::ResizePartMatBuffers(int32 size)
 
 void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 {
-	if (!size) size = b2_minParticleBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	ReallocateHandleBuffers(size);
 	m_flagsBuffer.resize(size);
 	m_heightLayerBuffer.resize(size);
@@ -647,33 +653,46 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 
 void b2ParticleSystem::ResizeGroupBuffers(int32 size)
 {
-	if (!size) size = b2_minGroupBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minGroupBufferCapacity;
 	m_groupBuffer.resize(size);
 	m_groupBufferSize = size;
+
+	//auto& newVForBuffer = Concurrency::array<b2Vec3>(size);
+	//m_forceBuffer.copy_to(newVForBuffer);
+	//m_forceBuffer = newVForBuffer;
+
+	//auto& newVForBuffer = Concurrency::array<b2Vec3>(size);
+	//m_forceBuffer.copy_to(newVForBuffer);
+	//m_forceBuffer = newVForBuffer;
 }
 
 void b2ParticleSystem::ResizeContactBuffers(int32 size)
 {
-	if (!size) size = b2_minParticleBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	m_partContactBuf.resize(size);
+	
+	auto& newAmpContacts = Concurrency::array<b2ParticleContact>(size);
+	m_ampContacts.copy_to(newAmpContacts);
+	m_ampContacts = newAmpContacts;
+
 	m_contactBufferSize = size;
 }
 void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
-	if (!size) size = b2_minParticleBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	m_bodyContactBuf.resize(size);
 	m_bodyContactBufferSize = size;
 }
 
 void b2ParticleSystem::ResizePairBuffers(int32 size)
 {
-	if (!size) size = b2_minParticleBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	m_pairBuffer.resize(size);
 	m_pairBufferSize = size;
 }
 void b2ParticleSystem::ResizeTriadBuffers(int32 size)
 {
-	if (!size) size = b2_minParticleBufferCapacity;
+	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	m_triadBuffer.resize(size);
 	m_triadBufferSize = size;
 }
@@ -1993,7 +2012,8 @@ void b2ParticleSystem::AmpFindContacts()
 	if (m_contactBufferSize <= m_count * MAX_CONTACTS_PER_PARTICLE)
 		ResizeContactBuffers(m_count * MAX_CONTACTS_PER_PARTICLE * 2);
 
-	Concurrency::array_view<b2ParticleContact> contacts(m_count * MAX_CONTACTS_PER_PARTICLE);
+	//Concurrency::array_view<b2ParticleContact> contacts(m_count * MAX_CONTACTS_PER_PARTICLE);
+	Concurrency::array_view<b2ParticleContact> contacts(m_ampContacts);
 	{
 		const int32 cnt = m_count;
 		const uint32 threadCnt = m_proxyBuffer.size();
@@ -2105,8 +2125,6 @@ void b2ParticleSystem::AmpFindContacts()
 		copy(contactCntSums.section(threadCnt - 1, 1), &m_contactCount);
 	}
 	copy(contacts.section(0, m_contactCount), m_partContactBuf.data());
-	
-	// gpuAccelView.wait();
 }
 
 static inline bool b2ParticleContactIsZombie(const b2ParticleContact& contact)
@@ -3019,34 +3037,41 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 
 	UpdateProxies();
 	
-	Time sortStart = Clock::now();
+	//Time sortStart = Clock::now();
 	// Update Proxy Tags and Sort by Tags
 	SortProxies();
-	float32 sortTime = GetTimeDif(sortStart);
-
+	//float32 sortTime = GetTimeDif(sortStart);
+	
 
 	//find Body COntacts in seperate Thread
-	Time findStart = Clock::now();
-	findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
+	//Time findStart = Clock::now();
+	//findBodyContactsThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)StartBodyContactThread, this, 0, NULL);
 	//UpdateBodyContacts();
 
 	// While findBodyContactsThread is running
 	//clock_t clockPartContacts = clock();
 	if (m_accelerate)
-		AmpFindContacts();
+	{
+		concurrency::parallel_invoke(
+			[&] { AmpFindContacts(); },
+			[&] { UpdateBodyContacts(); }
+		);
+	}
 	else
+	{
 		FindContacts();
+		UpdateBodyContacts();
+	}
 	//cout << "FindContacts " << (clock() - clockPartContacts) * 1000 / CLOCKS_PER_SEC << "ms\n";
-
-	WaitForSingleObject(findBodyContactsThread, INFINITE);
-	float32 findTime = GetTimeDif(findStart);
+	
+	//WaitForSingleObject(findBodyContactsThread, INFINITE);
+	//float32 findTime = GetTimeDif(findStart);
 
 
 	if (exceptZombie)
-	{
 		RemoveFromVectorIf(m_partContactBuf, m_contactCount, b2ParticleContactIsZombie, true);
-	}
-	snprintf(debugString, 64, "Sort %fms  find %fms", sortTime, findTime);
+	
+	//snprintf(debugString, 64, "Sort %fms  find %fms", sortTime, findTime);
 }
 
 void b2ParticleSystem::SolveIteration(int32 iteration)
@@ -3056,8 +3081,6 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	subStep = m_step;
 	subStep.dt /= m_step.particleIterations;
 	subStep.inv_dt *= m_step.particleIterations;
-
-	//clock_t clockSolve = clock();
 
 	ComputeWeight();
 
@@ -3166,7 +3189,6 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	{
 		m_positionBuffer[i] += subStep.dt * m_velocityBuffer[i];
 	}
-	//cout << "Solve " << (clock() - clockSolve) * 1000 / CLOCKS_PER_SEC << "ms\n";
 }
 
 void b2ParticleSystem::SolveEnd() 
