@@ -91,9 +91,9 @@ struct b2PartBodyContact
 	/// Index of the particle making contact.
 	int32 idx;
 	/// The body making contact.
-	b2Body* body;
+	int32 bodyIdx;
 	/// The specific fixture making contact
-	b2Fixture* fixture;
+	int32 fixtureIdx;
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	float32 weight;
 	/// The normalized direction from the particle to the body.
@@ -618,8 +618,8 @@ public:
 	const b2ParticleContact* GetContacts() const;
 	const int32 GetContactCount() const;
 
-	b2Body** GetBodyBuffer();
-	b2Fixture** GetFixtureBuffer();
+	b2Body* GetBodyBuffer();
+	b2Fixture* GetFixtureBuffer();
 
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
@@ -951,8 +951,10 @@ private:
 		b2_staticPressureParticle;
 
 	b2ParticleSystem(const b2ParticleSystemDef* def, b2World* world,
-					vector<b2Body*>& bodyBuffer,
-					vector<b2Fixture*>& fixtureBuffer);
+					vector<b2Body>& bodyBuffer,
+					vector<int32>& freeBodySlots,
+					vector<b2Fixture>& fixtureBuffer,
+					vector<int32>& freeFixtureSlots);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -1036,7 +1038,7 @@ private:
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
-	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
+	bool b2ParticleSystem::ShouldCollide(int32 i, const b2Fixture& f) const;
 	void FindContacts();
 	void AmpFindContacts();
 	void UpdateProxies();
@@ -1177,9 +1179,9 @@ private:
 		bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
 		float32 impulse, const b2Vec2& normal);
 
-	vector<b2Body*>& m_bodyBuffer;
+	vector<b2Body>& m_bodyBuffer;
 	int32 m_bodyCount;
-	vector<b2Fixture*>& m_fixtureBuffer;
+	vector<b2Fixture>& m_fixtureBuffer;
 
 	Concurrency::accelerator_view m_cpuAccelView = Concurrency::accelerator(Concurrency::accelerator::cpu_accelerator).default_view;
 	Concurrency::accelerator_view m_gpuAccelView = Concurrency::accelerator(Concurrency::accelerator::default_accelerator).default_view;
@@ -1419,11 +1421,11 @@ inline const int32 b2ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
-inline b2Body** b2ParticleSystem::GetBodyBuffer()
+inline b2Body* b2ParticleSystem::GetBodyBuffer()
 {
 	return m_bodyBuffer.data();
 }
-inline b2Fixture** b2ParticleSystem::GetFixtureBuffer()
+inline b2Fixture* b2ParticleSystem::GetFixtureBuffer()
 {
 	return m_fixtureBuffer.data();
 }

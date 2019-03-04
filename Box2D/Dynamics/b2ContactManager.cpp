@@ -39,8 +39,8 @@ void b2ContactManager::Destroy(b2Contact* c)
 {
 	b2Fixture* fixtureA = c->GetFixtureA();
 	b2Fixture* fixtureB = c->GetFixtureB();
-	b2Body* bodyA = fixtureA->GetBody();
-	b2Body* bodyB = fixtureB->GetBody();
+	b2Body& bodyA = fixtureA->GetBody();
+	b2Body& bodyB = fixtureB->GetBody();
 
 	if (m_contactListener && c->IsTouching())
 	{
@@ -74,9 +74,9 @@ void b2ContactManager::Destroy(b2Contact* c)
 		c->m_nodeA.next->prev = c->m_nodeA.prev;
 	}
 
-	if (&c->m_nodeA == bodyA->m_contactList)
+	if (&c->m_nodeA == bodyA.m_contactList)
 	{
-		bodyA->m_contactList = c->m_nodeA.next;
+		bodyA.m_contactList = c->m_nodeA.next;
 	}
 
 	// Remove from body 2
@@ -90,9 +90,9 @@ void b2ContactManager::Destroy(b2Contact* c)
 		c->m_nodeB.next->prev = c->m_nodeB.prev;
 	}
 
-	if (&c->m_nodeB == bodyB->m_contactList)
+	if (&c->m_nodeB == bodyB.m_contactList)
 	{
-		bodyB->m_contactList = c->m_nodeB.next;
+		bodyB.m_contactList = c->m_nodeB.next;
 	}
 
 	// Call the factory.
@@ -113,14 +113,14 @@ void b2ContactManager::Collide()
 		b2Fixture* fixtureB = c->GetFixtureB();
 		int32 indexA = c->GetChildIndexA();
 		int32 indexB = c->GetChildIndexB();
-		b2Body* bodyA = fixtureA->GetBody();
-		b2Body* bodyB = fixtureB->GetBody();
+		b2Body& bodyA = fixtureA->GetBody();
+		b2Body& bodyB = fixtureB->GetBody();
 		 
 		// Is this contact flagged for filtering?
 		if (c->m_flags & b2Contact::e_filterFlag)
 		{
 			// Should these bodies collide?
-			if (bodyB->ShouldCollide(bodyA) == false)
+			if (bodyB.ShouldCollide(bodyA) == false)
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
@@ -141,8 +141,8 @@ void b2ContactManager::Collide()
 			c->m_flags &= ~b2Contact::e_filterFlag;
 		}
 
-		bool activeA = bodyA->IsAwake() && bodyA->m_type != b2_staticBody;
-		bool activeB = bodyB->IsAwake() && bodyB->m_type != b2_staticBody;
+		bool activeA = bodyA.IsAwake() && bodyA.m_type != b2_staticBody;
+		bool activeB = bodyB.IsAwake() && bodyB.m_type != b2_staticBody;
 
 		// At least one body must be awake and it must be dynamic or kinematic.
 		if (activeA == false && activeB == false)
@@ -201,11 +201,11 @@ void b2ContactManager::AddPair(void* proxyUserDataA, void* proxyUserDataB)
 	int32 indexA = proxyA->childIndex;
 	int32 indexB = proxyB->childIndex;
 
-	b2Body* bodyA = fixtureA->GetBody();
-	b2Body* bodyB = fixtureB->GetBody();
+	b2Body& bodyA = fixtureA->GetBody();
+	b2Body& bodyB = fixtureB->GetBody();
 
 	// Are the fixtures on the same body?
-	if (bodyA == bodyB)
+	if (&bodyA == &bodyB)
 	{
 		return;
 	}
@@ -213,10 +213,10 @@ void b2ContactManager::AddPair(void* proxyUserDataA, void* proxyUserDataB)
 	// TODO_ERIN use a hash table to remove a potential bottleneck when both
 	// bodies have a lot of contacts.
 	// Does a contact already exist?
-	b2ContactEdge* edge = bodyB->GetContactList();
+	b2ContactEdge* edge = bodyB.GetContactList();
 	while (edge)
 	{
-		if (edge->other == bodyA)
+		if (edge->other == &bodyA)
 		{
 			b2Fixture* fA = edge->contact->GetFixtureA();
 			b2Fixture* fB = edge->contact->GetFixtureB();
@@ -240,7 +240,7 @@ void b2ContactManager::AddPair(void* proxyUserDataA, void* proxyUserDataB)
 	}
 
 	// Does a joint override collision? Is at least one body dynamic?
-	if (bodyB->ShouldCollide(bodyA) == false)
+	if (bodyB.ShouldCollide(bodyA) == false)
 	{
 		return;
 	}
@@ -257,54 +257,55 @@ void b2ContactManager::AddPair(void* proxyUserDataA, void* proxyUserDataB)
 	{
 		return;
 	}
-
-	// Contact creation may swap fixtures.
-	fixtureA = c->GetFixtureA();
-	fixtureB = c->GetFixtureB();
-	bodyA = fixtureA->GetBody();
-	bodyB = fixtureB->GetBody();
-
-	// Insert into the world.
-	c->m_prev = NULL;
-	c->m_next = m_contactList;
-	if (m_contactList != NULL)
 	{
-		m_contactList->m_prev = c;
+		// Contact creation may swap fixtures.
+		fixtureA = c->GetFixtureA();
+		fixtureB = c->GetFixtureB();
+		b2Body& bodyA = fixtureA->GetBody();
+		b2Body& bodyB = fixtureB->GetBody();
+
+		// Insert into the world.
+		c->m_prev = NULL;
+		c->m_next = m_contactList;
+		if (m_contactList != NULL)
+		{
+			m_contactList->m_prev = c;
+		}
+		m_contactList = c;
+
+		// Connect to island graph.
+
+		// Connect to body A
+		c->m_nodeA.contact = c;
+		c->m_nodeA.other = &bodyB;
+
+		c->m_nodeA.prev = NULL;
+		c->m_nodeA.next = bodyA.m_contactList;
+		if (bodyA.m_contactList != NULL)
+		{
+			bodyA.m_contactList->prev = &c->m_nodeA;
+		}
+		bodyA.m_contactList = &c->m_nodeA;
+
+		// Connect to body B
+		c->m_nodeB.contact = c;
+		c->m_nodeB.other = &bodyA;
+
+		c->m_nodeB.prev = NULL;
+		c->m_nodeB.next = bodyB.m_contactList;
+		if (bodyB.m_contactList != NULL)
+		{
+			bodyB.m_contactList->prev = &c->m_nodeB;
+		}
+		bodyB.m_contactList = &c->m_nodeB;
+
+		// Wake up the bodies
+		if (fixtureA->IsSensor() == false && fixtureB->IsSensor() == false)
+		{
+			bodyA.SetAwake(true);
+			bodyB.SetAwake(true);
+		}
+
+		++m_contactCount;
 	}
-	m_contactList = c;
-
-	// Connect to island graph.
-
-	// Connect to body A
-	c->m_nodeA.contact = c;
-	c->m_nodeA.other = bodyB;
-
-	c->m_nodeA.prev = NULL;
-	c->m_nodeA.next = bodyA->m_contactList;
-	if (bodyA->m_contactList != NULL)
-	{
-		bodyA->m_contactList->prev = &c->m_nodeA;
-	}
-	bodyA->m_contactList = &c->m_nodeA;
-
-	// Connect to body B
-	c->m_nodeB.contact = c;
-	c->m_nodeB.other = bodyA;
-
-	c->m_nodeB.prev = NULL;
-	c->m_nodeB.next = bodyB->m_contactList;
-	if (bodyB->m_contactList != NULL)
-	{
-		bodyB->m_contactList->prev = &c->m_nodeB;
-	}
-	bodyB->m_contactList = &c->m_nodeB;
-
-	// Wake up the bodies
-	if (fixtureA->IsSensor() == false && fixtureB->IsSensor() == false)
-	{
-		bodyA->SetAwake(true);
-		bodyB->SetAwake(true);
-	}
-
-	++m_contactCount;
 }

@@ -43,18 +43,15 @@ b2World::b2World(const b2Vec2& gravity)
 b2World::~b2World()
 {
 	// Some shapes allocate using b2Alloc.
-	for each (b2Body* b in m_bodyBuffer)
+	for each (b2Body& b in m_bodyBuffer)
 	{
-		if (b)
+		for each (int32 fIdx in b.m_fixtureIdxBuffer)
 		{
-			for each (int32 fIdx in b->m_fixtureIdxBuffer)
+			if (fIdx != b2_invalidIndex)
 			{
-				if (fIdx != b2_invalidIndex)
-				{
-					b2Fixture* f = m_fixtureBuffer[fIdx];
-					f->m_proxyCount = 0;
-					f->Destroy(&m_blockAllocator);
-				}
+				b2Fixture& f = m_fixtureBuffer[fIdx];
+				f.m_proxyCount = 0;
+				f.Destroy(&m_blockAllocator);
 			}
 		}
 	}
@@ -89,28 +86,23 @@ void b2World::SetDebugDraw(b2Draw* debugDraw)
 	m_debugDraw = debugDraw;
 }
 
-int32 b2World::CreateBody(const b2BodyDef* def)
+int32 b2World::CreateBody(const b2BodyDef& def)
 {
 	b2Assert(IsLocked() == false);
-	if (IsLocked())
-	{
-		return NULL;
-	}
-	void* mem = m_blockAllocator.Allocate(sizeof(b2Body));
-	b2Body* b = new (mem) b2Body(def, this, m_fixtureBuffer);
-	int32 idx = b2_invalidIndex;
+	if (IsLocked()) return NULL;
+
+	uint32 idx = b2_invalidIndex;
 	if (m_freeBodySlots.empty())
 	{
 		idx = m_bodyBuffer.size();
-		m_bodyBuffer.push_back(b);
+		m_bodyBuffer.push_back(b2Body(def, this, m_fixtureBuffer, m_bodyBuffer, idx));
 	}
 	else
 	{
 		idx = m_freeBodySlots[m_freeBodySlots.size()];
 		m_freeBodySlots.pop_back();
-		m_bodyBuffer[idx] = b;
+		m_bodyBuffer.at[idx] = b2Body(def, this, m_fixtureBuffer, m_bodyBuffer, idx);
 	}
-	b->SetIdx(idx);
 	++m_bodyCount;
 
 	return idx;
@@ -126,8 +118,8 @@ void b2World::DestroyBody(int32 idx)
 	}
 
 	// Delete the attached joints.
-	b2Body* b = m_bodyBuffer[idx];
-	b2JointEdge* je = b->m_jointList;
+	b2Body& b = m_bodyBuffer[idx];
+	b2JointEdge* je = b.m_jointList;
 	while (je)
 	{
 		b2JointEdge* je0 = je;
@@ -140,54 +132,52 @@ void b2World::DestroyBody(int32 idx)
 
 		DestroyJoint(je0->joint);
 
-		b->m_jointList = je;
+		b.m_jointList = je;
 	}
-	b->m_jointList = NULL;
+	b.m_jointList = NULL;
 
 	// Delete the attached contacts.
-	b2ContactEdge* ce = b->m_contactList;
+	b2ContactEdge* ce = b.m_contactList;
 	while (ce)
 	{
 		b2ContactEdge* ce0 = ce;
 		ce = ce->next;
 		m_contactManager.Destroy(ce0->contact);
 	}
-	b->m_contactList = NULL;
+	b.m_contactList = NULL;
 
 	// Delete the attached fixtures. This destroys broad-phase proxies.
 
-	for each (int32 fIdx in b->m_fixtureIdxBuffer)
+	for each (int32 fIdx in b.m_fixtureIdxBuffer)
 	{
 		if (fIdx != b2_invalidIndex)
 		{
-			b2Fixture* f = m_fixtureBuffer[fIdx];
+			b2Fixture& f = m_fixtureBuffer[fIdx];
 
-			b2Fixture* f0 = f;
+			b2Fixture& f0 = f;
 
 			if (m_destructionListener)
 			{
 				m_destructionListener->SayGoodbye(f0);
 			}
 
-			f0->DestroyProxies(&m_contactManager.m_broadPhase);
-			f0->Destroy(&m_blockAllocator);
-			f0->~b2Fixture();
-			m_blockAllocator.Free(f0, sizeof(b2Fixture));
+			f0.DestroyProxies(&m_contactManager.m_broadPhase);
+			f0.Destroy(&m_blockAllocator);
+			f0.~b2Fixture();
 
-			b->m_fixtureCount -= 1;
+			b.m_fixtureCount -= 1;
 		}
 	}
-	b->m_fixtureCount = 0;
+	b.m_fixtureCount = 0;
 
-	m_bodyBuffer[idx] = NULL;
 	m_freeBodySlots.push_back(idx);
+	b.SetExists(false);
 
 	--m_bodyCount;
-	b->~b2Body();
-	m_blockAllocator.Free(b, sizeof(b2Body));
+	b.~b2Body();
 }
 
-int32 b2World::AppendFixture(b2Fixture* f)
+int32 b2World::AppendFixture(b2Fixture& f)
 {
 	int32 idx = b2_invalidIndex;
 	if (m_freeFixtureSlots.empty())
@@ -199,7 +189,7 @@ int32 b2World::AppendFixture(b2Fixture* f)
 	{
 		idx = m_freeFixtureSlots[m_freeFixtureSlots.size()];
 		m_freeFixtureSlots.pop_back();
-		m_fixtureBuffer[idx] = f;
+		m_fixtureBuffer.at[idx] = f;
 	}
 	return idx;
 }
@@ -368,7 +358,7 @@ b2ParticleSystem* b2World::CreateParticleSystem(const b2ParticleSystemDef* def)
 	}
 
 	void* mem = m_blockAllocator.Allocate(sizeof(b2ParticleSystem));
-	b2ParticleSystem* p = new (mem) b2ParticleSystem(def, this, m_bodyBuffer, m_fixtureBuffer);
+	b2ParticleSystem* p = new (mem) b2ParticleSystem(def, this, m_bodyBuffer, m_freeBodySlots, m_fixtureBuffer, m_freeFixtureSlots);
 
 	// Add to world doubly linked list.
 	p->m_prev = NULL;
@@ -422,8 +412,8 @@ void b2World::SetAllowSleeping(bool flag)
 	m_allowSleep = flag;
 	if (m_allowSleep == false)
 	{
-		for each (b2Body* b in m_bodyBuffer)
-			if (b) b->SetAwake(true);
+		for each (b2Body& b in m_bodyBuffer)
+			if (b.GetExists()) b.SetAwake(true);
 	}
 }
 
@@ -433,8 +423,8 @@ void b2World::Init(const b2Vec2& gravity)
 	m_destructionListener = NULL;
 	m_debugDraw = NULL;
 
-	m_bodyBuffer = vector<b2Body*>();
-	m_fixtureBuffer = vector<b2Fixture*>();
+	m_bodyBuffer = vector<b2Body>();
+	m_fixtureBuffer = vector<b2Fixture>();
 	m_jointList = NULL;
 	m_particleSystemList = NULL;
 
@@ -466,8 +456,8 @@ void b2World::Init(const b2Vec2& gravity)
 void b2World::Solve(const b2TimeStep& step)
 {
 	// update previous transforms
-	for each (b2Body* b in m_bodyBuffer)
-		if (b) b->m_xf0 = b->m_xf;
+	for each (b2Body& b in m_bodyBuffer)
+		if (b.GetExists()) b.m_xf0 = b.m_xf;
 	
 
 	m_profile.solveInit = 0.0f;
@@ -482,8 +472,8 @@ void b2World::Solve(const b2TimeStep& step)
 					m_contactManager.m_contactListener);
 
 	// Clear all the island flags.
-	for each (b2Body* b in m_bodyBuffer)
-		if (b) b->m_flags &= ~b2_islandBody;
+	for each (b2Body& b in m_bodyBuffer)
+		if (b.GetExists()) b.m_flags &= ~b2_islandBody;
 
 	for (b2Contact* c = m_contactManager.m_contactList; c; c = c->m_next)
 	{
@@ -497,22 +487,22 @@ void b2World::Solve(const b2TimeStep& step)
 	// Build and simulate all awake islands.
 	int32 stackSize = m_bodyCount;
 	b2Body** stack = (b2Body**)m_stackAllocator.Allocate(stackSize * sizeof(b2Body*));
-	for each (b2Body* seed in m_bodyBuffer)
+	for each (b2Body& seed in m_bodyBuffer)
 	{
-		if (seed)
+		if (seed.GetExists())
 		{
-			if (seed->m_flags & b2_islandBody)
+			if (seed.m_flags & b2_islandBody)
 			{
 				continue;
 			}
 
-			if (seed->IsAwake() == false || seed->IsActive() == false)
+			if (seed.IsAwake() == false || seed.IsActive() == false)
 			{
 				continue;
 			}
 
 			// The seed can be dynamic or kinematic.
-			if (seed->GetType() == b2_staticBody)
+			if (seed.GetType() == b2_staticBody)
 			{
 				continue;
 			}
@@ -520,8 +510,8 @@ void b2World::Solve(const b2TimeStep& step)
 			// Reset island and stack.
 			island.Clear();
 			int32 stackCount = 0;
-			stack[stackCount++] = seed;
-			seed->m_flags |= b2_islandBody;
+			stack[stackCount++] = &seed;
+			seed.m_flags |= b2_islandBody;
 
 			// Perform a depth first search (DFS) on the constraint graph.
 			while (stackCount > 0)
@@ -638,23 +628,23 @@ void b2World::Solve(const b2TimeStep& step)
 		b2Timer timer;
 		// Synchronize fixtures, check for out of range bodies.
 
-		for each (b2Body* b in m_bodyBuffer)
+		for each (b2Body& b in m_bodyBuffer)
 		{
-			if (b)
+			if (b.GetExists())
 			{
 				// If a body was not in an island then it did not move.
-				if ((b->m_flags & b2_islandBody) == 0)
+				if ((b.m_flags & b2_islandBody) == 0)
 				{
 					continue;
 				}
 
-				if (b->GetType() == b2_staticBody)
+				if (b.GetType() == b2_staticBody)
 				{
 					continue;
 				}
 
 				// Update fixtures (for broad-phase).
-				b->SynchronizeFixtures();
+				b.SynchronizeFixtures();
 			}
 		}
 
@@ -671,12 +661,12 @@ void b2World::SolveTOI(const b2TimeStep& step)
 
 	if (m_stepComplete)
 	{
-		for each (b2Body* b in m_bodyBuffer)
+		for each (b2Body& b in m_bodyBuffer)
 		{
-			if (b)
+			if (b.GetExists())
 			{
-				b->m_flags &= ~b2_islandBody;
-				b->m_sweep.alpha0 = 0.0f;
+				b.m_flags &= ~b2_islandBody;
+				b.m_sweep.alpha0 = 0.0f;
 			}
 		}
 
@@ -727,15 +717,16 @@ void b2World::SolveTOI(const b2TimeStep& step)
 					continue;
 				}
 
-				b2Body* bA = fA->GetBody();
-				b2Body* bB = fB->GetBody();
+				
+				b2Body& bA = m_bodyBuffer[fA->GetBodyIdx()];
+				b2Body& bB = m_bodyBuffer[fB->GetBodyIdx()];
 
-				b2BodyType typeA = bA->m_type;
-				b2BodyType typeB = bB->m_type;
+				b2BodyType typeA = bA.m_type;
+				b2BodyType typeB = bB.m_type;
 				b2Assert(typeA == b2_dynamicBody || typeB == b2_dynamicBody);
 
-				bool activeA = bA->IsAwake() && typeA != b2_staticBody;
-				bool activeB = bB->IsAwake() && typeB != b2_staticBody;
+				bool activeA = bA.IsAwake() && typeA != b2_staticBody;
+				bool activeB = bB.IsAwake() && typeB != b2_staticBody;
 
 				// Is at least one body active (awake and dynamic or kinematic)?
 				if (activeA == false && activeB == false)
@@ -743,8 +734,8 @@ void b2World::SolveTOI(const b2TimeStep& step)
 					continue;
 				}
 
-				bool collideA = bA->IsBullet() || typeA != b2_dynamicBody;
-				bool collideB = bB->IsBullet() || typeB != b2_dynamicBody;
+				bool collideA = bA.IsBullet() || typeA != b2_dynamicBody;
+				bool collideB = bB.IsBullet() || typeB != b2_dynamicBody;
 
 				// Are these two non-bullet dynamic bodies?
 				if (collideA == false && collideB == false)
@@ -754,17 +745,17 @@ void b2World::SolveTOI(const b2TimeStep& step)
 
 				// Compute the TOI for this contact.
 				// Put the sweeps onto the same time interval.
-				float32 alpha0 = bA->m_sweep.alpha0;
+				float32 alpha0 = bA.m_sweep.alpha0;
 
-				if (bA->m_sweep.alpha0 < bB->m_sweep.alpha0)
+				if (bA.m_sweep.alpha0 < bB.m_sweep.alpha0)
 				{
-					alpha0 = bB->m_sweep.alpha0;
-					bA->m_sweep.Advance(alpha0);
+					alpha0 = bB.m_sweep.alpha0;
+					bA.m_sweep.Advance(alpha0);
 				}
-				else if (bB->m_sweep.alpha0 < bA->m_sweep.alpha0)
+				else if (bB.m_sweep.alpha0 < bA.m_sweep.alpha0)
 				{
-					alpha0 = bA->m_sweep.alpha0;
-					bB->m_sweep.Advance(alpha0);
+					alpha0 = bA.m_sweep.alpha0;
+					bB.m_sweep.Advance(alpha0);
 				}
 
 				b2Assert(alpha0 < 1.0f);
@@ -776,8 +767,8 @@ void b2World::SolveTOI(const b2TimeStep& step)
 				b2TOIInput input;
 				input.proxyA.Set(fA->GetShape(), indexA);
 				input.proxyB.Set(fB->GetShape(), indexB);
-				input.sweepA = bA->m_sweep;
-				input.sweepB = bB->m_sweep;
+				input.sweepA = bA.m_sweep;
+				input.sweepB = bB.m_sweep;
 				input.tMax = 1.0f;
 
 				b2TOIOutput output;
@@ -816,14 +807,14 @@ void b2World::SolveTOI(const b2TimeStep& step)
 		// Advance the bodies to the TOI.
 		b2Fixture* fA = minContact->GetFixtureA();
 		b2Fixture* fB = minContact->GetFixtureB();
-		b2Body* bA = fA->GetBody();
-		b2Body* bB = fB->GetBody();
+		b2Body& bA = m_bodyBuffer[fA->GetBodyIdx()];
+		b2Body& bB = m_bodyBuffer[fB->GetBodyIdx()];
 
-		b2Sweep backup1 = bA->m_sweep;
-		b2Sweep backup2 = bB->m_sweep;
+		b2Sweep backup1 = bA.m_sweep;
+		b2Sweep backup2 = bB.m_sweep;
 
-		bA->Advance(minAlpha);
-		bB->Advance(minAlpha);
+		bA.Advance(minAlpha);
+		bB.Advance(minAlpha);
 
 		// The TOI contact likely has some new contact points.
 		minContact->Update(m_contactManager.m_contactListener);
@@ -835,28 +826,28 @@ void b2World::SolveTOI(const b2TimeStep& step)
 		{
 			// Restore the sweeps.
 			minContact->SetEnabled(false);
-			bA->m_sweep = backup1;
-			bB->m_sweep = backup2;
-			bA->SynchronizeTransform();
-			bB->SynchronizeTransform();
+			bA.m_sweep = backup1;
+			bB.m_sweep = backup2;
+			bA.SynchronizeTransform();
+			bB.SynchronizeTransform();
 			continue;
 		}
 
-		bA->SetAwake(true);
-		bB->SetAwake(true);
+		bA.SetAwake(true);
+		bB.SetAwake(true);
 
 		// Build the island
 		island.Clear();
-		island.Add(bA);
-		island.Add(bB);
+		island.Add(&bA);
+		island.Add(&bB);
 		island.Add(minContact);
 
-		bA->m_flags |= b2_islandBody;
-		bB->m_flags |= b2_islandBody;
+		bA.m_flags |= b2_islandBody;
+		bB.m_flags |= b2_islandBody;
 		minContact->m_flags |= b2Contact::e_islandFlag;
 
 		// Get contacts on bodyA and bodyB.
-		b2Body* bodies[2] = {bA, bB};
+		b2Body* bodies[2] = {&bA, &bB};
 		for (int32 i = 0; i < 2; ++i)
 		{
 			b2Body* body = bodies[i];
@@ -955,7 +946,7 @@ void b2World::SolveTOI(const b2TimeStep& step)
 		subStep.velocityIterations = step.velocityIterations;
 		subStep.particleIterations = step.particleIterations;
 		subStep.warmStarting = false;
-		island.SolveTOI(subStep, bA->m_islandIndex, bB->m_islandIndex);
+		island.SolveTOI(subStep, bA.m_islandIndex, bB.m_islandIndex);
 
 		// Reset island flags and synchronize broad-phase proxies.
 		for (int32 i = 0; i < island.m_bodyCount; ++i)
@@ -1064,12 +1055,12 @@ void b2World::StepPostParticle()
 void b2World::ClearForces()
 {
 
-	for each (b2Body* body in m_bodyBuffer)
+	for each (b2Body& body in m_bodyBuffer)
 	{
-		if (body)
+		if (body.GetExists())
 		{
-			body->m_force.SetZero();
-			body->m_torque = 0.0f;
+			body.m_force.SetZero();
+			body.m_torque = 0.0f;
 		}
 	}
 }
@@ -1154,13 +1145,13 @@ void b2World::RayCast(b2RayCastCallback* callback, const b2Vec2& point1, const b
 	}
 }
 
-void b2World::DrawShape(b2Fixture* fixture, const b2Transform& xf, const b2Color& color)
+void b2World::DrawShape(const b2Fixture& fixture, const b2Transform& xf, const b2Color& color)
 {
-	switch (fixture->GetType())
+	switch (fixture.GetType())
 	{
 	case b2Shape::e_circle:
 		{
-			b2CircleShape* circle = (b2CircleShape*)fixture->GetShape();
+			b2CircleShape* circle = (b2CircleShape*)fixture.GetShape();
 
 			b2Vec2 center = b2Mul(xf, circle->m_p);
 			float32 radius = circle->m_radius;
@@ -1172,7 +1163,7 @@ void b2World::DrawShape(b2Fixture* fixture, const b2Transform& xf, const b2Color
 
 	case b2Shape::e_edge:
 		{
-			b2EdgeShape* edge = (b2EdgeShape*)fixture->GetShape();
+			b2EdgeShape* edge = (b2EdgeShape*)fixture.GetShape();
 			b2Vec2 v1 = b2Mul(xf, edge->m_vertex1);
 			b2Vec2 v2 = b2Mul(xf, edge->m_vertex2);
 			m_debugDraw->DrawSegment(v1, v2, color);
@@ -1181,7 +1172,7 @@ void b2World::DrawShape(b2Fixture* fixture, const b2Transform& xf, const b2Color
 
 	case b2Shape::e_chain:
 		{
-			b2ChainShape* chain = (b2ChainShape*)fixture->GetShape();
+			b2ChainShape* chain = (b2ChainShape*)fixture.GetShape();
 			int32 count = chain->m_count;
 			const b2Vec2* vertices = chain->m_vertices;
 
@@ -1198,7 +1189,7 @@ void b2World::DrawShape(b2Fixture* fixture, const b2Transform& xf, const b2Color
 
 	case b2Shape::e_polygon:
 		{
-			b2PolygonShape* poly = (b2PolygonShape*)fixture->GetShape();
+			b2PolygonShape* poly = (b2PolygonShape*)fixture.GetShape();
 			int32 vertexCount = poly->m_count;
 			b2Assert(vertexCount <= b2_maxPolygonVertices);
 			b2Vec2 vertices[b2_maxPolygonVertices];
@@ -1289,30 +1280,30 @@ void b2World::DrawDebugData()
 	if (flags & b2Draw::e_shapeBit)
 	{
 		
-		for each (b2Body* b in m_bodyBuffer)
+		for each (b2Body& b in m_bodyBuffer)
 		{
-			if (b)
+			if (b.GetExists())
 			{
-				const b2Transform& xf = b->GetTransform();
+				const b2Transform& xf = b.GetTransform();
 				
-				for each (int32 fIdx in b->GetFixtureIdxBuffer())
+				for each (int32 fIdx in b.GetFixtureIdxBuffer())
 				{
 					if (fIdx != b2_invalidIndex)
 					{
-						b2Fixture* f = m_fixtureBuffer[fIdx];
-						if (b->IsActive() == false)
+						b2Fixture& f = m_fixtureBuffer[fIdx];
+						if (b.IsActive() == false)
 						{
 							DrawShape(f, xf, b2Color(0.5f, 0.5f, 0.3f));
 						}
-						else if (b->GetType() == b2_staticBody)
+						else if (b.GetType() == b2_staticBody)
 						{
 							DrawShape(f, xf, b2Color(0.5f, 0.9f, 0.5f));
 						}
-						else if (b->GetType() == b2_kinematicBody)
+						else if (b.GetType() == b2_kinematicBody)
 						{
 							DrawShape(f, xf, b2Color(0.5f, 0.5f, 0.9f));
 						}
-						else if (b->IsAwake() == false)
+						else if (b.IsAwake() == false)
 						{
 							DrawShape(f, xf, b2Color(0.6f, 0.6f, 0.6f));
 						}
@@ -1363,23 +1354,23 @@ void b2World::DrawDebugData()
 		b2Color color(0.9f, 0.3f, 0.9f);
 		b2BroadPhase* bp = &m_contactManager.m_broadPhase;
 
-		for each (b2Body* b in m_bodyBuffer)
+		for each (b2Body& b in m_bodyBuffer)
 		{
-			if (b)
+			if (b.GetExists())
 			{
-				if (b->IsActive() == false)
+				if (b.IsActive() == false)
 				{
 					continue;
 				}
 
-				for each (int32 fIdx in b->GetFixtureIdxBuffer())
+				for each (int32 fIdx in b.GetFixtureIdxBuffer())
 				{
 					if (fIdx != b2_invalidIndex)
 					{
-						b2Fixture* f = m_fixtureBuffer[fIdx];
-						for (int32 i = 0; i < f->m_proxyCount; ++i)
+						b2Fixture& f = m_fixtureBuffer[fIdx];
+						for (int32 i = 0; i < f.m_proxyCount; ++i)
 						{
-							b2FixtureProxy* proxy = f->m_proxies + i;
+							b2FixtureProxy* proxy = f.m_proxies + i;
 							b2AABB aabb = bp->GetFatAABB(proxy->proxyId);
 							b2Vec2 vs[4];
 							vs[0].Set(aabb.lowerBound.x, aabb.lowerBound.y);
@@ -1397,12 +1388,12 @@ void b2World::DrawDebugData()
 
 	if (flags & b2Draw::e_centerOfMassBit)
 	{
-		for each (b2Body* b in m_bodyBuffer)
+		for each (b2Body& b in m_bodyBuffer)
 		{
-			if (b)
+			if (b.GetExists())
 			{
-				b2Transform xf = b->GetTransform();
-				xf.p = b->GetWorldCenter();
+				b2Transform xf = b.GetTransform();
+				xf.p = b.GetWorldCenter();
 				m_debugDraw->DrawTransform(xf);
 			}
 		}
@@ -1460,13 +1451,13 @@ void b2World::ShiftOrigin(const b2Vec2& newOrigin)
 		return;
 	}
 
-	for each (b2Body* b in m_bodyBuffer)
+	for each (b2Body& b in m_bodyBuffer)
 	{
-		if (b)
+		if (b.GetExists())
 		{
-			b->m_xf.p -= newOrigin;
-			b->m_sweep.c0 -= newOrigin;
-			b->m_sweep.c -= newOrigin;
+			b.m_xf.p -= newOrigin;
+			b.m_sweep.c0 -= newOrigin;
+			b.m_sweep.c -= newOrigin;
 		}
 	}
 
@@ -1491,12 +1482,12 @@ void b2World::Dump()
 	b2Log("b2Body** bodies = (b2Body**)b2Alloc(%d * sizeof(b2Body*));\n", m_bodyCount);
 	b2Log("b2Joint** joints = (b2Joint**)b2Alloc(%d * sizeof(b2Joint*));\n", m_jointCount);
 	int32 i = 0;
-	for each (b2Body* b in m_bodyBuffer)
+	for each (b2Body& b in m_bodyBuffer)
 	{
-		if (b)
+		if (b.GetExists())
 		{
-			b->m_islandIndex = i;
-			b->Dump();
+			b.m_islandIndex = i;
+			b.Dump();
 			++i;
 		}
 	}

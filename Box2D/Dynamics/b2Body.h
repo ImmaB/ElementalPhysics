@@ -169,7 +169,7 @@ public:
 	/// Contacts are not created until the next time step.
 	/// @param def the fixture definition.
 	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(const b2FixtureDef* def);
+	int32 CreateFixture(const b2FixtureDef& def);
 
 	/// Creates a fixture from a shape and attach it to this body.
 	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
@@ -399,6 +399,9 @@ public:
 	void AddFlags(uint16 flags);
 	void RemFlags(uint16 flags);
 
+	bool GetExists() const;
+	void SetExists(bool exists);
+
 	/// Get the list of all joints attached to this body.
 	b2JointEdge* GetJointList();
 	const b2JointEdge* GetJointList() const;
@@ -422,8 +425,8 @@ public:
 	std::vector<int32> GetFixtureIdxBuffer();
 	const std::vector<int32> GetFixtureIdxBuffer() const;
 
-	std::vector<b2Fixture*> GetFixtureBuffer();
-	const std::vector<b2Fixture*> GetFixtureBuffer() const;
+	std::vector<b2Fixture> GetFixtureBuffer();
+	const std::vector<b2Fixture> GetFixtureBuffer() const;
 
 	b2BodyMaterial* GetMaterial();
 	const b2BodyMaterial* GetMaterial() const;
@@ -480,8 +483,7 @@ private:
 	e_toiFlag			= 0x0040
 	};*/
 
-	b2Body(const b2BodyDef* bd, b2World* world, 
-			std::vector<b2Fixture*>& fixtureBuffer);
+	b2Body(const b2BodyDef& bd, b2World* world, int32 idx);
 	~b2Body();
 
 	void SynchronizeFixtures();
@@ -489,18 +491,16 @@ private:
 
 	// This is used to prevent connected bodies from colliding.
 	// It may lie, depending on the collideConnected flag.
-	bool ShouldCollide(const b2Body* other) const;
+	bool ShouldCollide(const b2Body& other) const;
 
 
 	void Advance(float32 t);
 
 	b2BodyType m_type;
 
-	int32 m_idx;
-	inline void SetIdx(int32 idx)
-	{
-		m_idx = idx;
-	}
+	bool m_exists = true;
+	
+	int32& m_idx;
 
 	uint16 m_flags;
 
@@ -518,7 +518,6 @@ private:
 
 	b2World* m_world;
 
-	std::vector<b2Fixture*>& m_fixtureBuffer;
 	std::vector<int32> m_fixtureIdxBuffer;
 	std::vector<int32> m_fixtureIdxFreeSlots;
 	int32 m_fixtureCount;
@@ -552,15 +551,6 @@ inline std::vector<int32> b2Body::GetFixtureIdxBuffer()
 inline const  std::vector<int32> b2Body::GetFixtureIdxBuffer() const
 {
 	return m_fixtureIdxBuffer;
-}
-
-inline std::vector<b2Fixture*> b2Body::GetFixtureBuffer()
-{
-	return m_fixtureBuffer;
-}
-inline const  std::vector<b2Fixture*> b2Body::GetFixtureBuffer() const
-{
-	return m_fixtureBuffer;
 }
 
 inline b2BodyMaterial* b2Body::GetMaterial()
@@ -597,6 +587,15 @@ inline void b2Body::AddFlags(uint16 flags)
 inline void b2Body::RemFlags(uint16 flags)
 {
 	m_flags &= ~flags;
+}
+
+inline bool b2Body::GetExists() const
+{
+	return m_exists;
+}
+inline void b2Body::SetExists(bool exists)
+{
+	m_exists = exists;
 }
 
 inline b2BodyType b2Body::GetType() const
