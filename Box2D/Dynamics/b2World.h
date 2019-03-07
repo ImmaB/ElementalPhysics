@@ -81,7 +81,7 @@ public:
 	/// Create a rigid body given a definition. No reference to the definition
 	/// is retained.
 	/// @warning This function is locked during callbacks.
-	int32 CreateBody(const b2BodyDef& def);
+	int32 CreateBody(const b2BodyDef* def);
 
 	/// Destroy a rigid body.
 	/// This function is locked during callbacks.
@@ -89,7 +89,7 @@ public:
 	/// @warning This function is locked during callbacks.
 	void DestroyBody(int32 idx);
 
-	int32 AppendFixture(b2Fixture& fixture);
+	int32 AppendFixture(b2Fixture* fixture);
 
 	/// Create a joint to constrain bodies together. No reference to the definition
 	/// is retained. This may cause the connected bodies to cease colliding.
@@ -173,11 +173,11 @@ public:
 	/// @param point2 the ray ending point
 	void RayCast(b2RayCastCallback* callback, const b2Vec2& point1, const b2Vec2& point2) const;
 
-	std::vector<b2Body> GetBodyBuffer();
-	const std::vector<b2Body> GetBodyBuffer() const;
+	std::vector<b2Body*> GetBodyBuffer();
+	const std::vector<b2Body*> GetBodyBuffer() const;
 
-	std::vector<b2Fixture> GetFixtureBuffer();
-	const std::vector<b2Fixture> GetFixtureBuffer() const;
+	std::vector<b2Fixture*> GetFixtureBuffer();
+	const std::vector<b2Fixture*> GetFixtureBuffer() const;
 	
 	/// Get the world joint list. With the returned joint, use b2Joint::GetNext to get
 	/// the next joint in the world list. A NULL joint indicates the end of the list.
@@ -319,7 +319,7 @@ private:
 	void SolveTOI(const b2TimeStep& step);
 
 	void DrawJoint(b2Joint* joint);
-	void DrawShape(const b2Fixture& shape, const b2Transform& xf, const b2Color& color);
+	void DrawShape(b2Fixture* shape, const b2Transform& xf, const b2Color& color);
 
 	void DrawParticleSystem(const b2ParticleSystem& system);
 
@@ -332,9 +332,9 @@ private:
 
 	b2ContactManager m_contactManager;
 
-	vector<b2Body> m_bodyBuffer;
+	vector<b2Body*> m_bodyBuffer;
 	std::vector<int32> m_freeBodySlots;
-	std::vector<b2Fixture> m_fixtureBuffer;
+	std::vector<b2Fixture*> m_fixtureBuffer;
 	std::vector<int32> m_freeFixtureSlots;
 	b2Joint* m_jointList;
 	b2ParticleSystem* m_particleSystemList;
@@ -378,20 +378,20 @@ inline float32 b2World::GetDamping() const
 	return m_dampingStrength;
 }
 
-inline std::vector<b2Body> b2World::GetBodyBuffer()
+inline std::vector<b2Body*> b2World::GetBodyBuffer()
 {
 	return m_bodyBuffer;
 }
-inline const std::vector<b2Body> b2World::GetBodyBuffer() const
+inline const std::vector<b2Body*> b2World::GetBodyBuffer() const
 {
 	return m_bodyBuffer;
 }
 
-inline std::vector<b2Fixture> b2World::GetFixtureBuffer()
+inline std::vector<b2Fixture*> b2World::GetFixtureBuffer()
 {
 	return m_fixtureBuffer;
 }
-inline const std::vector<b2Fixture> b2World::GetFixtureBuffer() const
+inline const std::vector<b2Fixture*> b2World::GetFixtureBuffer() const
 {
 	return m_fixtureBuffer;
 }

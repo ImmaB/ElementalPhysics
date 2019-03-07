@@ -31,10 +31,21 @@
 #include <amp.h>
 
 #define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
-#define MAX_CONTACTS_PER_PARTICLE	10
+#define MAX_CONTACTS_PER_PARTICLE 8
 
 typedef std::chrono::high_resolution_clock Clock;
 typedef std::chrono::time_point<std::chrono::steady_clock> Time;
+
+template <typename T>
+using ampArrayView = Concurrency::array_view<T>;
+template <typename T>
+using ampArrayView2D = Concurrency::array_view<T, 2>;
+template <typename T>
+using ampArray = Concurrency::array<T>;
+using ampExtent = Concurrency::extent<1>;
+using ampExtent2D = Concurrency::extent<2>;
+using ampIndex = Concurrency::index<1>;
+using ampTiledIndex = Concurrency::tiled_index<TILE_SIZE>;
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -91,9 +102,9 @@ struct b2PartBodyContact
 	/// Index of the particle making contact.
 	int32 idx;
 	/// The body making contact.
-	int32 bodyIdx;
+	b2Body* body;
 	/// The specific fixture making contact
-	int32 fixtureIdx;
+	b2Fixture* fixture;
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	float32 weight;
 	/// The normalized direction from the particle to the body.
@@ -618,8 +629,8 @@ public:
 	const b2ParticleContact* GetContacts() const;
 	const int32 GetContactCount() const;
 
-	b2Body* GetBodyBuffer();
-	b2Fixture* GetFixtureBuffer();
+	b2Body** GetBodyBuffer();
+	b2Fixture** GetFixtureBuffer();
 
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
@@ -951,10 +962,8 @@ private:
 		b2_staticPressureParticle;
 
 	b2ParticleSystem(const b2ParticleSystemDef* def, b2World* world,
-					vector<b2Body>& bodyBuffer,
-					vector<int32>& freeBodySlots,
-					vector<b2Fixture>& fixtureBuffer,
-					vector<int32>& freeFixtureSlots);
+					vector<b2Body*>& bodyBuffer,
+					vector<b2Fixture*>& fixtureBuffer);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -1030,6 +1039,7 @@ private:
 		const b2ParticleGroup* group, const ParticleListNode* nodeBuffer);
 
 	void ComputeDepth();
+	void AmpComputeDepth();
 
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
@@ -1038,9 +1048,9 @@ private:
 	void UpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
-	bool b2ParticleSystem::ShouldCollide(int32 i, const b2Fixture& f) const;
+	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
 	void FindContacts();
-	void AmpFindContacts();
+	void AmpFindContacts(bool exceptZombie);
 	void UpdateProxies();
 	void SortProxies();
 	template<class T>
@@ -1062,6 +1072,7 @@ private:
 	void SolveBarrier(const b2TimeStep& step);
 	void SolveStaticPressure(const b2TimeStep& step);
 	void ComputeWeight();
+	void AmpComputeWeight();
 	void SolvePressure(const b2TimeStep& step);
 	void SolveDamping(const b2TimeStep& step);
 	void SolveSlowDown(const b2TimeStep& step);
@@ -1100,6 +1111,7 @@ private:
 	template <class T1, class UnaryPredicate>
 	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
 		int32& size, UnaryPredicate pred, bool adjustSize = true);
+	//void AmpRemoveZombieContacts();
 	template <class T1, class T2, class UnaryPredicate>
 	static void RemoveFromVectorsIf(vector<T1>& vectorToTest, vector<T2>& v2,
 		int32& size, UnaryPredicate pred, bool adjustSize);
@@ -1179,9 +1191,9 @@ private:
 		bool isRigidGroup, b2ParticleGroup* group, int32 particleIndex,
 		float32 impulse, const b2Vec2& normal);
 
-	vector<b2Body>& m_bodyBuffer;
+	vector<b2Body*>& m_bodyBuffer;
 	int32 m_bodyCount;
-	vector<b2Fixture>& m_fixtureBuffer;
+	vector<b2Fixture*>& m_fixtureBuffer;
 
 	Concurrency::accelerator_view m_cpuAccelView = Concurrency::accelerator(Concurrency::accelerator::cpu_accelerator).default_view;
 	Concurrency::accelerator_view m_gpuAccelView = Concurrency::accelerator(Concurrency::accelerator::default_accelerator).default_view;
@@ -1208,6 +1220,8 @@ private:
 	int32 m_lowestLayer;
 	int32 m_highestLayer;
 
+	Concurrency::extent<1> m_countExtent;
+	Concurrency::extent<1> m_contactCountExtent;
 	int32 m_count;
 	int32 m_particleBufferSize;
 	int32 m_groupCount;
@@ -1227,6 +1241,9 @@ private:
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
 	bool hasHandleIndexBuffer;
+
+	Concurrency::array<float32> m_tmpStgFloatBuffer;
+
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
 	vector<b2Vec3>	m_positionBuffer,
@@ -1236,6 +1253,9 @@ private:
 	vector<float32> m_weightBuffer,
 					m_heatBuffer,
 					m_healthBuffer;
+	Concurrency::array<float32> m_ampWeightBuffer,
+								m_ampHeatBuffer,
+								m_ampHealthBuffer;
 
 	bool hasColorBuf;
 	vector<int32>	m_colorBuffer;
@@ -1421,11 +1441,11 @@ inline const int32 b2ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
-inline b2Body* b2ParticleSystem::GetBodyBuffer()
+inline b2Body** b2ParticleSystem::GetBodyBuffer()
 {
 	return m_bodyBuffer.data();
 }
-inline b2Fixture* b2ParticleSystem::GetFixtureBuffer()
+inline b2Fixture** b2ParticleSystem::GetFixtureBuffer()
 {
 	return m_fixtureBuffer.data();
 }

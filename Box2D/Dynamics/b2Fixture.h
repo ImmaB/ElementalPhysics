@@ -140,11 +140,11 @@ public:
 
 	/// Get the parent body of this fixture. This is NULL if the fixture is not attached.
 	/// @return the parent body.
+	b2Body* GetBody();
+	const b2Body* GetBody() const;
+
 	int32 GetBodyIdx();
 	const int32 GetBodyIdx() const;
-
-	b2Body GetBody();
-	const b2Body GetBody() const;
 
 	/// Get the next fixture in the parent body's fixture list.
 	/// @return the next shape.
@@ -217,10 +217,11 @@ protected:
 	friend class b2Contact;
 	friend class b2ContactManager;
 
-	b2Fixture(int32 bodyIdx, const b2FixtureDef& def, b2BlockAllocator* allocator, b2World* world);
+	b2Fixture();
 
 	// We need separation create/destroy functions from the constructor/destructor because
 	// the destructor cannot access the allocator (no destructor arguments allowed by C++).
+	void Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx, const b2FixtureDef* def);
 	void Destroy(b2BlockAllocator* allocator);
 
 	// These support body activation/deactivation.
@@ -233,8 +234,8 @@ protected:
 
 	float32 m_density;
 
+	b2Body* m_body;
 	int32 m_bodyIdx;
-	b2World* m_world;
 
 	b2Shape* m_shape;
 
@@ -303,13 +304,13 @@ inline const int32 b2Fixture::GetBodyIdx() const
 	return m_bodyIdx;
 }
 
-inline b2Body b2Fixture::GetBody()
+inline b2Body* b2Fixture::GetBody()
 {
-	return m_world->m_bodyBuffer[m_bodyIdx];
+	return m_body;
 }
-inline const b2Body b2Fixture::GetBody() const
+inline const b2Body* b2Fixture::GetBody() const
 {
-	return m_world->m_bodyBuffer[m_bodyIdx];
+	return m_body;
 }
 
 inline void b2Fixture::SetDensity(float32 density)
@@ -345,16 +346,16 @@ inline void b2Fixture::SetRestitution(float32 restitution)
 
 inline bool b2Fixture::TestPoint(const b2Vec2& p) const
 {
-	return m_shape->TestPoint(m_world->m_bodyBuffer[m_bodyIdx].GetTransform(), p);
+	return m_shape->TestPoint(m_body->GetTransform(), p);
 }
 
 inline void b2Fixture::ComputeDistance(const b2Vec2& p, float32* d, b2Vec2* n, int32 childIndex) const
 {
-	m_shape->ComputeDistance(m_world->m_bodyBuffer[m_bodyIdx].GetTransform(), p, d, n, childIndex);
+	m_shape->ComputeDistance(m_body->GetTransform(), p, d, n, childIndex);
 }
 inline bool b2Fixture::RayCast(b2RayCastOutput* output, const b2RayCastInput& input, int32 childIndex) const
 {
-	return m_shape->RayCast(output, input, m_world->m_bodyBuffer[m_bodyIdx].GetTransform(), childIndex);
+	return m_shape->RayCast(output, input, m_body->GetTransform(), childIndex);
 }
 
 inline void b2Fixture::GetMassData(b2MassData* massData) const

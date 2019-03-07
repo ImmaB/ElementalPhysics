@@ -50,7 +50,7 @@ public:
 
 	/// Called when any fixture is about to be destroyed due
 	/// to the destruction of its parent body.
-	virtual void SayGoodbye(b2Fixture& fixture) = 0;
+	virtual void SayGoodbye(b2Fixture* fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
 	virtual void SayGoodbye(b2ParticleGroup* group)
@@ -86,7 +86,7 @@ public:
 
 	/// Called when any fixture is about to be destroyed due
 	/// to the destruction of its parent body.
-	virtual void SayGoodbye(b2Fixture& fixture) = 0;
+	virtual void SayGoodbye(b2Fixture* fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
 	virtual void SayGoodbye(int32 groupIdx)
@@ -189,10 +189,10 @@ public:
 
 	/// Called when a fixture and particle stop touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
-	virtual void EndContact(int32 fixtureIdx,
+	virtual void EndContact(b2Fixture* fixture,
 							b2ParticleSystem* particleSystem, int32 index)
 	{
-		B2_NOT_USED(fixtureIdx);
+		B2_NOT_USED(fixture);
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(index);
 	}

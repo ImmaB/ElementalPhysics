@@ -27,22 +27,32 @@
 #include <Box2D/Collision/b2Collision.h>
 #include <Box2D/Common/b2BlockAllocator.h>
 
-b2Fixture::b2Fixture(int32 bodyIdx, const b2FixtureDef& def, b2BlockAllocator* allocator, b2World* world)
+b2Fixture::b2Fixture()
 {
-	m_userData = def.userData;
-	m_friction = def.friction;
-	m_restitution = def.restitution;
-	m_zPos = def.shape->m_zPos;
-	m_height = def.shape->m_height;
+	m_userData = NULL;
+	m_body = NULL;
+	m_proxies = NULL;
+	m_proxyCount = 0;
+	m_shape = NULL;
+	m_density = 0.0f;
+}
 
+void b2Fixture::Create(b2BlockAllocator* allocator, b2Body* body, int32 bodyIdx, const b2FixtureDef* def)
+{
+	m_userData = def->userData;
+	m_friction = def->friction;
+	m_restitution = def->restitution;
+	m_zPos = def->shape->m_zPos;
+	m_height = def->shape->m_height;
+
+	m_body = body;
 	m_bodyIdx = bodyIdx;
-	m_world = world;
 
-	m_filter = def.filter;
+	m_filter = def->filter;
 
-	m_isSensor = def.isSensor;
+	m_isSensor = def->isSensor;
 
-	m_shape = def.shape->Clone(allocator);
+	m_shape = def->shape->Clone(allocator);
 
 	// Reserve proxy space
 	int32 childCount = m_shape->GetChildCount();
@@ -55,7 +65,7 @@ b2Fixture::b2Fixture(int32 bodyIdx, const b2FixtureDef& def, b2BlockAllocator* a
 	}
 	m_proxyCount = 0;
 
-	m_density = def.density;
+	m_density = def->density;
 }
 
 void b2Fixture::Destroy(b2BlockAllocator* allocator)
@@ -175,11 +185,13 @@ void b2Fixture::SetFilterData(const b2Filter& filter)
 
 void b2Fixture::Refilter()
 {
-	b2Body& body = m_world->m_bodyBuffer[m_bodyIdx];
-	if (!body.GetExists()) return;
+	if (m_body == NULL)
+	{
+		return;
+	}
 
 	// Flag associated contacts for filtering.
-	b2ContactEdge* edge = body.GetContactList();
+	b2ContactEdge* edge = m_body->GetContactList();
 	while (edge)
 	{
 		b2Contact* contact = edge->contact;
@@ -193,7 +205,7 @@ void b2Fixture::Refilter()
 		edge = edge->next;
 	}
 
-	b2World* world = body.GetWorld();
+	b2World* world = m_body->GetWorld();
 
 	if (world == NULL)
 	{
@@ -212,7 +224,7 @@ void b2Fixture::SetSensor(bool sensor)
 {
 	if (sensor != m_isSensor)
 	{
-		m_world->m_bodyBuffer[m_bodyIdx].SetAwake(true);
+		m_body->SetAwake(true);
 		m_isSensor = sensor;
 	}
 }
