@@ -190,19 +190,8 @@ struct b2ParticleGroupDef
 };
 
 /// A group of particles. b2ParticleGroup::CreateParticleGroup creates these.
-class b2ParticleGroup
+struct b2ParticleGroup
 {
-
-public:
-
-	/// Get the next particle group from the list in b2_World.
-	b2ParticleGroup* GetNext();
-	const b2ParticleGroup* GetNext() const;
-
-	/// Get the particle system that holds this particle group.
-	b2ParticleSystem* GetParticleSystem();
-	const b2ParticleSystem* GetParticleSystem() const;
-
 	/// Get the number of particles.
 	int32 GetParticleCount() const;
 	int32 GetFirstIndex() const;
@@ -214,33 +203,10 @@ public:
 	/// Does this group contain the particle.
 	bool ContainsParticle(int32 index) const;
 	
-	/// Get the logical sum of particle flags.
-	uint32 GetAllParticleFlags() const;
-
 	/// Get the construction flags for the group.
 	uint32 GetGroupFlags() const;
-
-	/// Set the construction flags for the group.
-	void SetGroupFlags(uint32 flags);
-
-	void UpdateStatistics() const;
-
+	
 	int32 GetMaterialIdx() const;
-
-	/// Get the total mass of the group: the sum of all particles in it.
-	float32 GetMass() const;
-
-	/// Get the moment of inertia for the group.
-	float32 GetInertia() const;
-
-	/// Get the center of gravity for the group.
-	b2Vec2 GetCenter() const;
-
-	/// Get the linear velocity of the group.
-	b2Vec2 GetLinearVelocity() const;
-
-	/// Get the angular velocity of the group.
-	float32 GetAngularVelocity() const;
 
 	/// Get the position of the group's origin and rotation.
 	/// Used only with groups of rigid particles.
@@ -254,51 +220,38 @@ public:
 	/// Used only with groups of rigid particles.
 	float32 GetAngle() const;
 
-	/// Get the world linear velocity of a world point, from the average linear
-	/// and angular velocities of the particle group.
-	/// @param a point in world coordinates.
-	/// @return the world velocity of a point.
-	b2Vec2 GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const;
-
 	/// Get the user data pointer that was provided in the group definition.
 	int32 GetUserData() const;
 
 	/// Set the user data. Use this to store your application specific data.
 	void SetUserData(int32 data);
 
-	/// Call b2ParticleSystem::ApplyForce for every particle in the group.
-	void ApplyForce(const b2Vec3& force);
+	b2ParticleGroup()
+	{
+		m_firstIndex = 0;
+		m_lastIndex = 0;
+		m_groupFlags = 0;
+		m_strength = 1.0f;
 
-	/// Call b2ParticleSystem::ApplyLinearImpulse for every particle in the
-	/// group.
-	void ApplyLinearImpulse(const b2Vec2& impulse);
+		m_timestamp = -1;
+		m_mass = 0;
+		m_inertia = 0;
+		m_center = b2Vec2_zero;
+		m_linearVelocity = b2Vec2_zero;
+		m_angularVelocity = 0;
+		m_transform.SetIdentity();
 
-	/// Destroy all the particles in this group.
-	/// This function is locked during callbacks.
-	/// @param Whether to call the world b2DestructionListener for each
-	/// particle is destroyed.
-	/// @warning This function is locked during callbacks.
-	void DestroyParticles(bool callDestructionListener);
+		m_userData = NULL;
+	};
 
-	/// Destroy all particles in this group without enabling the destruction
-	/// callback for destroyed particles.
-	/// This function is locked during callbacks.
-	/// @warning This function is locked during callbacks.
-	void DestroyParticles();
-
-private:
-
-	friend class b2ParticleSystem;
-
-	b2ParticleSystem* m_system;
+	//b2ParticleSystem* m_system;
 	int32 m_firstIndex, m_lastIndex;
 	uint32 m_groupFlags;
 	float32 m_strength;
 	int32 m_matIdx;
 	int32 m_collisionGroup;
 
-	b2ParticleGroup* m_prev;
-	b2ParticleGroup* m_next;
+	int32 m_userData;
 
 	mutable int32 m_timestamp;
 	mutable float32 m_mass;
@@ -308,32 +261,27 @@ private:
 	mutable float32 m_angularVelocity;
 	mutable b2Transform m_transform;
 
-	int32 m_userData;
-
-	b2ParticleGroup();
-	~b2ParticleGroup();
-
 };
 
-inline b2ParticleGroup* b2ParticleGroup::GetNext()
-{
-	return m_next;
-}
+//inline b2ParticleGroup* b2ParticleGroup::GetNext()
+//{
+//	return m_next;
+//}
+//
+//inline const b2ParticleGroup* b2ParticleGroup::GetNext() const
+//{
+//	return m_next;
+//}
 
-inline const b2ParticleGroup* b2ParticleGroup::GetNext() const
-{
-	return m_next;
-}
-
-inline b2ParticleSystem* b2ParticleGroup::GetParticleSystem()
-{
-	return m_system;
-}
-
-inline const b2ParticleSystem* b2ParticleGroup::GetParticleSystem() const
-{
-	return m_system;
-}
+//inline b2ParticleSystem* b2ParticleGroup::GetParticleSystem()
+//{
+//	return m_system;
+//}
+//
+//inline const b2ParticleSystem* b2ParticleGroup::GetParticleSystem() const
+//{
+//	return m_system;
+//}
 
 inline int32 b2ParticleGroup::GetParticleCount() const
 {
@@ -355,10 +303,6 @@ inline bool b2ParticleGroup::ContainsParticle(int32 index) const
 	return m_firstIndex <= index && index < m_lastIndex;
 }
 
-inline b2ParticleGroup::~b2ParticleGroup()
-{
-}
-
 inline int32 b2ParticleGroup::GetBufferIndex() const
 {
   return m_firstIndex;
@@ -372,36 +316,6 @@ inline uint32 b2ParticleGroup::GetGroupFlags() const
 inline int32 b2ParticleGroup::GetMaterialIdx() const
 {
 	return m_matIdx;
-}
-
-inline float32 b2ParticleGroup::GetMass() const
-{
-	UpdateStatistics();
-	return m_mass;
-}
-
-inline float32 b2ParticleGroup::GetInertia() const
-{
-	UpdateStatistics();
-	return m_inertia;
-}
-
-inline b2Vec2 b2ParticleGroup::GetCenter() const
-{
-	UpdateStatistics();
-	return m_center;
-}
-
-inline b2Vec2 b2ParticleGroup::GetLinearVelocity() const
-{
-	UpdateStatistics();
-	return m_linearVelocity;
-}
-
-inline float32 b2ParticleGroup::GetAngularVelocity() const
-{
-	UpdateStatistics();
-	return m_angularVelocity;
 }
 
 inline const b2Transform& b2ParticleGroup::GetTransform() const
@@ -420,13 +334,6 @@ inline float32 b2ParticleGroup::GetAngle() const
 }
 
 
-inline b2Vec2 b2ParticleGroup::GetLinearVelocityFromWorldPoint(
-	const b2Vec2& worldPoint) const
-{
-	UpdateStatistics();
-	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_center);
-}
-
 inline int32 b2ParticleGroup::GetUserData() const
 {
 	return m_userData;
@@ -435,11 +342,6 @@ inline int32 b2ParticleGroup::GetUserData() const
 inline void b2ParticleGroup::SetUserData(int32 data)
 {
 	m_userData = data;
-}
-
-inline void b2ParticleGroup::DestroyParticles()
-{
-	DestroyParticles(false);
 }
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API

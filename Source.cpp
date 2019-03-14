@@ -387,7 +387,7 @@ extern "C" __declspec(dllexport)  void CreateParticleInSystem(void* systemPointe
 }
 extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* partSysPtr, int groupIdx, int flags, b2Vec3 pos, b2Vec3 vel, int col, float lifetime, float health, float heat, int userdata) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleGroup* group = partSys->GetParticleGroups()[groupIdx];
+	const b2ParticleGroup& group = partSys->GetParticleGroups()[groupIdx];
 	b2ParticleDef pd;
 	pd.flags = flags;
 	pd.position = pos;
@@ -397,8 +397,8 @@ extern "C" __declspec(dllexport)  void CreateParticleInGroup(void* partSysPtr, i
 	pd.heat = heat;
 	pd.health = health;
 	pd.groupIdx = groupIdx;
-	pd.matIdx = group->GetMaterialIdx();
-	pd.userData = group->GetUserData();
+	pd.matIdx = group.GetMaterialIdx();
+	pd.userData = group.GetUserData();
 	partSys->CreateParticle(pd);
 }
 
@@ -621,18 +621,21 @@ extern "C" __declspec(dllexport)  void JoinParticleGroups(void* partSysPtr, int 
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     system->JoinParticleGroups(groupAIdx, groupBIdx);
 }
-extern "C" __declspec(dllexport)  void ApplyForceToParticleGroup(void* groupPointer, b2Vec3 force) {
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-    group->ApplyForce(force);
+extern "C" __declspec(dllexport)  void ApplyForceToParticleGroup(void* partSysPtr, void* groupPointer, b2Vec3 force) {
+	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
+	system->ApplyForce(*group, force);
 }
-extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticleGroup(void* groupPointer, float forceX, float forceY) {
-    b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
+extern "C" __declspec(dllexport)  void ApplyLinearImpulseToParticleGroup(void* partSysPtr, void* groupPointer, float forceX, float forceY) {
+	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
     b2Vec2 impulse = b2Vec2(forceX, forceY);
-    group->ApplyLinearImpulse(impulse);
+	system->ApplyLinearImpulse(*group, impulse);
 }
-extern "C" __declspec(dllexport)  void DeleteParticlesInGroup(void* particleGroupPointer) {
-    b2ParticleGroup* pGroup = static_cast<b2ParticleGroup*>(particleGroupPointer);
-    pGroup->DestroyParticles();
+extern "C" __declspec(dllexport)  void DeleteParticlesInGroup(void* partSysPtr, void* particleGroupPointer) {
+	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
+	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(particleGroupPointer);
+	system->DestroyParticlesInGroup(*group);
 }
 
 #pragma endregion
