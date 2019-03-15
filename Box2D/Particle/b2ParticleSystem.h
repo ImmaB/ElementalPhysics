@@ -100,8 +100,6 @@ public:
 
 struct b2PartBodyContact
 {
-	/// Index of the particle making contact.
-	int32 idx;
 	/// The body making contact.
 	b2Body* body;
 	/// The specific fixture making contact
@@ -770,6 +768,7 @@ public:
 
 	/// Distribute force between 2 Particles, using their mass
 	void DistributeForce(int32 a, int32 b, const b2Vec2& f);
+	void DistributeForce(int32 a, int32 b, const b2Vec3& f);
 	void DistributeForceDamp(int32 a, int32 b, const b2Vec2& f);
 	
 	/// Apply a force to the center of a particle.
@@ -1092,6 +1091,9 @@ private:
 	void NotifyBodyContactListenerPostContact(FixtureParticleSet& fixtureSet);
 	void UpdateBodyContacts();
 
+	void AddBodyContactResults(ampArrayView<float32> dst, const ampArray<float32> bodyRes);
+	void AddBodyContactResults(ampArrayView<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
+
 	void SolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
@@ -1102,6 +1104,7 @@ private:
 	void ComputeWeight();
 	void AmpComputeWeight();
 	void SolvePressure(const b2TimeStep& step);
+	void AmpSolvePressure(const b2TimeStep& step);
 	void SolveDamping(const b2TimeStep& step);
 	void SolveSlowDown(const b2TimeStep& step);
 	void SolveRigidDamping();
@@ -1272,9 +1275,10 @@ private:
 
 	uint32 m_tileCnt;
 	uint32 m_contactTileCnt;
-	Concurrency::extent<1> m_countExtent;
-	Concurrency::extent<1> m_contactCntExtent;
-	Concurrency::extent<1> m_contactTileCntExtent;
+	ampExtent m_countExtent;
+	ampExtent m_contactCntExtent;
+	ampExtent m_contactTileCntExtent;
+	ampExtent m_bodyContactCntExtent;
 
 	int32 m_count;
 	int32 m_particleBufferSize;
@@ -1296,8 +1300,8 @@ private:
 	/// Maps particle indicies to  handles.
 	bool hasHandleIndexBuffer;
 
-	Concurrency::array<float32> m_tmpStgFloatBuffer;
-	Concurrency::array<b2Vec3> m_tmpStgVec3Buffer;
+	ampArray<float32> m_stgBodyContactFloats;
+	ampArray<b2Vec3> m_stgBodyContactVec3s;
 
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
@@ -1384,13 +1388,14 @@ private:
 	/// m_accumulationBuffer is used in many functions as a temporary buffer
 	/// for scalar values.
 	vector<float32> m_accumulationBuf;
-	ampArray<float32> m_ampAccumulationBuf;
+	ampArray<float32> m_ampAccumulations;
 	/// When any particles have the flag b2_tensileParticle,
 	/// m_accumulation2Buffer is first allocated and used in SolveTensile()
 	/// as a temporary buffer for vector values.  It will be reallocated on
 	/// subsequent CreateParticle() calls.
 	bool hasAccumulation2Buf;
-	vector<b2Vec2> m_accumulation2Buf;
+	vector<b2Vec3> m_accumulation3Buf;
+	ampArray<b2Vec3> m_ampAccumulationVec3s;
 	/// When any particle groups have the flag b2_solidParticleGroup,
 	/// m_depthBuffer is first allocated and populated in ComputeDepth() and
 	/// used in SolveSolid(). It will be reallocated on subsequent
@@ -1422,7 +1427,9 @@ private:
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
-	Concurrency::array<b2ParticleContact> m_ampContacts;
+	vector<int32> m_bodyContactPartIdxs;
+	ampArray<int32> m_ampBodyContactPartIdxs;
+	ampArray<b2ParticleContact> m_ampContacts;
 	// Concurrency::array<b2PartBodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
@@ -1885,6 +1892,11 @@ inline void b2ParticleSystem::ParticleApplyLinearImpulse(int32 index,
 }
 
 inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const b2Vec2& f) 
+{
+	m_velocityBuffer[a] -= m_partMatMassBuf[m_partMatIdxBuffer[b]] * f;
+	m_velocityBuffer[b] += m_partMatMassBuf[m_partMatIdxBuffer[a]] * f;
+}
+inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const b2Vec3& f)
 {
 	m_velocityBuffer[a] -= m_partMatMassBuf[m_partMatIdxBuffer[b]] * f;
 	m_velocityBuffer[b] += m_partMatMassBuf[m_partMatIdxBuffer[a]] * f;

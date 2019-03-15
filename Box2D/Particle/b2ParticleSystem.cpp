@@ -72,7 +72,7 @@ public:
 		: m_system(system), m_lastIndex(-1), m_currentContacts(0),
 		  m_discarded(discarded) {}
 
-	bool operator()(const b2PartBodyContact& contact)
+	/*bool operator()(const b2PartBodyContact& contact)
 	{
 		// This implements the selection criteria described in
 		// RemoveSpuriousBodyContacts().
@@ -84,26 +84,26 @@ public:
 		// intersects the fixture generating the contact.
 		
 		int32 particleIdx = contact.idx;
-
+	
 		if (particleIdx != m_lastIndex)
 		{
 			m_currentContacts = 0;
 			m_lastIndex = particleIdx;
 		}
-
+	
 		if (m_currentContacts++ > k_maxContactsPerPoint)
 		{
 			++(*m_discarded);
 			return true;
 		}
-
+	
 		// Project along inverse normal (as returned in the contact) to get the
 		// point to check.
 		b2Vec2 n = contact.normal;
 		// weight is 1-(inv(diameter) * distance)
 		n *= m_system->m_particleDiameter * (1 - contact.weight);
 		b2Vec2 pos = n + (m_system->m_positionBuffer[particleIdx]);
-
+	
 		// pos is now a point projected back along the contact normal to the
 		// contact distance. If the surface makes sense for a contact, pos will
 		// now lie on or in the fixture generating
@@ -125,9 +125,9 @@ public:
 			++(*m_discarded);
 			return true;
 		}
-
+	
 		return false;
-	}
+	}*/
 private:
 	// Max number of contacts processed per particle, from nearest to farthest.
 	// This must be at least 2 for correctness with concave shapes; 3 was
@@ -318,7 +318,8 @@ public:
 
 	// Initialize from a set of particle / body contacts for particles
 	// that have the b2_fixtureContactListenerParticle flag set.
-	void Initialize(const vector<b2PartBodyContact>& bodyContactIdxs,
+	void Initialize(const vector<b2PartBodyContact>& bodyContacts,
+					const vector<int32>& bodyContactIdxs,
 					const int32 numBodyContacts,
 					const uint32 * const particleFlagsBuffer);
 
@@ -404,8 +405,10 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_ampContacts(TILE_SIZE, m_gpuAccelView),
 	m_ampGroups(TILE_SIZE, m_gpuAccelView),
 
-	m_tmpStgFloatBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	m_tmpStgVec3Buffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	m_stgBodyContactFloats(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	m_stgBodyContactVec3s(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+
+	m_ampBodyContactPartIdxs(TILE_SIZE, m_gpuAccelView),
 
 	// Particles
 	m_ampHealths(TILE_SIZE, m_gpuAccelView),
@@ -414,7 +417,8 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_ampStaticPressures(TILE_SIZE, m_gpuAccelView),
 	m_ampFlags(TILE_SIZE, m_gpuAccelView),
 	m_ampDepths(TILE_SIZE, m_gpuAccelView),
-	m_ampAccumulationBuf(TILE_SIZE, m_gpuAccelView),
+	m_ampAccumulations(TILE_SIZE, m_gpuAccelView),
+	m_ampAccumulationVec3s(TILE_SIZE, m_gpuAccelView),
 	m_ampPositions(TILE_SIZE, m_gpuAccelView),
 	m_ampVelocities(TILE_SIZE, m_gpuAccelView),
 	m_ampForces(TILE_SIZE, m_gpuAccelView),
@@ -576,6 +580,16 @@ inline void atomic_sub(float32& dest, const float32 sub) restrict(amp)
 	float32 newValue = expected - sub;
 	while (!Concurrency::atomic_compare_exchange((uint32*)& dest, (uint32*)& expected, reinterpret_cast<uint32&>(newValue)))
 		newValue = expected - sub;
+}
+inline void atomic_add(b2Vec2& dest, const b2Vec2& add) restrict(amp)
+{
+	atomic_add(dest.x, add.x);
+	atomic_add(dest.y, add.y);
+}
+inline void atomic_sub(b2Vec2& dest, const b2Vec2& sub) restrict(amp)
+{
+	atomic_sub(dest.x, sub.x);
+	atomic_sub(dest.y, sub.y);
 }
 inline void atomic_add(b2Vec3& dest, const b2Vec3& add) restrict(amp)
 {
@@ -757,14 +771,10 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	AmpResizeArray(m_ampVelocities, size, m_count);
 	AmpResizeArray(m_ampForces, size, m_count);
 
-	AmpResizeStagingArray(m_tmpStgFloatBuffer, size);
-	AmpResizeStagingArray(m_tmpStgVec3Buffer, size);
-
-
 	m_weightBuffer.resize(size);
 	m_staticPressureBuf.resize(size);
 	m_accumulationBuf.resize(size);
-	m_accumulation2Buf.resize(size);
+	m_accumulation3Buf.resize(size);
 	m_depthBuffer.resize(size);
 	m_colorBuffer.resize(size);
 	m_partGroupIdxBuffer.resize(size);
@@ -772,7 +782,8 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 
 	AmpResizeArray(m_ampWeights, size);
 	AmpResizeArray(m_ampStaticPressures, size, m_count);
-	AmpResizeArray(m_ampAccumulationBuf, size);
+	AmpResizeArray(m_ampAccumulations, size);
+	AmpResizeArray(m_ampAccumulationVec3s, size);
 	AmpResizeArray(m_ampMatIdxs, size, m_count);
 	AmpResizeArray(m_ampGroupIdxs, size, m_count);
 	AmpResizeArray(m_ampDepths, size);
@@ -826,6 +837,10 @@ void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
 	if (size < b2_minGroupBufferCapacity) size = b2_minParticleBufferCapacity;
 	m_bodyContactBuf.resize(size);
+	m_bodyContactPartIdxs.resize(size);
+	AmpResizeArray(m_ampBodyContactPartIdxs, size);
+	AmpResizeStagingArray(m_stgBodyContactFloats, size);
+	AmpResizeStagingArray(m_stgBodyContactVec3s, size);
 	m_bodyContactBufferSize = size;
 }
 
@@ -2116,7 +2131,7 @@ void b2ParticleSystem::ComputeWeight()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		float32 w = contact.weight;
 		m_weightBuffer[a] += w;
 	}
@@ -2152,21 +2167,14 @@ void b2ParticleSystem::AmpComputeWeight()
 			atomic_add(weights[b], w);
 		});
 	}
-	std::fill(m_tmpStgFloatBuffer.data(), m_tmpStgFloatBuffer.data() + cnt, 0);
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		float32 w = contact.weight;
-		m_tmpStgFloatBuffer[a] += w;
+		m_stgBodyContactFloats[k] = w;
 	}
-	ampArrayView<const float32> bodyWeights(m_tmpStgFloatBuffer.section(0, cnt));
-	Concurrency::parallel_for_each(m_countExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
-	{
-		const uint32 i = tIdx.global[0];
-		if (i >= cnt) return;
-		weights[i] += bodyWeights[i];
-	});
+	AddBodyContactResults(weights, m_stgBodyContactFloats);
 }
 
 void b2ParticleSystem::ComputeDepth()
@@ -2344,7 +2352,7 @@ void b2ParticleSystem::AmpComputeDepth()
 	vector<uint32> groupIdxsToUpdate(m_groupCount);
 	int32 groupsToUpdateCount = 0;
 
-	ampArrayView<float32> accumulations(m_ampAccumulationBuf.section(0, m_count));
+	ampArrayView<float32> accumulations(m_ampAccumulations.section(0, m_count));
 	for (int k = 0; k < m_groupCount; k++)
 	{
 		b2ParticleGroup& group = m_groupBuffer[k];
@@ -2992,6 +3000,7 @@ static int32 FindItemIndexInFixedSet(const TypedFixedSetAllocator<T>& set,
 // that have the b2_fixtureContactListenerParticle flag set.
 void FixtureParticleSet::Initialize(
 	const vector<b2PartBodyContact>& bodyContacts,
+	const vector<int32>& bodyContactIdxs,
 	const int32 numBodyContacts,
 	const uint32 * const particleFlagsBuffer)
 {
@@ -3004,14 +3013,15 @@ void FixtureParticleSet::Initialize(
 		{
 			FixtureParticle* const fixtureParticle = &set[i];
 			const b2PartBodyContact& bodyContact = bodyContacts[i];
-			if (bodyContact.idx == b2_invalidIndex ||
-				!(particleFlagsBuffer[bodyContact.idx] &
+			const int32 partIdx = bodyContactIdxs[i];
+			if (partIdx == b2_invalidIndex ||
+				!(particleFlagsBuffer[partIdx] &
 				  b2_fixtureContactListenerParticle))
 			{
 				continue;
 			}
 			fixtureParticle->first = bodyContact.fixture;
-			fixtureParticle->second = bodyContact.idx;
+			fixtureParticle->second = partIdx;
 			insertedContacts++;
 		}
 		SetCount(insertedContacts);
@@ -3135,6 +3145,7 @@ void b2ParticleSystem::NotifyBodyContactListenerPreContact(
 		return;
 
 	fixtureSet->Initialize(m_bodyContactBuf,
+						   m_bodyContactPartIdxs,
 						   m_bodyContactCount,
 						   GetFlagsBuffer());
 }
@@ -3156,7 +3167,7 @@ void b2ParticleSystem::NotifyBodyContactListenerPostContact(
 		const b2PartBodyContact& contact = m_bodyContactBuf[i];
 		FixtureParticle fixtureParticleToFind;
 		fixtureParticleToFind.first = contact.fixture;
-		fixtureParticleToFind.second = contact.idx;
+		fixtureParticleToFind.second = m_bodyContactPartIdxs[i];
 		const int32 index = fixtureSet.Find(fixtureParticleToFind);
 		if (index >= 0)
 		{
@@ -3244,8 +3255,8 @@ void b2ParticleSystem::UpdateBodyContacts()
 					if (bodyContactCount+1 >= m_system->m_bodyContactBufferSize)
 						m_system->ResizeBodyContactBuffers(bodyContactCount * 2);
 					b2PartBodyContact& contact = m_system->m_bodyContactBuf[bodyContactCount];
+					m_system->m_bodyContactPartIdxs[bodyContactCount] = a;
 					bodyContactCount++;
-					contact.idx = a;
 					contact.body = b;
 					contact.fixture = fixture;
 					contact.weight = 1 - d * m_system->m_inverseDiameter;
@@ -3323,6 +3334,32 @@ void b2ParticleSystem::RemoveSpuriousBodyContacts()
 	return m_bodyContactIdxBuffer[lhsIdx] < m_bodyContactIdxBuffer[lhsIdx];
 }*/
 
+void b2ParticleSystem::AddBodyContactResults(ampArrayView<float32> dst, const ampArray<float32> bodyRes)
+{
+	const uint32 cnt = m_bodyContactCount;
+	if (!cnt) return;
+	ampArrayView<const int32> bodyContactPartIdxs(m_ampBodyContactPartIdxs.section(0, cnt));
+	ampArrayView<const float32> bodyResView(bodyRes.section(0, cnt));
+	Concurrency::parallel_for_each(m_bodyContactCntExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+	{
+		const uint32 i = tIdx.global[0];
+		if (i >= cnt) return;
+		atomic_add(dst[bodyContactPartIdxs[i]], bodyResView[i]);
+	});
+}
+void b2ParticleSystem::AddBodyContactResults(ampArrayView<b2Vec3> dst, const ampArray<b2Vec3> bodyRes)
+{
+	const uint32 cnt = m_bodyContactCount;
+	if (!cnt) return;
+	ampArrayView<const int32> bodyContactPartIdxs(m_ampBodyContactPartIdxs.section(0, cnt));
+	ampArrayView<const b2Vec3> bodyResView(bodyRes.section(0, cnt));
+	Concurrency::parallel_for_each(m_bodyContactCntExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+	{
+		const uint32 i = tIdx.global[0];
+		if (i >= cnt) return;
+		atomic_add(dst[bodyContactPartIdxs[i]], bodyResView[i]);
+	});
+}
 
 void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 {
@@ -3579,6 +3616,8 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 		if (m_contactCount)
 			Concurrency::copy(m_ampContacts.section(0, m_contactCount), m_partContactBuf.data());
 		UpdateBodyContacts();
+		m_bodyContactCntExtent = ampExtent(((m_bodyContactCount + TILE_SIZE - 1) / TILE_SIZE) * TILE_SIZE);
+		AmpCopyVecToAmpArr(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
 		//concurrency::parallel_invoke(
 		//	[&] { AmpFindContacts(exceptZombie); },
 		//	[&] { UpdateBodyContacts(); }
@@ -3588,16 +3627,6 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 		m_contactTileCnt = (m_contactCount + TILE_SIZE - 1) / TILE_SIZE;
 		m_contactCntExtent = ampExtent(m_contactTileCnt * TILE_SIZE);
 		m_contactTileCntExtent = ampExtent(m_contactTileCnt);
-		
-		// Copy vectors to GPU
-		AmpCopyVecToAmpArr(m_heatBuffer, m_ampHeats, m_count);
-		AmpCopyVecToAmpArr(m_flagsBuffer, m_ampFlags, m_count);
-		AmpCopyVecToAmpArr(m_positionBuffer, m_ampPositions, m_count);
-		AmpCopyVecToAmpArr(m_velocityBuffer, m_ampVelocities, m_count);
-		AmpCopyVecToAmpArr(m_forceBuffer, m_ampForces, m_count);
-		AmpCopyVecToAmpArr(m_partMatIdxBuffer, m_ampMatIdxs, m_count);
-		AmpCopyVecToAmpArr(m_partGroupIdxBuffer, m_ampGroupIdxs, m_count);
-		
 	}
 	else
 	{
@@ -3614,6 +3643,18 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 		return;
 	if (m_paused)
 		return;
+
+	if (m_accelerate)
+	{
+		// Copy vectors to GPU
+		AmpCopyVecToAmpArr(m_heatBuffer, m_ampHeats, m_count);
+		AmpCopyVecToAmpArr(m_flagsBuffer, m_ampFlags, m_count);
+		AmpCopyVecToAmpArr(m_positionBuffer, m_ampPositions, m_count);
+		AmpCopyVecToAmpArr(m_velocityBuffer, m_ampVelocities, m_count);
+		AmpCopyVecToAmpArr(m_forceBuffer, m_ampForces, m_count);
+		AmpCopyVecToAmpArr(m_partMatIdxBuffer, m_ampMatIdxs, m_count);
+		AmpCopyVecToAmpArr(m_partGroupIdxBuffer, m_ampGroupIdxs, m_count);
+	}
 
 	m_iterationIndex = iteration;
 	++m_timestamp;
@@ -3659,7 +3700,6 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 		}
 		else
 			SolveForce(subStep);
-
 	}
 	if (m_allParticleFlags & b2_viscousParticle)
 	{
@@ -3708,22 +3748,27 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	else
 		SolveGravity(subStep);
 
-	if (m_accelerate)
-		copy(m_ampVelocities.section(0, m_count), m_velocityBuffer.data());
 
 	if (m_allParticleFlags & b2_staticPressureParticle)
 	{
 		if (m_accelerate)
 		{
 			AmpSolveStaticPressure(subStep);
-			copy(m_ampAccumulationBuf.section(0, m_count), m_accumulationBuf.data());
-			copy(m_ampStaticPressures.section(0, m_count), m_staticPressureBuf.data());
+			// copy(m_ampAccumulations.section(0, m_count), m_accumulationBuf.data());
+			// copy(m_ampStaticPressures.section(0, m_count), m_staticPressureBuf.data());
 		}
 		else
 			SolveStaticPressure(subStep);
 	}
 
-	SolvePressure(subStep);
+	if (m_accelerate)
+		AmpSolvePressure(subStep);
+	else
+		SolvePressure(subStep);
+
+	if (m_accelerate)
+		copy(m_ampVelocities.section(0, m_count), m_velocityBuffer.data());
+
 	SolveDamping(subStep);
 	SolveSlowDown(subStep);
 	if (m_allParticleFlags & k_extraDampingFlags)
@@ -3993,7 +4038,7 @@ void b2ParticleSystem::AmpSolveStaticPressure(const b2TimeStep& step)
 
 	const uint32 filterFlag = b2_staticPressureParticle;
 	ampArrayView<float32> staticPressures(m_ampStaticPressures.section(0, cnt));
-	ampArrayView<float32> accumulations(m_ampAccumulationBuf.section(0, cnt));
+	ampArrayView<float32> accumulations(m_ampAccumulations.section(0, cnt));
 	ampArrayView<const float32> weights(m_ampWeights.section(0, cnt));
 	ampArrayView<const uint32> flags(m_ampFlags.section(0, cnt));
 	ampArrayView<const b2ParticleContact> contacts(m_ampContacts.section(0, contactCnt));
@@ -4073,7 +4118,7 @@ void b2ParticleSystem::SolvePressure(const b2TimeStep& step)
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		float32 w = contact.weight;
 		float32 m = contact.mass;
@@ -4098,6 +4143,90 @@ void b2ParticleSystem::SolvePressure(const b2TimeStep& step)
 		DistributeForce(a, b, f);
 	}
 }
+void b2ParticleSystem::AmpSolvePressure(const b2TimeStep& step)
+{
+	const uint32 cnt = m_count;
+	const uint32 contactCnt = m_contactCount;
+	const float32 minWeight = b2_minParticleWeight;
+
+	// calculates pressure as a linear function of density
+	const float32 criticalPressure = GetCriticalPressure(step);
+	const float32 pressurePerWeight = m_def.pressureStrength * criticalPressure;
+	const float32 maxPressure = b2_maxParticlePressure * criticalPressure;
+	ampArrayView<const uint32> flags(m_ampFlags.section(0, m_count));
+	ampArrayView<const float32> weights(m_ampWeights.section(0, m_count));
+	ampArrayView<float32> accumulations(m_ampAccumulations.section(0, m_count));
+	Concurrency::parallel_for_each(m_countExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+	{
+		const uint32 i = tIdx.global[0];
+		if (i >= cnt) return;
+		const float32 w = weights[i];
+		const float32 h = pressurePerWeight * b2Max(0.0f, w - minWeight);
+		accumulations[i] = b2Min(h, maxPressure);
+	});
+	// ignores particles which have their own repulsive force
+	if (m_allParticleFlags & k_noPressureFlags)
+	{
+		const uint32 filterFlag = k_noPressureFlags;
+		Concurrency::parallel_for_each(m_countExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+		{
+			const uint32 i = tIdx.global[0];
+			if (i >= cnt) return;
+			if (!(flags[i] & filterFlag)) return;
+			accumulations[i] = 0;
+		});
+	}
+	// static pressure
+	if (m_allParticleFlags & b2_staticPressureParticle)
+	{
+		const uint32 filterFlag = b2_staticPressureParticle;
+		ampArrayView<const float32> staticPressures(m_ampStaticPressures.section(0, m_count));
+		Concurrency::parallel_for_each(m_countExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+		{
+			const uint32 i = tIdx.global[0];
+			if (i >= cnt) return;
+			if (!(flags[i] & filterFlag)) return;
+			accumulations[i] += staticPressures[0];
+		});
+	}
+	// applies pressure between each particles in contact
+	const float32 velocityPerPressure = step.dt / (m_def.density * m_particleDiameter);
+	ampArrayView<const b2ParticleContact> contacts(m_ampContacts.section(0, m_contactCount));
+	ampArrayView<b2Vec3> velocities(m_ampVelocities.section(0, m_count));
+	ampArrayView<const float32> matMasses(m_ampMatMasses.section(0, m_partMatCount));
+	ampArrayView<const int32> matIdxs(m_ampMatIdxs.section(0, m_count));
+	Concurrency::parallel_for_each(m_contactCntExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
+	{
+		const uint32 i = tIdx.global[0];
+		if (i >= contactCnt) return;
+		const b2ParticleContact& contact = contacts[i];
+		const int32 a = contact.idxA;
+		const int32 b = contact.idxB;
+		const float32 w = contact.weight;
+		const float32 m = contact.mass;
+		const b2Vec3 n = contact.normal;
+		const float32 h = accumulations[a] + accumulations[b];
+		const b2Vec3 f = velocityPerPressure * w * m * h * n;
+		atomic_sub(velocities[a], matMasses[matIdxs[b]] * f);
+		atomic_add(velocities[b], matMasses[matIdxs[a]] * f);
+	});
+	for (int32 k = 0; k < m_bodyContactCount; k++)
+	{
+		const b2PartBodyContact& contact = m_bodyContactBuf[k];
+		int32 a = m_bodyContactPartIdxs[k];
+		b2Body* b = contact.body;
+		float32 w = contact.weight;
+		float32 m = contact.mass;
+		b2Vec2 n = contact.normal;
+		b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+		float32 h = accumulations[a] + pressurePerWeight * w;
+		b2Vec2 f = velocityPerPressure * w * m * h * n;
+		float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+		m_stgBodyContactVec3s[k] = -(invMass * f);
+		b->ApplyLinearImpulse(f, p, true);
+	}
+	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
+}
 
 void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 {
@@ -4107,7 +4236,7 @@ void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		float32 w = contact.weight;
 		float32 m = contact.mass;
@@ -4244,7 +4373,7 @@ void b2ParticleSystem::SolveRigidDamping()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		int32 aGroupIdx = m_partGroupIdxBuffer[a];
 		b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
 		if (IsRigidGroup(aGroup))
@@ -4340,7 +4469,7 @@ void b2ParticleSystem::SolveExtraDamping()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		if (m_flagsBuffer[a] & k_extraDampingFlags)
 		{
 			b2Body* b = contact.body;
@@ -4480,10 +4609,10 @@ void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
 
 void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 {
-	b2Assert(!m_accumulation2Buffer.empty());
+	b2Assert(!m_accumulation3Buffer.empty());
 	for (int32 i = 0; i < m_count; i++)
 	{
-		m_accumulation2Buf[i] = b2Vec2_zero;
+		m_accumulation3Buf[i] = b2Vec3_zero;
 	}
 	for (int32 k = 0; k < m_contactCount; k++)
 	{
@@ -4493,10 +4622,10 @@ void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 			int32 a = contact.idxA;
 			int32 b = contact.idxB;
 			float32 w = contact.weight;
-			b2Vec2 n = contact.normal;
-			b2Vec2 weightedNormal = (1 - w) * w * n;
-			m_accumulation2Buf[a] -= weightedNormal;
-			m_accumulation2Buf[b] += weightedNormal;
+			b2Vec3 n = contact.normal;
+			b2Vec3 weightedNormal = (1 - w) * w * n;
+			m_accumulation3Buf[a] -= weightedNormal;
+			m_accumulation3Buf[b] += weightedNormal;
 		}
 	}
 	float32 criticalVelocity = GetCriticalVelocity(step);
@@ -4514,13 +4643,14 @@ void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
 			int32 b = contact.idxB;
 			float32 w = contact.weight;
 			float32 m = contact.mass;
-			b2Vec2 n = contact.normal;
+			b2Vec3 n = contact.normal;
 			float32 h = m_weightBuffer[a] + m_weightBuffer[b];
-			b2Vec2 s = m_accumulation2Buf[b] - m_accumulation2Buf[a];
+			b2Vec3 s = m_accumulation3Buf[b] - m_accumulation3Buf[a];
 			float32 fn = b2Min(
 				pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
 				maxVelocityVariation) * w;
-			b2Vec2 f = fn * n * m;
+			b2Vec3 f = fn * n * m;
+			f.z = 0;
 			DistributeForce(a, b, f);
 		}
 	}
@@ -4530,7 +4660,7 @@ void b2ParticleSystem::AmpSolveTensile(const b2TimeStep& step)
 	const uint32 contactCnt = m_contactCount;
 	if (!contactCnt) return;
 	const uint32 filterFlag = b2_tensileParticle;
-	ampArrayView<b2Vec3> accumulations(m_count);
+	ampArrayView<b2Vec3> accumulations(m_ampAccumulationVec3s.section(0, m_count));
 	AmpFill(accumulations, b2Vec3_zero);
 	ampArrayView<const b2ParticleContact> contacts(m_ampContacts.section(0, m_contactCount));
 	Concurrency::parallel_for_each(m_contactCntExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
@@ -4549,10 +4679,8 @@ void b2ParticleSystem::AmpSolveTensile(const b2TimeStep& step)
 	});
 
 	const float32 criticalVelocity = GetCriticalVelocity(step);
-	const float32 pressureStrength = m_def.surfaceTensionPressureStrength
-		* criticalVelocity;
-	const float32 normalStrength = m_def.surfaceTensionNormalStrength
-		* criticalVelocity;
+	const float32 pressureStrength = m_def.surfaceTensionPressureStrength * criticalVelocity;
+	const float32 normalStrength = m_def.surfaceTensionNormalStrength * criticalVelocity;
 	const float32 maxVelocityVariation = b2_maxParticleForce * criticalVelocity;
 
 	ampArrayView<const float32> weights(m_ampWeights.section(0, m_count));
@@ -4563,7 +4691,7 @@ void b2ParticleSystem::AmpSolveTensile(const b2TimeStep& step)
 	{
 		const uint32 i = tIdx.global[0];
 		if (i >= contactCnt) return;
-		const b2ParticleContact & contact = contacts[i];
+		const b2ParticleContact& contact = contacts[i];
 		if (!(contact.flags & filterFlag)) return;
 		const int32 a = contact.idxA;
 		const int32 b = contact.idxB;
@@ -4575,7 +4703,8 @@ void b2ParticleSystem::AmpSolveTensile(const b2TimeStep& step)
 		const float32 fn = b2Min(
 			pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
 			maxVelocityVariation) * w;
-		const b2Vec3 f = fn * n * m;
+		b2Vec3 f = fn * n * m;
+		f.z = 0;
 		atomic_sub(velocities[a], matMasses[matIdxs[b]] * f);
 		atomic_add(velocities[b], matMasses[matIdxs[a]] * f);
 	});
@@ -4587,7 +4716,7 @@ void b2ParticleSystem::SolveViscous()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		if (m_flagsBuffer[a] & b2_viscousParticle)
 		{
 			b2Body* b = contact.body;
@@ -4646,11 +4775,10 @@ void b2ParticleSystem::AmpSolveViscous()
 			atomic_sub(velocities[b], matMasses[matIdxs[a]] * f);
 		});
 	}
-	std::fill(m_tmpStgVec3Buffer.data(), m_tmpStgVec3Buffer.data() + m_count, b2Vec3_zero);
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		if (m_flagsBuffer[a] & filterFlag)
 		{
 			b2Body* b = contact.body;
@@ -4658,20 +4786,16 @@ void b2ParticleSystem::AmpSolveViscous()
 			float32 m = contact.mass;
 			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
 			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(m_velocityBuffer[a]);
+				b2Vec2(velocities[a]);
 			b2Vec2 f = viscousStrength * m * w * v;
 			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			m_tmpStgVec3Buffer[a] += invMass * f;
+			m_stgBodyContactVec3s[k] = invMass * f;
 			b->ApplyLinearImpulse(-f, p, true);
 		}
+		else
+			m_stgBodyContactVec3s[k] = b2Vec3_zero;
 	}
-	ampArrayView<const b2Vec3> bodyVelocities(m_tmpStgVec3Buffer);
-	Concurrency::parallel_for_each(m_countExtent.tile<TILE_SIZE>(), [=](ampTiledIndex tIdx) restrict(amp)
-	{
-		const uint32 i = tIdx.global[0];
-		if (i >= cnt) return;
-		velocities[i] += bodyVelocities[i];
-	});
+	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
 }
 
 void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
@@ -4948,7 +5072,7 @@ void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		int32 matIdxP = m_partMatIdxBuffer[a];
 		b2BodyMaterial* matB = b->m_material;
@@ -5044,7 +5168,7 @@ void b2ParticleSystem::SolveIgnite()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		if (m_flagsBuffer[a] & b2_flameParticle
 			&& b->GetFlags() & b2_inflammableBody
@@ -5085,7 +5209,7 @@ void b2ParticleSystem::SolveExtinguish()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		int32 partMatIdx = m_partMatIdxBuffer[a];
 		if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
@@ -5122,7 +5246,7 @@ void b2ParticleSystem::SolveWater()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.idx;
+		int32 a = m_bodyContactPartIdxs[k];
 		b2Body* b = contact.body;
 		if (m_flagsBuffer[a] & b2_extinguishingMaterial
 			&& b->GetFlags() & b2_burningBody
@@ -5464,9 +5588,9 @@ void b2ParticleSystem::SolveZombie()
 		{
 			return contact.idxA < 0 || contact.idxB < 0;
 		}
-		static bool IsBodyContactInvalid(const b2PartBodyContact& contact)
+		static bool IsBodyContactInvalid(const int32& partIdx)
 		{
-			return contact.idx < 0;
+			return partIdx < 0;
 		}
 		static bool IsPairInvalid(const b2ParticlePair& pair)
 		{
@@ -5498,10 +5622,10 @@ void b2ParticleSystem::SolveZombie()
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		b2PartBodyContact& contact = m_bodyContactBuf[k];
-		contact.idx = newIndices[contact.idx];
+		int32& partIdx = m_bodyContactPartIdxs[k];
+		partIdx = newIndices[partIdx];
 	}
-	RemoveFromVectorIf(m_bodyContactBuf, m_bodyContactCount, Test::IsBodyContactInvalid, true);
+	RemoveFromVectorsIf(m_bodyContactPartIdxs, m_bodyContactBuf, m_bodyContactCount, Test::IsBodyContactInvalid, true);
 
 	// update pairs
 	for (int32 k = 0; k < m_pairCount; k++)
@@ -5781,8 +5905,8 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		b2PartBodyContact& contact = m_bodyContactBuf[k];
-		contact.idx = newIndices[contact.idx];
+		int32& partIdx = m_bodyContactPartIdxs[k];
+		partIdx = newIndices[partIdx];
 	}
 
 	// update pairs
@@ -5965,7 +6089,7 @@ void b2ParticleSystem::SetParticleFlags(int32 index, uint32 newFlags)
 		// If any flags were added
 		if (newFlags & b2_tensileParticle)
 		{
-			RequestBuffer(m_accumulation2Buf, hasAccumulation2Buf);
+			RequestBuffer(m_accumulation3Buf, hasAccumulation2Buf);
 
 		}
 		if (newFlags & b2_colorMixingParticle)
@@ -5985,7 +6109,7 @@ void b2ParticleSystem::AddParticleFlags(int32 index, uint32 newFlags)
 		m_needsUpdateAllParticleFlags = true;
 		if (newFlags & b2_tensileParticle)
 		{
-			RequestBuffer(m_accumulation2Buf, hasAccumulation2Buf);
+			RequestBuffer(m_accumulation3Buf, hasAccumulation2Buf);
 		}
 		if (newFlags & b2_colorMixingParticle)
 		{
