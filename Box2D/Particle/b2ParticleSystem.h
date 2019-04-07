@@ -17,9 +17,10 @@
 */
 #pragma once
 
-#include <Box2D/Amp/ampFunctions.h>
+#include <Box2D/Amp/radixSort.h>
 #include <Box2D/Common/b2SlabAllocator.h>
 #include <Box2D/Common/b2GrowableBuffer.h>
+#include <Box2D/Common/b2GlobalVariables.h>
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
@@ -30,6 +31,10 @@
 #include <Windows.h>
 #include <chrono>
 #include <amp.h>
+#include <d3d11.h>
+// #include <d3d11_1.h>
+// #include <d3d12.h>
+#include <wrl/client.h>
 
 #define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
 #define MAX_CONTACTS_PER_PARTICLE 8
@@ -145,6 +150,20 @@ struct b2ParticleTriad
 	float32 ka, kb, kc, s;
 };
 
+struct AmpInsideBoundsEnumerator
+{
+	/// Construct an enumerator with bounds of tags and a range of proxies.
+	AmpInsideBoundsEnumerator(
+		uint32 lower, uint32 upper,
+		int32 first, int32 last) restrict(amp);
+	/// The lower and upper bound of x component in the tag.
+	uint32 m_xLower, m_xUpper;
+	/// The lower and upper bound of y component in the tag.
+	uint32 m_yLower, m_yUpper;
+	/// The range of proxies.
+	int32 m_first;
+	int32 m_last;
+};
 
 /// Used for detecting particle contacts
 struct Proxy
@@ -163,21 +182,18 @@ struct Proxy
 	{
 		return a.tag < b;
 	}
-};
-
-struct ProxyKeyIndex {
-	unsigned int k;
-	int i;
-	ProxyKeyIndex() restrict(cpu, amp) { }
-	ProxyKeyIndex(Proxy key, int index) restrict(cpu, amp)
-		: k(key.tag), i(index) { }
-	bool operator<(const ProxyKeyIndex& other) restrict(cpu, amp) {
-		return k < other.k;
+	friend inline bool operator<(const Proxy& a, const Proxy& b) restrict(amp)
+	{
+		return a.tag < b.tag;
 	}
-};
-
-template<> struct amp::key_index_type<Proxy> {
-	typedef ProxyKeyIndex type;
+	friend inline bool operator<(uint32 a, const Proxy& b) restrict(amp)
+	{
+		return a < b.tag;
+	}
+	friend inline bool operator<(const Proxy& a, uint32 b) restrict(amp)
+	{
+		return a.tag < b;
+	}
 };
 
 struct b2ParticleSystemDef
@@ -322,9 +338,8 @@ struct b2ParticleMaterialDef
 class b2ParticleSystem
 {
 private:
-	bool m_accelerate;
 	b2TimeStep m_step;
-	b2TimeStep subStep;
+	b2TimeStep m_subStep;
 
 	HANDLE findBodyContactsThread;
 
@@ -337,6 +352,7 @@ private:
 
 
 public:
+	bool m_accelerate;
 	int MyIndex;
 	void SetIndex(int ind);
 
@@ -425,6 +441,8 @@ public:
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
 	int32 CreateParticleGroup(const b2ParticleGroupDef& def);
+	int32 AmpCreateParticleGroup(const b2ParticleGroupDef& def);
+	void CopyParticleRangeToGpu(const uint32 start, const uint32 size);
 
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
@@ -540,6 +558,9 @@ public:
 
 	/// Get the particle radius.
 	float32 GetRadius() const;
+
+	void CopyAmpPositions(ID3D11Buffer* dstPtr);
+	void SetShaderBuffers();
 
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
@@ -994,6 +1015,8 @@ private:
 	template<typename T>
 	void AmpCopyVecToAmpArr(const vector<T> vec, ampArray<T>& a, const uint32 size);
 	template<typename T>
+	void AmpCopyVecRangeToAmpArr(const vector<T> vec, ampArray<T>& a, const uint32 start, const uint32 size);
+	template<typename T>
 	void AmpFill(ampArrayView<T>& av, const T value);
 	template<typename T>
 	void AmpFill(ampArray<T>& a, const T value, const int32 size = 0);
@@ -1002,8 +1025,10 @@ private:
 	void AmpResizeArray(ampArray<T>& a, const int32 size, const int32 copy = 0);
 	template<typename T>
 	void AmpResizeStagingArray(ampArray<T>& a, const int32 size);
-
-
+	template <typename T, int Rank>
+	uint32 AmpReduceArray(ampArrayView<uint32>& counts, Concurrency::array_view<T, Rank>& src,
+		ampArrayView<T>& dst, const uint32 size);
+	
 
 	void ResizePartMatBuffers(int32 size);
 	void ResizeParticleBuffers(int32 size);
@@ -1071,13 +1096,20 @@ public:
 
 private:
 	void UpdateAllParticleFlags();
+	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
 	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
 	void FindContacts();
 	void AmpFindContacts(bool exceptZombie);
 	void UpdateProxies();
+	void AmpUpdateProxies();
 	void SortProxies();
+	void CalcIntermSums(uint32 bitoffset, ampArrayView<Proxy>& interm_arr,
+		ampArray<uint32>& interm_sums, ampArray<uint32>& interm_prefix_sums);
+	void RadixSortStep(uint32 bitoffset, ampArrayView<Proxy>& src, ampArrayView<Proxy>& dest,
+		ampArray<uint32>& interm_prefix_sums);
+	void AmpSortProxies();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
 	template<class T1, class T2>
@@ -1090,15 +1122,18 @@ private:
 		FixtureParticleSet* fixtureSet) const;
 	void NotifyBodyContactListenerPostContact(FixtureParticleSet& fixtureSet);
 	void UpdateBodyContacts();
+	void AmpUpdateBodyContacts();
 
 	void AddBodyContactResults(ampArrayView<float32> dst, const ampArray<float32> bodyRes);
 	void AddBodyContactResults(ampArrayView<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
 
 	void SolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
+	void AmpLimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
 	void AmpSolveGravity(const b2TimeStep& step);
 	void SolveBarrier(const b2TimeStep& step);
+	void AmpSolveBarrier(const b2TimeStep& step);
 	void SolveStaticPressure(const b2TimeStep& step);
 	void AmpSolveStaticPressure(const b2TimeStep& step);
 	void ComputeWeight();
@@ -1106,13 +1141,20 @@ private:
 	void SolvePressure(const b2TimeStep& step);
 	void AmpSolvePressure(const b2TimeStep& step);
 	void SolveDamping(const b2TimeStep& step);
+	void AmpSolveDamping(const b2TimeStep& step);
 	void SolveSlowDown(const b2TimeStep& step);
 	void SolveRigidDamping();
+	void AmpSolveRigidDamping();
 	void SolveExtraDamping();
+	void AmpSolveExtraDamping();
 	void SolveWall();
+	void AmpSolveWall();
 	void SolveRigid(const b2TimeStep& step);
+	void AmpSolveRigid(const b2TimeStep& step);
 	void SolveElastic(const b2TimeStep& step);
+	void AmpSolveElastic(const b2TimeStep& step);
 	void SolveSpring(const b2TimeStep& step);
+	void AmpSolveSpring(const b2TimeStep& step);
 	void SolveTensile(const b2TimeStep& step);
 	void AmpSolveTensile(const b2TimeStep& step);
 	void SolveViscous();
@@ -1127,17 +1169,25 @@ private:
 	void AmpSolveForce(const b2TimeStep& step);
 	void SolveColorMixing();
 	void SolveHeatConduct(const b2TimeStep& step);
+	void AmpSolveHeatConduct(const b2TimeStep& step);
 	void SolveLooseHeat(const b2TimeStep& step);
+	void AmpSolveLooseHeat(const b2TimeStep& step);
 	void SolveFlame(const b2TimeStep& step);
-	void SolveBurning(const b2TimeStep& step);
+	void AmpSolveFlame(const b2TimeStep& step);
 	void SolveIgnite();
+	void AmpSolveIgnite();
 	void SolveExtinguish();
+	void AmpSolveExtinguish();
 	void SolveWater();
 	void SolveAir();
+	void AmpSolveAir();
 	void SolveChangeMat();
+	void AmpSolveChangeMat();
 	void SolveFreeze();
 	void SolveDestroyDead();
+	void AmpSolveDestroyDead();
 	void SolveZombie();
+	void AmpSolveZombie();
 	void SolveFalling(const b2TimeStep& step);
 	void SolveRising(const b2TimeStep& step);
 	/// Destroy all particles which have outlived their lifetimes set by
@@ -1206,7 +1256,7 @@ private:
 	/// @param a point in world coordinates.
 	/// @return the world velocity of a point.
 	b2Vec2 GetLinearVelocityFromWorldPoint(const b2ParticleGroup& group, const b2Vec2& worldPoint) const;
-
+	
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
 
@@ -1228,11 +1278,11 @@ private:
 		const b2ParticleGroup& group, int32 particleIndex,
 		const b2Vec2 &point);
 	void InitDampingParameter(
-		float32* invMass, float32* invInertia, float32* tangentDistance,
+		float32& invMass, float32& invInertia, float32& tangentDistance,
 		float32 mass, float32 inertia, const b2Vec2& center,
 		const b2Vec2& point, const b2Vec2& normal) const;
 	void InitDampingParameterWithRigidGroupOrParticle(
-		float32* invMass, float32* invInertia, float32* tangentDistance,
+		float32& invMass, float32& invInertia, float32& tangentDistance,
 		bool isRigidGroup, const b2ParticleGroup& group, int32 particleIndex,
 		const b2Vec2& point, const b2Vec2& normal);
 	float32 ComputeDampingImpulse(
@@ -1240,6 +1290,10 @@ private:
 		float32 invMassB, float32 invInertiaB, float32 tangentDistanceB,
 		float32 normalVelocity) const;
 	void ApplyDamping(
+		float32 invMass, float32 invInertia, float32 tangentDistance,
+		bool isRigidGroup, b2ParticleGroup& group, int32 particleIndex,
+		float32 impulse, const b2Vec2& normal);
+	void AmpApplyDamping(
 		float32 invMass, float32 invInertia, float32 tangentDistance,
 		bool isRigidGroup, b2ParticleGroup& group, int32 particleIndex,
 		float32 impulse, const b2Vec2& normal);
@@ -1295,6 +1349,9 @@ private:
 	int32 m_triadCount;
 	int32 m_triadBufferSize;
 
+	ampExtent m_pairExtent;
+	ampExtent m_triadExtent;
+
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
 	/// Maps particle indicies to  handles.
@@ -1309,20 +1366,22 @@ private:
 	vector<b2Vec3>	m_positionBuffer,
 					m_velocityBuffer,
 					m_forceBuffer;
-	vector<int32>	m_heightLayerBuffer;
-	vector<float32> m_weightBuffer,
-					m_heatBuffer,
-					m_healthBuffer;
-	ampArray<float32>	m_ampWeights,
-						m_ampHeats,
-						m_ampHealths;
-
 	ampArray<b2Vec3>	m_ampPositions,
 						m_ampVelocities,
 						m_ampForces;
+	vector<int32>		m_heightLayerBuffer;
+	vector<float32>		m_weightBuffer,
+						m_heatBuffer,
+						m_healthBuffer;
+	ampArray<float32>	m_ampWeights,
+						m_ampHeats,
+						m_ampHealths;
+		
+	ID3D11ShaderResourceView* m_posSRV = nullptr;
 
-	bool hasColorBuf;
+	bool m_hasColorBuf;
 	vector<int32>	m_colorBuffer;
+	ampArray<int32>	m_ampColors;
 
 	vector<int32>	m_partMatIdxBuffer;
 	vector<int32>   m_partGroupIdxBuffer;
@@ -1423,7 +1482,7 @@ private:
 	vector<int32>  m_findContactBottomRightTagBuf;
 
 	vector<Proxy>  m_proxyBuffer;
-	// concurrency::array<Proxy, 1> m_ampProxyBuffer;
+	ampArray<Proxy> m_ampProxies;
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
@@ -1435,12 +1494,14 @@ private:
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
 	vector<b2ParticlePair> m_pairBuffer;
+	ampArray<b2ParticlePair> m_ampPairs;
 	//vector<int32>   m_pairIdxABuf, m_pairIdxBBuf;
 	//vector<uint32>  m_pairFlagsBuf;
 	//vector<float32> m_pairStrengthBuf;	   /// The strength of cohesion among the particles.
 	//vector<float32> m_pairDistanceBuf;	   /// The initial distance of the particles.
 					
 	vector<b2ParticleTriad> m_triadBuffer;
+	ampArray<b2ParticleTriad> m_ampTriads;
 	//vector<int32>   m_triadIdxABuf, m_triadIdxBBuf, m_triadIdxCBuf;
 	//vector<uint32>  m_triadFlagsBuf;		/// The logical sum of the particle flags. See the b2ParticleFlag enum.
 	//vector<float32> m_triadStrengthBuf;		/// The strength of cohesion among the particles.
@@ -1655,11 +1716,11 @@ inline void b2ParticleSystem::CalcLayerValues()
 	m_invPointsPerLayer = 1 / m_pointsPerLayer;
 }
 
-
-inline void b2ParticleSystem::SetAccelerate(const bool acc)
+inline void b2ParticleSystem::SetAccelerate(bool accelerate)
 {
-	m_accelerate = acc;
+	m_accelerate = accelerate;
 }
+
 
 inline void b2ParticleSystem::SetRadius(float32 radius)
 {

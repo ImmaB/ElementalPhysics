@@ -563,9 +563,32 @@ extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int
 		memcpy(*partMatPtr, partSys->GetPartMatIdxBuffer(), intArraySize);
 	}
 }
+extern "C" __declspec(dllexport) void GetAmpPositions(void* partSysPtr, void** dstPtr)
+{
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	ID3D11Buffer* dst = static_cast<ID3D11Buffer*>(*dstPtr);
+	partSys->CopyAmpPositions(dst);
+};
+
+extern "C" __declspec(dllexport) void GetPartBufPtrs(void* partSysPtr, 
+													 int32** matIdxBufPtr,
+													 b2Vec3** posBufPtr,
+													 b2Vec3** velBufPtr,
+													 float32** weightBufPtr)
+{
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	*matIdxBufPtr = partSys->GetPartMatIdxBuffer();
+	*posBufPtr	  = partSys->GetPositionBuffer();
+	*velBufPtr	  = partSys->GetVelocityBuffer();
+	*weightBufPtr = partSys->GetWeightBuffer();
+	return;
+};
+
+
 #pragma endregion
 
 #pragma region ParticleGroups
+
 
 extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
@@ -588,7 +611,11 @@ extern "C" __declspec(dllexport)  int CreatePG(void* partSysPtr, int partFlags, 
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	int ret = partSys->CreateParticleGroup(pd);
+	int ret;
+	if (partSys->m_accelerate)
+		ret = partSys->AmpCreateParticleGroup(pd);
+	else
+		ret = partSys->CreateParticleGroup(pd);
 	return ret;
 }
 extern "C" __declspec(dllexport)  int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, float* posX, float* posY, float* posZ, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
@@ -889,17 +916,17 @@ extern "C" __declspec(dllexport)  void SetBodyType(void* bodyPointer, int type) 
     
     m_body->SetType(bodyType);
 }
-extern "C" __declspec(dllexport)  bool GetBodyAwake(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->IsAwake();
+extern "C" __declspec(dllexport)  bool GetBodyAwake(void* worldPtr, int bodyIdx) {
+	b2Body* bodyPtr = (static_cast<b2World*>(worldPtr))->GetBodyPtr(bodyIdx);
+    return bodyPtr->IsAwake();
 }
 extern "C" __declspec(dllexport)  void SetBodyActive(void* bodyPointer, bool isActive) {
     b2Body* m_body = static_cast<b2Body*>(bodyPointer);
     m_body->SetActive(isActive);
 }
-extern "C" __declspec(dllexport)  bool GetBodyActive(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->IsActive();
+extern "C" __declspec(dllexport)  bool GetBodyActive(void* worldPtr, int bodyIdx) {
+    b2Body* bodyPtr = (static_cast<b2World*>(worldPtr))->GetBodyPtr(bodyIdx);
+    return bodyPtr->IsActive();
 }
 extern "C" __declspec(dllexport)  void** GetBodyFixtures(void* bodyPointer) {
     b2Body* m_body = static_cast<b2Body*>(bodyPointer);

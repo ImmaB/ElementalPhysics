@@ -425,7 +425,7 @@
     <ClInclude Include="VkCompute.h">
       <Filter>Headerdateien\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="..\Box2D\Sorting\ampFunctions.h">
+    <ClInclude Include="..\Box2D\Amp\radixSort.h">
       <Filter>Headerdateien\Amp</Filter>
     </ClInclude>
   </ItemGroup>

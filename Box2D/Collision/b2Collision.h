@@ -161,19 +161,31 @@ struct b2RayCastOutput
 /// An axis aligned bounding box.
 struct b2AABB
 {
+	b2AABB() {};
+	b2AABB() restrict(amp) {};
+
 	/// Verify that the bounds are sorted.
 	bool IsValid() const;
+	bool IsValid() const restrict(amp);
 
 	/// Get the center of the AABB.
 	b2Vec2 GetCenter() const
 	{
 		return 0.5f * (lowerBound + upperBound);
 	}
+	b2Vec2 GetCenter() const restrict(amp)
+	{
+		return 0.5f* (lowerBound + upperBound);
+	}
 
 	/// Get the extents of the AABB (half-widths).
 	b2Vec2 GetExtents() const
 	{
 		return 0.5f * (upperBound - lowerBound);
+	}
+	b2Vec2 GetExtents() const restrict(amp)
+	{
+		return 0.5f* (upperBound - lowerBound);
 	}
 
 	/// Get the perimeter length
@@ -183,9 +195,20 @@ struct b2AABB
 		float32 wy = upperBound.y - lowerBound.y;
 		return 2.0f * (wx + wy);
 	}
+	float32 GetPerimeter() const restrict(amp)
+	{
+		float32 wx = upperBound.x - lowerBound.x;
+		float32 wy = upperBound.y - lowerBound.y;
+		return 2.0f* (wx + wy);
+	}
 
 	/// Combine an AABB into this one.
 	void Combine(const b2AABB& aabb)
+	{
+		lowerBound = b2Min(lowerBound, aabb.lowerBound);
+		upperBound = b2Max(upperBound, aabb.upperBound);
+	}
+	void Combine(const b2AABB& aabb) restrict(amp)
 	{
 		lowerBound = b2Min(lowerBound, aabb.lowerBound);
 		upperBound = b2Max(upperBound, aabb.upperBound);
@@ -197,9 +220,23 @@ struct b2AABB
 		lowerBound = b2Min(aabb1.lowerBound, aabb2.lowerBound);
 		upperBound = b2Max(aabb1.upperBound, aabb2.upperBound);
 	}
+	void Combine(const b2AABB& aabb1, const b2AABB& aabb2) restrict(amp)
+	{
+		lowerBound = b2Min(aabb1.lowerBound, aabb2.lowerBound);
+		upperBound = b2Max(aabb1.upperBound, aabb2.upperBound);
+	}
 
 	/// Does this aabb contain the provided AABB.
 	bool Contains(const b2AABB& aabb) const
+	{
+		bool result = true;
+		result = result && lowerBound.x <= aabb.lowerBound.x;
+		result = result && lowerBound.y <= aabb.lowerBound.y;
+		result = result && aabb.upperBound.x <= upperBound.x;
+		result = result && aabb.upperBound.y <= upperBound.y;
+		return result;
+	}
+	bool Contains(const b2AABB& aabb) const restrict(amp)
 	{
 		bool result = true;
 		result = result && lowerBound.x <= aabb.lowerBound.x;
@@ -252,6 +289,13 @@ bool b2TestOverlap(	const b2Shape* shapeA, int32 indexA,
 // ---------------- Inline Functions ------------------------------------------
 
 inline bool b2AABB::IsValid() const
+{
+	b2Vec2 d = upperBound - lowerBound;
+	bool valid = d.x >= 0.0f && d.y >= 0.0f;
+	valid = valid && lowerBound.IsValid() && upperBound.IsValid();
+	return valid;
+}
+inline bool b2AABB::IsValid() const restrict(amp)
 {
 	b2Vec2 d = upperBound - lowerBound;
 	bool valid = d.x >= 0.0f && d.y >= 0.0f;

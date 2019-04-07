@@ -26,7 +26,6 @@ struct b2Color;
 class b2ParticleGroup;
 
 /// @file
-
 /// The particle type. Can be combined with the | operator.
 enum b2ParticleFlag
 {

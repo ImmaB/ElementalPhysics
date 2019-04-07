@@ -174,6 +174,7 @@ public:
 	void RayCast(b2RayCastCallback* callback, const b2Vec2& point1, const b2Vec2& point2) const;
 
 	std::vector<b2Body*> GetBodyBuffer();
+	b2Body* GetBodyPtr(int bodyIdx);
 	const std::vector<b2Body*> GetBodyBuffer() const;
 
 	std::vector<b2Fixture*> GetFixtureBuffer();
@@ -382,6 +383,12 @@ inline std::vector<b2Body*> b2World::GetBodyBuffer()
 {
 	return m_bodyBuffer;
 }
+inline b2Body* b2World::GetBodyPtr(int bodyIdx)
+{
+	return m_bodyBuffer[bodyIdx];
+}
+
+
 inline const std::vector<b2Body*> b2World::GetBodyBuffer() const
 {
 	return m_bodyBuffer;
