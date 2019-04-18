@@ -303,6 +303,10 @@ extern "C" __declspec(dllexport) void SolveIteration(void* partSysPtr, int32 ite
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->SolveIteration(iteration);
 }
+extern "C" __declspec(dllexport) void SolveIteration2(void* partSysPtr, int32 iteration) {
+	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+	partSys->SolveIteration2(iteration);
+}
 extern "C" __declspec(dllexport) void SolveEnd(void* partSysPtr) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->SolveEnd();
@@ -471,98 +475,6 @@ extern "C" __declspec(dllexport)  void ApplyForceInDirIfHasFlag(void* partSysPtr
 	partSys->ApplyForceInDirIfHasFlag(pos, strength, flag);
 }
 
-enum WhichDataToGet
-{
-	GetPositions = 1 << 0,
-	GetColors = 1 << 1,
-	GetLifeTimes = 1 << 2,
-	GetHealth = 1 << 3,
-	GetWeights = 1 << 4,
-	GetVelocities = 1 << 5,
-	GetUserData = 1 << 6,
-	GetHeat = 1 << 7,
-	GetMaterials = 1 << 8
-};
-extern "C" __declspec(dllexport)  void GetParticlesDetails(void* partSysPtr, int whichDataMask, 
-		float** partPosXPtr, float** partPosYPtr, float** partPosZPtr, 
-		int** partColorPtr,  float** partLifeTimePtr, float** partHealthPtr, float** partWeightPtr,
-		float** partVelocityXPtr, float**  partVelocityYPtr, int**  partUserDataPtr, 
-		float**  partHeatPtr, int** partMatPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	int partNum = partSys->GetParticleCount();
-	int floatArraySize = partNum * sizeof(float);
-	int intArraySize = partNum * sizeof(int);
-
-	if (whichDataMask & GetPositions)
-	{
-		b2Vec3* posBuffer = partSys->GetPositionBuffer();
-		float* posXBuffer = new float[partNum];
-		float* posYBuffer = new float[partNum];
-		float* posZBuffer = new float[partNum];
-		for (int i = 0; i < partNum; i++)
-		{
-			posXBuffer[i] = posBuffer[i].x;
-			posYBuffer[i] = posBuffer[i].y;
-			posZBuffer[i] = posBuffer[i].z;
-		}
-		memcpy(*partPosXPtr, posXBuffer, floatArraySize);
-		memcpy(*partPosYPtr, posYBuffer, floatArraySize);
-		memcpy(*partPosZPtr, posZBuffer, floatArraySize);
-		delete posXBuffer;
-		delete posYBuffer;
-		delete posZBuffer;
-	}
-	if (whichDataMask & GetColors)
-	{
-		memcpy(*partColorPtr, partSys->GetColorBuffer(), intArraySize);
-	}
-	if (whichDataMask & GetLifeTimes)
-	{
-		float* lifeTimeBuffer = new float[partNum];
-		for (int i = 0; i < partNum; i++)
-			lifeTimeBuffer[i] = partSys->GetParticleLifetime(i);
-		memcpy(*partLifeTimePtr, lifeTimeBuffer, intArraySize);
-		delete lifeTimeBuffer;
-	}
-	if (whichDataMask & GetHealth)
-	{
-		memcpy(*partHealthPtr, partSys->GetHealthBuffer(), intArraySize);
-	}
-	if (whichDataMask & GetWeights)
-	{
-		memcpy(*partWeightPtr, partSys->GetWeightBuffer(), intArraySize);
-	}
-	if (whichDataMask & GetVelocities)
-	{
-
-		b2Vec3* velBuffer = partSys->GetVelocityBuffer();
-		float* velXBuffer = new float[partNum];
-		float* velYBuffer = new float[partNum];
-		float* velZBuffer = new float[partNum];
-		for (int i = 0; i < partNum; i++)
-		{
-			velXBuffer[i] = velBuffer[i].x;
-			velYBuffer[i] = velBuffer[i].y;
-		}
-		memcpy(*partVelocityXPtr, velXBuffer, floatArraySize);
-		memcpy(*partVelocityYPtr, velYBuffer, floatArraySize);
-		delete velXBuffer;
-		delete velYBuffer;
-		delete velZBuffer;
-	}
-	if (whichDataMask & GetUserData)
-	{
-		memcpy(*partUserDataPtr, partSys->GetUserDataBuffer(), intArraySize);
-	}
-	if (whichDataMask & GetHeat)
-	{
-		memcpy(*partHeatPtr, partSys->GetHeatBuffer(), intArraySize);
-	}
-	if (whichDataMask & GetMaterials)
-	{
-		memcpy(*partMatPtr, partSys->GetPartMatIdxBuffer(), intArraySize);
-	}
-}
 extern "C" __declspec(dllexport) void GetAmpPositions(void* partSysPtr, void** dstPtr)
 {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
@@ -574,14 +486,17 @@ extern "C" __declspec(dllexport) void GetPartBufPtrs(void* partSysPtr,
 													 int32** matIdxBufPtr,
 													 b2Vec3** posBufPtr,
 													 b2Vec3** velBufPtr,
-													 float32** weightBufPtr)
+													 float32** weightBufPtr,
+													 float32** healthBufPtr,
+													 float32** heatBufPtr)
 {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	*matIdxBufPtr = partSys->GetPartMatIdxBuffer();
 	*posBufPtr	  = partSys->GetPositionBuffer();
 	*velBufPtr	  = partSys->GetVelocityBuffer();
 	*weightBufPtr = partSys->GetWeightBuffer();
-	return;
+	*healthBufPtr = partSys->GetHealthBuffer();
+	*heatBufPtr   = partSys->GetHeatBuffer();
 };
 
 

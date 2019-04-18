@@ -48,10 +48,15 @@ template <typename T>
 using ampArrayView2D = Concurrency::array_view<T, 2>;
 template <typename T>
 using ampArray = Concurrency::array<T>;
+template <typename T>
+using ampArray2D = Concurrency::array<T, 2>;
 using ampExtent = Concurrency::extent<1>;
 using ampExtent2D = Concurrency::extent<2>;
 using ampIndex = Concurrency::index<1>;
+using ampTiledExtent = Concurrency::tiled_extent<1>;
+using ampTiledExtent2D = Concurrency::tiled_extent<2>;
 using ampTiledIndex = Concurrency::tiled_index<TILE_SIZE>;
+using ampCopyFuture = Concurrency::completion_future;
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -364,6 +369,7 @@ public:
 	void SolveInit();
 	void UpdateContacts(bool exceptZombie);
 	void SolveIteration(int32 iteration);
+	void SolveIteration2(int32 iteration);
 	void SolveEnd();
 
 	float32 GetTimeDif(Time start, Time end);
@@ -463,13 +469,13 @@ public:
 	const b2ParticleGroup* GetParticleGroups() const;
 
 	/// Get the number of particle groups.
-	int32 GetParticleGroupCount() const;
+	uint32 GetParticleGroupCount() const;
 
 	/// Get the number of particles.
-	int32 GetParticleCount() const;
+	uint32 GetParticleCount() const;
 
 	/// Get the maximum number of particles.
-	int32 GetMaxParticleCount() const;
+	uint32 GetMaxParticleCount() const;
 
 	/// Set the maximum number of particles.
 	/// A value of 0 means there is no maximum. The particle buffers can
@@ -478,7 +484,7 @@ public:
 	/// b2_invalidParticleIndex is returned unless
 	/// SetDestructionByAge() is used to enable the destruction of the
 	/// oldest particles in the system.
-	void SetMaxParticleCount(int32 count);
+	void SetMaxParticleCount(uint32 count);
 
 	/// Get all existing particle flags.
 	uint32 GetAllParticleFlags() const;
@@ -1012,31 +1018,40 @@ private:
 	/// pool for handle allocation.
 	void ReallocateHandleBuffers(int32 newCapacity);
 
-	template<typename T>
-	void AmpCopyVecToAmpArr(const vector<T> vec, ampArray<T>& a, const uint32 size);
-	template<typename T>
-	void AmpCopyVecRangeToAmpArr(const vector<T> vec, ampArray<T>& a, const uint32 start, const uint32 size);
-	template<typename T>
-	void AmpFill(ampArrayView<T>& av, const T value);
-	template<typename T>
-	void AmpFill(ampArray<T>& a, const T value, const int32 size = 0);
-	uint32 AmpReduceFlags(const ampArrayView<const uint32>& a);
+	ampExtent AmpGetTilableExtent(const uint32 size) const;
+	ampExtent AmpGetTilableExtentAndTileCnt(const uint32 size, uint32& tileCnt) const;
+	template<typename T> ampCopyFuture AmpCopyArrToVecAsync(const ampArray<T>& a, vector<T>& vec, const uint32 size) const;
+	template<typename T> void AmpCopyVecToArr(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
+	template<typename T> ampCopyFuture AmpCopyVecToArrAsync(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
+	template<typename T> void AmpCopyVecRangeToAmpArr(const vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size) const;
+	template<typename F> void AmpForEachParticle(F function) const;
+	template<typename F> void AmpForEachContact(F function) const;
+	template<typename F> void AmpForEachBodyContact(F function) const;
+	template<typename F> void AmpForEachPair(F function) const;
+	template<typename F> void AmpForEachTriad(F function) const;
+	template<typename T> void AmpFill(ampArrayView<T>& av, const T value);
+	template<typename T> void AmpFill(ampArray<T>& a, const T value, const int32 size = 0);
+	uint32 AmpReduceFlags(const ampArray<uint32>& a, uint32 size);
 	template<typename T>
 	void AmpResizeArray(ampArray<T>& a, const int32 size, const int32 copy = 0);
 	template<typename T>
 	void AmpResizeStagingArray(ampArray<T>& a, const int32 size);
-	template <typename T, int Rank>
-	uint32 AmpReduceArray(ampArrayView<uint32>& counts, Concurrency::array_view<T, Rank>& src,
-		ampArrayView<T>& dst, const uint32 size);
-	
+	template <typename T>
+	uint32 AmpReduceArray(ampArray<uint32>& counts, ampArray<T>& src, ampArray<T>& dst, const uint32 size);
+	template <typename T>
+	uint32 AmpReduceArray(ampArray<uint32>& counts, ampArray2D<T>& src, ampArray<T>& dst, const uint32 size);
+	template<typename F>
+	uint32 AmpReduceArray(ampArray<uint32>& cnts, uint32 size, F function) const;
 
-	void ResizePartMatBuffers(int32 size);
-	void ResizeParticleBuffers(int32 size);
-	void ResizeGroupBuffers(int32 size);
-	void ResizeContactBuffers(int32 size);
-	void ResizeBodyContactBuffers(int32 size);
-	void ResizePairBuffers(int32 size);
-	void ResizeTriadBuffers(int32 size);
+	
+	boolean AdjustCapacityToSize(uint32& capacity, uint32 size, const uint32 minCapacity) const;
+	void ResizePartMatBuffers(uint32 size);
+	void ResizeParticleBuffers(uint32 size);
+	void ResizeGroupBuffers(uint32 size);
+	void ResizeContactBuffers(uint32 size);
+	void ResizeBodyContactBuffers(uint32 size);
+	void ResizePairBuffers(uint32 size);
+	void ResizeTriadBuffers(uint32 size);
 	int32 CreateParticleForGroup(
 		const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const b2Vec3& position);
@@ -1060,8 +1075,7 @@ private:
 
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
-	void AmpUpdatePairsAndTriads(
-		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
+	void AmpUpdatePairsAndTriads(int32 firstIndex, int32 lastIndex);
 	void UpdatePairsAndTriadsWithReactiveParticles();
 	void AmpUpdatePairsAndTriadsWithReactiveParticles();
 	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
@@ -1098,7 +1112,7 @@ private:
 	void UpdateAllParticleFlags();
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
-	bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
+	bool b2ParticleSystem::AddContact(int32 a, int32 b, uint32& contactCount);
 	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
 	void FindContacts();
 	void AmpFindContacts(bool exceptZombie);
@@ -1124,8 +1138,8 @@ private:
 	void UpdateBodyContacts();
 	void AmpUpdateBodyContacts();
 
-	void AddBodyContactResults(ampArrayView<float32> dst, const ampArray<float32> bodyRes);
-	void AddBodyContactResults(ampArrayView<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
+	void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
+	void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
 
 	void SolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
@@ -1184,8 +1198,10 @@ private:
 	void SolveChangeMat();
 	void AmpSolveChangeMat();
 	void SolveFreeze();
-	void SolveDestroyDead();
-	void AmpSolveDestroyDead();
+	void SolveHealth();
+	void AmpSolveHealth();
+	void SolvePosition(const b2TimeStep& step);
+	void AmpSolvePosition(const b2TimeStep& step);
 	void SolveZombie();
 	void AmpSolveZombie();
 	void SolveFalling(const b2TimeStep& step);
@@ -1197,23 +1213,23 @@ private:
 	
 	template <class T1, class UnaryPredicate>
 	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
-		int32& size, UnaryPredicate pred, bool adjustSize = true);
+		uint32& size, UnaryPredicate pred, bool adjustSize = true);
 	//void AmpRemoveZombieContacts();
 	template <class T1, class T2, class UnaryPredicate>
 	static void RemoveFromVectorsIf(vector<T1>& vectorToTest, vector<T2>& v2,
-		int32& size, UnaryPredicate pred, bool adjustSize);
+		uint32& size, UnaryPredicate pred, bool adjustSize);
 	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate>
 	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7,
-		int32& size, UnaryPredicate pred, bool adjustSize);
+		uint32& size, UnaryPredicate pred, bool adjustSize);
 	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate>
 	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
-		int32& size, UnaryPredicate pred, bool adjustSize);
+		uint32& size, UnaryPredicate pred, bool adjustSize);
 	template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> 
 	static void RemoveFromVectorsIf(
 		vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
-		int32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize);
+		uint32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize);
 
 	float32 GetCriticalVelocity(const b2TimeStep& step) const;
 	float32 GetCriticalVelocitySquared(const b2TimeStep& step) const;
@@ -1329,28 +1345,28 @@ private:
 
 	uint32 m_tileCnt;
 	uint32 m_contactTileCnt;
-	ampExtent m_countExtent;
-	ampExtent m_contactCntExtent;
-	ampExtent m_contactTileCntExtent;
-	ampExtent m_bodyContactCntExtent;
+	ampExtent m_tilableExtent;
+	ampTiledExtent m_contactTilableExtent;
+	ampTiledExtent m_bodyContactTilableExtent;
 
-	int32 m_count;
-	int32 m_particleBufferSize;
-	int32 m_groupCount;
-	int32 m_groupBufferSize;
-	int32 m_partMatCount;
-	int32 m_partMatBufferSize;
-	int32 m_contactCount;
-	int32 m_contactBufferSize;
-	int32 m_bodyContactCount;
-	int32 m_bodyContactBufferSize;
-	int32 m_pairCount;
-	int32 m_pairBufferSize;
-	int32 m_triadCount;
-	int32 m_triadBufferSize;
+	uint32 m_count;
+	uint32 m_capacity;
+	uint32 m_groupCount;
+	uint32 m_groupCapacity;
+	uint32 m_partMatCount;
+	uint32 m_partMatCapacity;
+	uint32 m_contactCount;
+	uint32 m_contactCapacity;
+	uint32 m_bodyContactCount;
+	uint32 m_bodyContactCapacity;
+	uint32 m_pairCount;
+	uint32 m_pairCapacity;
+	uint32 m_triadCount;
+	uint32 m_triadCapacity;
 
-	ampExtent m_pairExtent;
-	ampExtent m_triadExtent;
+	ampExtent m_groupExtent;
+	ampTiledExtent m_pairTilableExtent;
+	ampTiledExtent m_triadTilableExtent;
 
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;
@@ -1376,6 +1392,27 @@ private:
 	ampArray<float32>	m_ampWeights,
 						m_ampHeats,
 						m_ampHealths;
+
+	ampArray<uint32>	m_ampTmpFlags;
+	ampArray<int32>		m_ampTmpGroupIdxs;
+	ampArray<b2Vec3>	m_ampTmpPositions;
+	ampArray<b2Vec3>	m_ampTmpVelocities;
+	ampArray<float32>	m_ampTmpHeats;
+	ampArray<float32>	m_ampTmpHealths;
+	ampArray<int32>		m_ampTmpColors;
+	ampArray<int32>		m_ampTmpMatIdxs;
+
+	ampCopyFuture m_ampCopyFutPositions;
+	ampCopyFuture m_ampCopyFutVelocities;
+	ampCopyFuture m_ampCopyFutWeights;
+	ampCopyFuture m_ampCopyFutHeats;
+	ampCopyFuture m_ampCopyFutHealths;
+	ampCopyFuture m_ampCopyFutFlags;
+	ampCopyFuture m_ampCopyFutMatIdxs;
+
+	ampCopyFuture m_ampCopyFutDepths;
+	ampCopyFuture m_ampCopyFutPairs;
+	ampCopyFuture m_ampCopyFutTriads;
 		
 	ID3D11ShaderResourceView* m_posSRV = nullptr;
 
@@ -1591,12 +1628,12 @@ inline b2ParticleGroup* b2ParticleSystem::GetParticleGroups()
 	return m_groupBuffer.data();
 }
 
-inline int32 b2ParticleSystem::GetParticleGroupCount() const
+inline uint32 b2ParticleSystem::GetParticleGroupCount() const
 {
 	return m_groupCount;
 }
 
-inline int32 b2ParticleSystem::GetParticleCount() const
+inline uint32 b2ParticleSystem::GetParticleCount() const
 {
 	return m_count;
 }
@@ -1853,12 +1890,12 @@ inline float32* b2ParticleSystem::GetHealthBuffer()
 	return m_healthBuffer.data();
 }
 
-inline int32 b2ParticleSystem::GetMaxParticleCount() const
+inline uint32 b2ParticleSystem::GetMaxParticleCount() const
 {
 	return m_def.maxCount;
 }
 
-inline void b2ParticleSystem::SetMaxParticleCount(int32 count)
+inline void b2ParticleSystem::SetMaxParticleCount(uint32 count)
 {
 	b2Assert(m_count <= count);
 	m_def.maxCount = count;
