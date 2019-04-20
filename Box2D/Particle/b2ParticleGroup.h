@@ -56,6 +56,7 @@ struct b2ParticleGroupDef
 
 	b2ParticleGroupDef()
 	{
+		idx = 0;
 		flags = 0;
 		groupFlags = 0;
 		position = b2Vec2_zero;
@@ -69,9 +70,7 @@ struct b2ParticleGroupDef
 		shapeCount = 0;
 		stride = 0;
 		particleCount = 0;
-		positionDataX = NULL;
-		positionDataY = NULL;
-		positionDataZ = NULL;
+		positionData = NULL;
 		colorData = NULL;
 		lifetime = 0.0f;
 		userData = 0;
@@ -93,7 +92,7 @@ struct b2ParticleGroupDef
 		FreeShapesMemory();
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 	}
-
+	int32 idx;
 	/// The particle-behavior flags (See #b2ParticleFlag).
 	uint32 flags;
 
@@ -140,9 +139,7 @@ struct b2ParticleGroupDef
 	int32 particleCount;
 
 	/// The initial positions of the particleCount particles.
-	float32* positionDataX;
-	float32* positionDataY;
-	float32* positionDataZ;
+	b2Vec3* positionData;
 
 	int* colorData;
 

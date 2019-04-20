@@ -175,6 +175,12 @@ struct Proxy
 {
 	int32 idx;
 	uint32 tag;
+
+	Proxy(int32 idx, uint32 tag) : idx(idx), tag(tag) {};
+	Proxy(int32 idx, uint32 tag) restrict(amp) : idx(idx), tag(tag) {};
+	Proxy() restrict(amp) {};
+	Proxy() {};
+
 	friend inline bool operator<(const Proxy &a, const Proxy &b)
 	{
 		return a.tag < b.tag;
@@ -376,14 +382,6 @@ public:
 	float32 GetTimeDif(Time start);
 
 public:
-	/// Create a particle whose properties have been defined.
-	/// No reference to the definition is retained.
-	/// A simulation step must occur before it's possible to interact with a
-	/// newly created particle.  For example, DestroyParticleInShape() will
-	/// not destroy a particle until b2World::Step() has been called.
-	/// @warning This function is locked during callbacks.
-	/// @return the index of the particle.
-	int32 CreateParticle(const b2ParticleDef& def);
 
 	const int32 GetLayerFromZ(float32 z);
 
@@ -446,8 +444,7 @@ public:
 	/// Create a particle group whose properties have been defined. No
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
-	int32 CreateParticleGroup(const b2ParticleGroupDef& def);
-	int32 AmpCreateParticleGroup(const b2ParticleGroupDef& def);
+	int32 CreateGroup(b2ParticleGroupDef& def);
 	void CopyParticleRangeToGpu(const uint32 start, const uint32 size);
 
 	/// Join two particle groups.
@@ -1025,6 +1022,7 @@ private:
 	template<typename T> ampCopyFuture AmpCopyVecToArrAsync(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
 	template<typename T> void AmpCopyVecRangeToAmpArr(const vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size) const;
 	template<typename F> void AmpForEachParticle(F function) const;
+	template<typename F> void AmpForEachParticle(uint32 filterFlag, F function) const;
 	template<typename F> void AmpForEachContact(F function) const;
 	template<typename F> void AmpForEachBodyContact(F function) const;
 	template<typename F> void AmpForEachPair(F function) const;
@@ -1052,22 +1050,23 @@ private:
 	void ResizeBodyContactBuffers(uint32 size);
 	void ResizePairBuffers(uint32 size);
 	void ResizeTriadBuffers(uint32 size);
-	int32 CreateParticleForGroup(
+	void ResizeCreationBuffers(uint32 size);
+	int32 CreateParticlesForGroup(uint32 cnt,
 		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const b2Vec3& position);
-	int32 CreateParticleForGroup(
+		const b2Transform& xf, const vector<b2Vec3>& positions);
+	int32 CreateParticlesForGroup(uint32 cnt,
 		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const b2Vec3& position, int32 color);
-	void CreateParticlesStrokeShapeForGroup(
+		const b2Transform& xf, b2Vec3* positions, int32* colors);
+	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	void CreateParticlesFillShapeForGroup(
+	pair<int32, int32> CreateParticlesFillShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	void CreateParticlesWithShapeForGroup(
+	pair<int32, int32> CreateParticlesWithShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	void CreateParticlesWithShapesForGroup(
+	pair<int32, int32> CreateParticlesWithShapesForGroup(
 		const b2Shape* const* shapes, int32 shapeCount,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	int32 CloneParticle(int32 index, int32 groupIdx);
@@ -1211,6 +1210,9 @@ private:
 	void SolveLifetimes(const b2TimeStep& step);
 	void RotateBuffer(int32 start, int32 mid, int32 end);
 	
+	void AddZombieRange(int32 firstIdx, int32 lastIdx);
+	uint32 GetWriteIdx(uint32 particleCnt);
+
 	template <class T1, class UnaryPredicate>
 	static void RemoveFromVectorIf(vector<T1>& vectorToTest,
 		uint32& size, UnaryPredicate pred, bool adjustSize = true);
@@ -1393,15 +1395,6 @@ private:
 						m_ampHeats,
 						m_ampHealths;
 
-	ampArray<uint32>	m_ampTmpFlags;
-	ampArray<int32>		m_ampTmpGroupIdxs;
-	ampArray<b2Vec3>	m_ampTmpPositions;
-	ampArray<b2Vec3>	m_ampTmpVelocities;
-	ampArray<float32>	m_ampTmpHeats;
-	ampArray<float32>	m_ampTmpHealths;
-	ampArray<int32>		m_ampTmpColors;
-	ampArray<int32>		m_ampTmpMatIdxs;
-
 	ampCopyFuture m_ampCopyFutPositions;
 	ampCopyFuture m_ampCopyFutVelocities;
 	ampCopyFuture m_ampCopyFutWeights;
@@ -1425,9 +1418,10 @@ private:
 	ampArray<int32>	m_ampMatIdxs;
 	ampArray<int32> m_ampGroupIdxs;
 
-	vector<uint32>	m_freeGroupIdxs;
-	vector<b2ParticleGroup> m_groupBuffer;
-	ampArray<b2ParticleGroup> m_ampGroups;
+	list<pair<int32, int32>>	m_zombieRanges;
+	vector<int32>				m_freeGroupIdxs;
+	vector<b2ParticleGroup>		m_groupBuffer;
+	ampArray<b2ParticleGroup>	m_ampGroups;
 
 	//vector<int32>	m_groupFirstIdxBuf,
 	//				m_groupLastIdxBuf;
