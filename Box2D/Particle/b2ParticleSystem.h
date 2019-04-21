@@ -445,7 +445,7 @@ public:
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
 	int32 CreateGroup(b2ParticleGroupDef& def);
-	void CopyParticleRangeToGpu(const uint32 start, const uint32 size);
+	void CopyParticleRangeToGpu(const uint32 first, const uint32 last);
 
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
@@ -1021,6 +1021,7 @@ private:
 	template<typename T> void AmpCopyVecToArr(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
 	template<typename T> ampCopyFuture AmpCopyVecToArrAsync(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
 	template<typename T> void AmpCopyVecRangeToAmpArr(const vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size) const;
+	template<typename F> void AmpForEachInRange(uint32 start, uint32 end, F function) const;
 	template<typename F> void AmpForEachParticle(F function) const;
 	template<typename F> void AmpForEachParticle(uint32 filterFlag, F function) const;
 	template<typename F> void AmpForEachContact(F function) const;
@@ -1051,12 +1052,10 @@ private:
 	void ResizePairBuffers(uint32 size);
 	void ResizeTriadBuffers(uint32 size);
 	void ResizeCreationBuffers(uint32 size);
-	int32 CreateParticlesForGroup(uint32 cnt,
-		const b2ParticleGroupDef& groupDef,
+	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const vector<b2Vec3>& positions);
-	int32 CreateParticlesForGroup(uint32 cnt,
-		const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, b2Vec3* positions, int32* colors);
+	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
+		const b2Transform& xf, const vector<b2Vec3>& poss, const vector<int32>& cols);
 	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
 		const b2Shape* shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
@@ -1070,7 +1069,7 @@ private:
 		const b2Shape* const* shapes, int32 shapeCount,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	int32 CloneParticle(int32 index, int32 groupIdx);
-	void DestroyParticleGroup(int32 groupIdx);
+	void DestroyGroup(int32 groupIdx, bool destroyParticles = false);
 
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);

@@ -714,6 +714,17 @@ inline ampExtent b2ParticleSystem::AmpGetTilableExtentAndTileCnt(const uint32 si
 }
 
 template<typename F>
+inline void b2ParticleSystem::AmpForEachInRange(uint32 start, uint32 end, F function) const
+{
+	int32 cnt = end - start;
+	if (cnt <= 0) return;
+	Concurrency::parallel_for_each(ampExtent(cnt), [=](ampIndex idx) restrict(amp)
+	{
+		function(idx + start);
+	});
+}
+
+template<typename F>
 inline void b2ParticleSystem::AmpForEachParticle(F function) const
 {
 	if (!m_count) return;
@@ -1274,11 +1285,11 @@ int32 b2ParticleSystem::DestroyParticlesInShape(
 	return callback.Destroyed();
 }
 
-int32 b2ParticleSystem::CreateParticlesForGroup(uint32 cnt,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf, const vector<b2Vec3>& poss)
+int32 b2ParticleSystem::CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
+	const b2Transform& xf, const vector<b2Vec3>& poss)
 {
-	uint32 writeIdx = GetWriteIdx(cnt);
-	for (uint32 i = 0, wi = writeIdx; i < cnt; i++, wi++)
+	uint32 writeIdx = GetWriteIdx(poss.size());
+	for (uint32 i = 0, wi = writeIdx; i < poss.size(); i++, wi++)
 	{
 		m_partGroupIdxBuffer[wi] = groupDef.idx;
 		m_flagsBuffer[wi] = groupDef.flags;
@@ -1306,11 +1317,11 @@ int32 b2ParticleSystem::CreateParticlesForGroup(uint32 cnt,
 	m_allParticleFlags |= groupDef.flags;
 	return writeIdx;
 }
-int32 b2ParticleSystem::CreateParticlesForGroup(uint32 cnt,
-	const b2ParticleGroupDef& groupDef, const b2Transform& xf, b2Vec3* poss, int32* cols)
+int32 b2ParticleSystem::CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
+	const b2Transform& xf, const vector<b2Vec3>& poss, const vector<int32>& cols)
 {
-	uint32 writeIdx = GetWriteIdx(cnt);
-	for (uint32 i = writeIdx; i < cnt; i++)
+	uint32 writeIdx = GetWriteIdx(poss.size());
+	for (uint32 i = writeIdx; i < poss.size(); i++)
 	{
 		m_flagsBuffer[i] = groupDef.flags;
 		if (!m_lastBodyContactStepBuffer.empty())
@@ -1378,22 +1389,19 @@ pair<int32, int32> b2ParticleSystem::CreateParticlesFillShapeForGroup(
 	shape->ComputeAABB(aabb, identity, 0);
 	float32 startY = floorf(aabb.lowerBound.y / stride) * stride;
 	float32 startX = floorf(aabb.lowerBound.x / stride) * stride;
-	uint32 maxPartCnt = ((aabb.upperBound.y - startY) * (aabb.upperBound.x - startX)) / (stride * stride);
-	vector<b2Vec3> positions(maxPartCnt);
-	uint32 cnt = 0;
+	vector<b2Vec3> positions;
+	positions.reserve(((aabb.upperBound.y - startY) * (aabb.upperBound.x - startX)) / (stride * stride));
 	for (float32 y = startY; y < aabb.upperBound.y; y += stride)
 	{
 		for (float32 x = startX; x < aabb.upperBound.x; x += stride)
 		{
 			b2Vec3 p(x, y, 0);
 			if (shape->TestPoint(identity, p))
-			{
-				positions[cnt++] = p;
-			}
+				positions.push_back(p);
 		}
 	}
-	uint32 firstIdx = CreateParticlesForGroup(cnt, groupDef, xf, positions);
-	return pair<uint32, uint32>(firstIdx, firstIdx + cnt);
+	uint32 firstIdx = CreateParticlesForGroup(groupDef, xf, positions);
+	return pair<uint32, uint32>(firstIdx, firstIdx + positions.size());
 }
 
 pair<int32, int32> b2ParticleSystem::CreateParticlesWithShapeForGroup(
@@ -1532,7 +1540,9 @@ int32 b2ParticleSystem::CreateGroup(
 	}
 	if (groupDef.particleCount)
 	{
-		firstAndLastIdx.first = CreateParticlesForGroup(groupDef.particleCount, groupDef, transform, groupDef.positionData, groupDef.colorData);
+		const vector<b2Vec3> poss(groupDef.positionData, groupDef.positionData + groupDef.particleCount);
+		const vector<int32> cols(groupDef.colorData, groupDef.colorData + groupDef.particleCount);
+		firstAndLastIdx.first = CreateParticlesForGroup(groupDef, transform, poss, cols);
 		firstAndLastIdx.second = firstAndLastIdx.first + groupDef.particleCount;
 	}
 
@@ -1551,7 +1561,7 @@ int32 b2ParticleSystem::CreateGroup(
 
 	if (m_accelerate)
 	{
-		CopyParticleRangeToGpu(group.m_firstIndex, group.m_lastIndex - group.m_firstIndex);
+		CopyParticleRangeToGpu(group.m_firstIndex, group.m_lastIndex);
 		Concurrency::copy(&group, &group + 1, m_ampGroups.section(groupDef.idx, 1));
 	}
 
@@ -1563,21 +1573,24 @@ int32 b2ParticleSystem::CreateGroup(
 	return groupDef.groupIdx;
 }
 
-void b2ParticleSystem::CopyParticleRangeToGpu(const uint32 start, const uint32 size)
+void b2ParticleSystem::CopyParticleRangeToGpu(const uint32 first, const uint32 last)
 {
-	AmpCopyVecRangeToAmpArr(m_flagsBuffer, m_ampFlags, start, size);
-	AmpCopyVecRangeToAmpArr(m_positionBuffer, m_ampPositions, start, size);
-	AmpCopyVecRangeToAmpArr(m_velocityBuffer, m_ampVelocities, start, size);
-	AmpCopyVecRangeToAmpArr(m_weightBuffer, m_ampWeights, start, size);
-	AmpCopyVecRangeToAmpArr(m_heatBuffer, m_ampHeats, start, size);
-	AmpCopyVecRangeToAmpArr(m_healthBuffer, m_ampHealths, start, size);
-	AmpCopyVecRangeToAmpArr(m_forceBuffer, m_ampForces, start, size);
-	AmpCopyVecRangeToAmpArr(m_partMatIdxBuffer, m_ampMatIdxs, start, size);
+	const int32 size = last - first;
+	if (size <= 0) return;
+	AmpCopyVecRangeToAmpArr(m_flagsBuffer, m_ampFlags, first, size);
+	AmpCopyVecRangeToAmpArr(m_positionBuffer, m_ampPositions, first, size);
+	AmpCopyVecRangeToAmpArr(m_velocityBuffer, m_ampVelocities, first, size);
+	AmpCopyVecRangeToAmpArr(m_weightBuffer, m_ampWeights, first, size);
+	AmpCopyVecRangeToAmpArr(m_heatBuffer, m_ampHeats, first, size);
+	AmpCopyVecRangeToAmpArr(m_healthBuffer, m_ampHealths, first, size);
+	AmpCopyVecRangeToAmpArr(m_forceBuffer, m_ampForces, first, size);
+	AmpCopyVecRangeToAmpArr(m_partMatIdxBuffer, m_ampMatIdxs, first, size);
 	if (!m_staticPressureBuf.empty())
-		AmpCopyVecRangeToAmpArr(m_staticPressureBuf, m_ampStaticPressures, start, size);
-	AmpCopyVecRangeToAmpArr(m_depthBuffer, m_ampDepths, start, size);
-	AmpCopyVecRangeToAmpArr(m_colorBuffer, m_ampColors, start, size);
-	AmpCopyVecRangeToAmpArr(m_proxyBuffer, m_ampProxies, start, size);
+		AmpCopyVecRangeToAmpArr(m_staticPressureBuf, m_ampStaticPressures, first, size);
+	AmpCopyVecRangeToAmpArr(m_depthBuffer, m_ampDepths, first, size);
+	AmpCopyVecRangeToAmpArr(m_colorBuffer, m_ampColors, first, size);
+	AmpCopyVecRangeToAmpArr(m_proxyBuffer, m_ampProxies, first, size);
+	AmpCopyVecRangeToAmpArr(m_partGroupIdxBuffer, m_ampGroupIdxs, first, size);
 }
 
 void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
@@ -1632,7 +1645,7 @@ void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
 	SetGroupFlags(groupA, groupFlags);
 	groupA.m_lastIndex = groupB.m_lastIndex;
 	groupB.m_firstIndex = groupB.m_lastIndex;
-	DestroyParticleGroup(groupBIdx);
+	DestroyGroup(groupBIdx);
 }
 
 void b2ParticleSystem::SplitParticleGroup(b2ParticleGroup& group)
@@ -2282,19 +2295,34 @@ bool b2ParticleSystem::MatchTriadIndices(
 }
 
 // Only called from SolveZombie() or JoinParticleGroups().
-void b2ParticleSystem::DestroyParticleGroup(int32 groupIdx)
+void b2ParticleSystem::DestroyGroup(int32 groupIdx, bool destroyParticles)
 {
-	b2Assert(m_groupCount > 0);
-	b2Assert(groupIdx > 0);
-	if (m_world->IsLocked()) return;
-
 	b2ParticleGroup& group = m_groupBuffer[groupIdx];
-	if (m_world->m_destructionListener)
-		m_world->m_destructionListener->SayGoodbye(group);
+	AddZombieRange(group.m_firstIndex, group.m_lastIndex);
+	if (destroyParticles)
+	{
+		if (m_accelerate)
+		{
+			auto& flags = m_ampFlags;
+			const uint32 zombieFlags = b2_zombieParticle;
+			AmpForEachInRange(group.m_firstIndex, group.m_lastIndex, [=, &flags](ampIndex idx) restrict(amp)
+			{
+				flags[idx] = zombieFlags;
+			});
+		}
+		else
+		{
+			for (int i = group.m_firstIndex; i < group.m_lastIndex; i++)
+				m_flagsBuffer[i] = b2_zombieParticle;
+		}
+	}
+	//if (m_world->m_destructionListener)
+	//	m_world->m_destructionListener->SayGoodbye(group);
 
-	SetGroupFlags(group, 0);
-	for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
-		m_partGroupIdxBuffer[i] = b2_invalidIndex;
+	//SetGroupFlags(group, 0);
+	m_needsUpdateAllGroupFlags = true;
+	// for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+	// 	m_partGroupIdxBuffer[i] = b2_invalidIndex;
 	group.m_firstIndex = b2_invalidIndex;
 
 	if (groupIdx + 1 == m_groupCount)
@@ -7056,7 +7084,7 @@ void b2ParticleSystem::SolveZombie()
 		if (m_groupBuffer[k].m_firstIndex != b2_invalidIndex)
 		{
 			if (m_groupBuffer[k].m_groupFlags & b2_particleGroupWillBeDestroyed)
-				DestroyParticleGroup(k);
+				DestroyGroup(k);
 		}
 	}
 }
@@ -7074,61 +7102,60 @@ void b2ParticleSystem::AmpSolveZombie()
 	});
 
 	// add new dead groups to zombieRanges
+	bool groupWasDestroyed = false;
 	for (uint32 i = 0; i < m_groupCount; i++)
 	{
 		auto& group = m_groupBuffer[i];
 		if (!groupHasAlive[i] && group.m_firstIndex != b2_invalidIndex)
 		{
-			AddZombieRange(group.m_firstIndex, group.m_lastIndex);
-			group.m_firstIndex = b2_invalidIndex;
+			DestroyGroup(i);
+			groupWasDestroyed = true;
 		}
 	}
+	if (groupWasDestroyed)
+		AmpCopyVecToArr(m_groupBuffer, m_ampGroups, m_groupCount);
 }
 
 void b2ParticleSystem::AddZombieRange(int32 firstIdx, int32 lastIdx)
 {
+	// at the end of the Particle Buffers
 	if (m_count == lastIdx)
 	{
 		m_count = firstIdx;
-		if (!m_zombieRanges.empty())
+		if (!m_zombieRanges.empty() && m_count == m_zombieRanges.back().second)	// connected to previous
 		{
-			auto& lastRange = m_zombieRanges.back();
-			if (m_count == lastRange.second)
-			{
-				m_count == lastRange.first;
-				m_zombieRanges.pop_back();
-			}
+			m_count = m_zombieRanges.back().first;
+			m_zombieRanges.pop_back();
 		}
 		return;
 	}
 	// merge with prev or next range if possible
 	for (auto curr = m_zombieRanges.begin(), prev = m_zombieRanges.begin(); curr != m_zombieRanges.end(); prev = curr, curr++)
 	{
-		if (firstIdx > curr->first)
+		if (firstIdx < curr->first)
 		{
-			auto next = curr;
-			if (prev->second + 1 == firstIdx)
+			if (prev->second == firstIdx)
 			{
-				curr = prev;
-				if (next->first - 1 == lastIdx)
+				if (curr->first == lastIdx)	// connects two existing ranges
 				{
-					curr->second = next->second;
-					m_zombieRanges.erase(next);
+					prev->second = curr->second;
+					m_zombieRanges.erase(curr);
 				}
-				else
-					curr->second = lastIdx;
-				return;
+				else						// connected to previous range
+					prev->second = lastIdx;
 			}
-			if (next->first - 1 == lastIdx)
-			{
-				next->first = firstIdx;
-				return;
-			}
-			m_zombieRanges.insert(curr, pair(firstIdx, lastIdx));
+			else if (curr->first == lastIdx)	// connected to next range
+				curr->first = firstIdx;
+			else								// connected to no range, but between existing ones
+				m_zombieRanges.insert(curr, pair(firstIdx, lastIdx));
 			return;
 		}
 	}
-	m_zombieRanges.push_back(pair(firstIdx, lastIdx));
+	// if at the end, join with previous if connected or create new
+	if (!m_zombieRanges.empty() && m_zombieRanges.back().second == firstIdx)	
+		m_zombieRanges.back().second = lastIdx;
+	else
+		m_zombieRanges.push_back(pair(firstIdx, lastIdx));
 }
 
 uint32 b2ParticleSystem::GetWriteIdx(uint32 particleCnt)
@@ -7136,7 +7163,7 @@ uint32 b2ParticleSystem::GetWriteIdx(uint32 particleCnt)
 	uint32 writeIdx;
 	for (auto zombieRange = m_zombieRanges.begin(); zombieRange != m_zombieRanges.end(); zombieRange++)
 	{
-		int32 remainingSpace = (int32)zombieRange->second - (int32)zombieRange->first - (int32)particleCnt;
+		int32 remainingSpace = zombieRange->second - zombieRange->first - (int32)particleCnt;
 		if (remainingSpace >= 0)
 		{
 			writeIdx = zombieRange->first;
