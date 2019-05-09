@@ -251,10 +251,10 @@
     <ClCompile Include="..\Box2D\Particle\b2ParticleSystem.cpp" />
     <ClCompile Include="..\Box2D\Particle\b2VoronoiDiagram.cpp" />
     <ClCompile Include="..\Box2D\Rope\b2Rope.cpp" />
-    <ClCompile Include="..\Source.cpp" />
+    <ClCompile Include="..\Interface.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Box2D\Amp\radixSort.h" />
+    <ClInclude Include="..\Box2D\Amp\ampAlgorithms.h" />
     <ClInclude Include="..\Box2D\Box2D.h" />
     <ClInclude Include="..\Box2D\Collision\b2BroadPhase.h" />
     <ClInclude Include="..\Box2D\Collision\b2Collision.h" />

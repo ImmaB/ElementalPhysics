@@ -79,8 +79,6 @@ public:
 	/// is called for each proxy that overlaps the supplied AABB.
 	template <typename T>
 	void Query(T* callback, const b2AABB& aabb) const;
-	template <typename T>
-	void AFQuery(T* callback, const b2AABB& aabb) const;
 
 	/// Ray-cast against the proxies in the tree. This relies on the callback
 	/// to perform a exact ray-cast in the case were the proxy contains a shape.
@@ -243,11 +241,6 @@ template <typename T>
 inline void b2BroadPhase::Query(T* callback, const b2AABB& aabb) const
 {
 	m_tree.Query(callback, aabb);
-}
-template <typename T>
-inline void b2BroadPhase::AFQuery(T* callback, const b2AABB& aabb) const
-{
-	m_tree.AFQuery(callback, aabb);
 }
 
 template <typename T>

@@ -321,8 +321,8 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 	}
 }
 
-bool b2PolygonShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
-								const b2Transform& xf, int32 childIndex) const
+bool b2PolygonShape::RayCast(b2RayCastOutput * output, const b2RayCastInput & input,
+	const b2Transform & xf, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
 
@@ -344,7 +344,7 @@ bool b2PolygonShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& inpu
 		float32 denominator = b2Dot(m_normals[i], d);
 
 		if (denominator == 0.0f)
-		{	
+		{
 			if (numerator < 0.0f)
 			{
 				return false;

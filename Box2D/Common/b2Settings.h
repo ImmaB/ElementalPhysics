@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <assert.h>
 #include <float.h>
+#include <amp.h>
 
 #define B2_NOT_USED(x) ((void)(x))
 #if DEBUG && !defined(NDEBUG)
@@ -51,6 +52,70 @@ typedef unsigned short uint16;
 typedef unsigned int uint32;
 typedef float float32;
 typedef double float64;
+
+#define TILE_SIZE_DOUBLE 512
+#define TILE_SIZE 256
+#define TILE_SIZE_HALF 128
+#define TILE_SIZE_QUARTER 64
+
+template <typename T>
+using ampArrayView = Concurrency::array_view<T>;
+template <typename T>
+using ampArrayView2D = Concurrency::array_view<T, 2>;
+template <typename T>
+using ampArray = Concurrency::array<T>;
+template <typename T>
+using ampArray2D = Concurrency::array<T, 2>;
+using ampExtent = Concurrency::extent<1>;
+using ampExtent2D = Concurrency::extent<2>;
+using ampIndex = Concurrency::index<1>;
+using ampIdx = Concurrency::index<1>;
+template <int N>
+using ampTiledExt = Concurrency::tiled_extent<N>;
+template <int N>
+using ampTiledIdx = Concurrency::tiled_index<N>;
+using ampCopyFuture = Concurrency::completion_future;
+using ampAccel = Concurrency::accelerator;
+using ampAccelView = Concurrency::accelerator_view;
+
+
+/// Used for detecting particle contacts
+struct Proxy
+{
+	int32 idx;
+	uint32 tag;
+
+	Proxy(int32 idx, uint32 tag) : idx(idx), tag(tag) {};
+	Proxy(int32 idx, uint32 tag) restrict(amp) : idx(idx), tag(tag) {};
+	Proxy() restrict(amp) {};
+	Proxy() {};
+
+	friend inline bool operator<(const Proxy& a, const Proxy& b)
+	{
+		return a.tag < b.tag;
+	}
+	friend inline bool operator<(uint32 a, const Proxy& b)
+	{
+		return a < b.tag;
+	}
+	friend inline bool operator<(const Proxy& a, uint32 b)
+	{
+		return a.tag < b;
+	}
+	friend inline bool operator<(const Proxy& a, const Proxy& b) restrict(amp)
+	{
+		return a.tag < b.tag;
+	}
+	friend inline bool operator<(uint32 a, const Proxy& b) restrict(amp)
+	{
+		return a < b.tag;
+	}
+	friend inline bool operator<(const Proxy& a, uint32 b) restrict(amp)
+	{
+		return a.tag < b;
+	}
+};
+
 
 #ifdef WIN32
 typedef __int64   int64;

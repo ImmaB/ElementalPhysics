@@ -28,8 +28,8 @@ b2Stat::b2Stat()
 void b2Stat::Record( float32 t )
 {
 	m_total += t;
-	m_min = std::min(m_min,t);
-	m_max = std::max(m_max,t);
+	m_min = min(m_min,t);
+	m_max = max(m_max,t);
 	m_count++;
 }
 

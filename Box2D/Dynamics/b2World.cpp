@@ -1100,6 +1100,13 @@ void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 		}
 	}
 }
+void b2World::AmpQueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
+{
+	b2WorldQueryWrapper wrapper;
+	wrapper.broadPhase = &m_contactManager.m_broadPhase;
+	wrapper.callback = callback;
+	m_contactManager.m_broadPhase.Query(&wrapper, aabb);
+}
 
 void b2World::QueryShapeAABB(b2QueryCallback* callback, const b2Shape& shape,
                              const b2Transform& xf) const

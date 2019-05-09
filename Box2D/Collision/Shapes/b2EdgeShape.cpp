@@ -143,7 +143,6 @@ bool b2EdgeShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
 	return true;
 }
 
-
 void b2EdgeShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);

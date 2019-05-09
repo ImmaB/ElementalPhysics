@@ -65,13 +65,13 @@
       <UniqueIdentifier>{418567fd-8e02-44fc-b830-f117cc5697b8}</UniqueIdentifier>
     </Filter>
     <Filter Include="Headerdateien\Amp">
-      <UniqueIdentifier>{d5301a46-8f97-4b42-b32f-1ad66a004224}</UniqueIdentifier>
+      <UniqueIdentifier>{ce46c68a-a899-4cac-9d6c-482588dfa8c7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Quelldateien\Amp">
+      <UniqueIdentifier>{bb8714f8-55be-44a6-827e-dd7d4d07b2be}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\Source.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
     <ClCompile Include="..\Box2D\Collision\Shapes\b2PolygonShape.cpp">
       <Filter>Quelldateien\Collision\Shapes</Filter>
     </ClCompile>
@@ -236,6 +236,9 @@
     </ClCompile>
     <ClCompile Include="..\Box2D\Common\b2GlobalVariables.cpp">
       <Filter>Quelldateien\Common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Interface.cpp">
+      <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -425,7 +428,7 @@
     <ClInclude Include="VkCompute.h">
       <Filter>Headerdateien\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="..\Box2D\Amp\radixSort.h">
+    <ClInclude Include="..\Box2D\Amp\ampAlgorithms.h">
       <Filter>Headerdateien\Amp</Filter>
     </ClInclude>
   </ItemGroup>

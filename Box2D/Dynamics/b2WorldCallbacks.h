@@ -277,26 +277,6 @@ public:
 		return true;
 	}
 };
-class afQueryCallback
-{
-public:
-	virtual ~afQueryCallback() {}
-
-	/// Called for each fixture found in the query AABB.
-	/// @return false to terminate the query.
-	virtual bool AFReportFixture(int32 fixtureIdx) = 0;
-
-	/// Cull an entire particle system from b2World::QueryAABB. Ignored for
-	/// b2ParticleSystem::QueryAABB.
-	/// @return true if you want to include particleSystem in the AABB query,
-	/// or false to cull particleSystem from the AABB query.
-	virtual bool AFShouldQueryParticleSystem(
-		const b2ParticleSystem* particleSystem)
-	{
-		B2_NOT_USED(particleSystem);
-		return true;
-	}
-};
 
 /// Callback class for ray casts.
 /// See b2World::RayCast

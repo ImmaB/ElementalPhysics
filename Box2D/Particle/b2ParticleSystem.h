@@ -17,13 +17,17 @@
 */
 #pragma once
 
-#include <Box2D/Amp/radixSort.h>
 #include <Box2D/Common/b2SlabAllocator.h>
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Common/b2GlobalVariables.h>
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
+#include <Box2D/Amp/ampAlgorithms.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <Box2D/Collision/Shapes/b2CircleShape.h>
+#include <Box2D/Collision/Shapes/b2EdgeShape.h>
+#include <Box2D/Collision/Shapes/b2PolygonShape.h>
+#include <Box2D/Collision/Shapes/b2ChainShape.h>
 #include <vector>
 #include <array> 
 #include <numeric>
@@ -37,26 +41,12 @@
 #include <wrl/client.h>
 
 #define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
+#define TILE_SIZE_HALF 128
+#define TILE_SIZE_QUARTER 64
 #define MAX_CONTACTS_PER_PARTICLE 8
 
 typedef std::chrono::high_resolution_clock Clock;
 typedef std::chrono::time_point<std::chrono::steady_clock> Time;
-
-template <typename T>
-using ampArrayView = Concurrency::array_view<T>;
-template <typename T>
-using ampArrayView2D = Concurrency::array_view<T, 2>;
-template <typename T>
-using ampArray = Concurrency::array<T>;
-template <typename T>
-using ampArray2D = Concurrency::array<T, 2>;
-using ampExtent = Concurrency::extent<1>;
-using ampExtent2D = Concurrency::extent<2>;
-using ampIndex = Concurrency::index<1>;
-using ampTiledExtent = Concurrency::tiled_extent<1>;
-using ampTiledExtent2D = Concurrency::tiled_extent<2>;
-using ampTiledIndex = Concurrency::tiled_index<TILE_SIZE>;
-using ampCopyFuture = Concurrency::completion_future;
 
 #if LIQUIDFUN_UNIT_TESTS
 #include <gtest/gtest.h>
@@ -153,58 +143,6 @@ struct b2ParticleTriad
 	/// Values used for calculation.
 	b2Vec2 pa, pb, pc;
 	float32 ka, kb, kc, s;
-};
-
-struct AmpInsideBoundsEnumerator
-{
-	/// Construct an enumerator with bounds of tags and a range of proxies.
-	AmpInsideBoundsEnumerator(
-		uint32 lower, uint32 upper,
-		int32 first, int32 last) restrict(amp);
-	/// The lower and upper bound of x component in the tag.
-	uint32 m_xLower, m_xUpper;
-	/// The lower and upper bound of y component in the tag.
-	uint32 m_yLower, m_yUpper;
-	/// The range of proxies.
-	int32 m_first;
-	int32 m_last;
-};
-
-/// Used for detecting particle contacts
-struct Proxy
-{
-	int32 idx;
-	uint32 tag;
-
-	Proxy(int32 idx, uint32 tag) : idx(idx), tag(tag) {};
-	Proxy(int32 idx, uint32 tag) restrict(amp) : idx(idx), tag(tag) {};
-	Proxy() restrict(amp) {};
-	Proxy() {};
-
-	friend inline bool operator<(const Proxy &a, const Proxy &b)
-	{
-		return a.tag < b.tag;
-	}
-	friend inline bool operator<(uint32 a, const Proxy &b)
-	{
-		return a < b.tag;
-	}
-	friend inline bool operator<(const Proxy &a, uint32 b)
-	{
-		return a.tag < b;
-	}
-	friend inline bool operator<(const Proxy& a, const Proxy& b) restrict(amp)
-	{
-		return a.tag < b.tag;
-	}
-	friend inline bool operator<(uint32 a, const Proxy& b) restrict(amp)
-	{
-		return a < b.tag;
-	}
-	friend inline bool operator<(const Proxy& a, uint32 b) restrict(amp)
-	{
-		return a.tag < b;
-	}
 };
 
 struct b2ParticleSystemDef
@@ -845,6 +783,7 @@ public:
 	/// within this particle system.
 	/// @param aabb Returns the axis-aligned bounding box of the system.
 	void ComputeAABB(b2AABB* const aabb) const;
+	void AmpComputeAABB(b2AABB& aabb, bool addVel = false) const;
 	
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -893,6 +832,7 @@ private:
 	friend class b2ParticleGroup;
 	friend class b2ParticleBodyContactRemovePredicate;
 	friend class b2FixtureParticleQueryCallback;
+	friend class AmpFixtureParticleQueryCallback;
 #ifdef LIQUIDFUN_UNIT_TESTS
 	FRIEND_TEST(FunctionTests, GetParticleMass);
 	FRIEND_TEST(FunctionTests, AreProxyBuffersTheSame);
@@ -1015,32 +955,12 @@ private:
 	/// pool for handle allocation.
 	void ReallocateHandleBuffers(int32 newCapacity);
 
-	ampExtent AmpGetTilableExtent(const uint32 size) const;
-	ampExtent AmpGetTilableExtentAndTileCnt(const uint32 size, uint32& tileCnt) const;
-	template<typename T> ampCopyFuture AmpCopyArrToVecAsync(const ampArray<T>& a, vector<T>& vec, const uint32 size) const;
-	template<typename T> void AmpCopyVecToArr(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
-	template<typename T> ampCopyFuture AmpCopyVecToArrAsync(const vector<T>& vec, ampArray<T>& a, const uint32 size) const;
-	template<typename T> void AmpCopyVecRangeToAmpArr(const vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size) const;
-	template<typename F> void AmpForEachInRange(uint32 start, uint32 end, F function) const;
-	template<typename F> void AmpForEachParticle(F function) const;
-	template<typename F> void AmpForEachParticle(uint32 filterFlag, F function) const;
-	template<typename F> void AmpForEachContact(F function) const;
-	template<typename F> void AmpForEachBodyContact(F function) const;
-	template<typename F> void AmpForEachPair(F function) const;
-	template<typename F> void AmpForEachTriad(F function) const;
-	template<typename T> void AmpFill(ampArrayView<T>& av, const T value);
-	template<typename T> void AmpFill(ampArray<T>& a, const T value, const int32 size = 0);
-	uint32 AmpReduceFlags(const ampArray<uint32>& a, uint32 size);
-	template<typename T>
-	void AmpResizeArray(ampArray<T>& a, const int32 size, const int32 copy = 0);
-	template<typename T>
-	void AmpResizeStagingArray(ampArray<T>& a, const int32 size);
-	template <typename T>
-	uint32 AmpReduceArray(ampArray<uint32>& counts, ampArray<T>& src, ampArray<T>& dst, const uint32 size);
-	template <typename T>
-	uint32 AmpReduceArray(ampArray<uint32>& counts, ampArray2D<T>& src, ampArray<T>& dst, const uint32 size);
-	template<typename F>
-	uint32 AmpReduceArray(ampArray<uint32>& cnts, uint32 size, F function) const;
+	template<typename F> void AmpForEachParticle(const F& function) const;
+	template<typename F> void AmpForEachParticle(const uint32 filterFlag, const F& function) const;
+	template<typename F> void AmpForEachContact(const F& function) const;
+	template<typename F> void AmpForEachBodyContact(const F& function) const;
+	template<typename F> void AmpForEachPair(F& function) const;
+	template<typename F> void AmpForEachTriad(F& function) const;
 
 	
 	boolean AdjustCapacityToSize(uint32& capacity, uint32 size, const uint32 minCapacity) const;
@@ -1105,8 +1025,12 @@ private:
 
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
+	void AddFlagInsideShape(const uint32 flag, const int32 matIdx,
+		const b2Shape& shape, const b2Transform& transform);
 
 private:
+	template<typename F>
+	void AmpForEachInsideBounds(const b2AABB& aabb, F& function);
 	void UpdateAllParticleFlags();
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
@@ -1140,6 +1064,7 @@ private:
 	void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
 
 	void SolveCollision(const b2TimeStep& step);
+	void AmpSolveCollision(const b2TimeStep& step);
 	void LimitVelocity(const b2TimeStep& step);
 	void AmpLimitVelocity(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
@@ -1347,8 +1272,8 @@ private:
 	uint32 m_tileCnt;
 	uint32 m_contactTileCnt;
 	ampExtent m_tilableExtent;
-	ampTiledExtent m_contactTilableExtent;
-	ampTiledExtent m_bodyContactTilableExtent;
+	ampExtent m_contactTilableExtent;
+	ampExtent m_bodyContactTilableExtent;
 
 	uint32 m_count;
 	uint32 m_capacity;
@@ -1366,8 +1291,8 @@ private:
 	uint32 m_triadCapacity;
 
 	ampExtent m_groupExtent;
-	ampTiledExtent m_pairTilableExtent;
-	ampTiledExtent m_triadTilableExtent;
+	ampExtent m_pairTilableExtent;
+	ampExtent m_triadTilableExtent;
 
 	/// Allocator for b2ParticleHandle instances.
 	b2SlabAllocator<b2ParticleHandle> m_handleAllocator;

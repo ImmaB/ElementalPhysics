@@ -210,6 +210,8 @@ public:
 	/// Dump this fixture to the log file.
 	void Dump(int32 bodyIndex);
 
+	float32 m_zPos;
+	float32 m_height;
 protected:
 
 	friend class b2Body;
@@ -251,8 +253,6 @@ protected:
 
 	void* m_userData;
 
-	float32 m_zPos;
-	float32 m_height;
 };
 
 inline void b2Fixture::SetIdx(int32 idx)

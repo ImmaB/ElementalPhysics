@@ -155,7 +155,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
-	void AFQueryAABB(afQueryCallback* callback, const b2AABB& aabb) const;
+	void AmpQueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
 
 	/// Query the world for all fixtures that potentially overlap the
 	/// provided shape's AABB. Calls QueryAABB internally.
