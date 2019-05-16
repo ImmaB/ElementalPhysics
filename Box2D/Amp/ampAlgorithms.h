@@ -17,17 +17,26 @@ inline uint32 getTileCnt(const uint32 value)
 
 namespace amp
 {
+	static ampExtent getTilableExtent(const uint32 size)
+	{
+		return ampExtent(((size + TILE_SIZE - 1) / TILE_SIZE) * TILE_SIZE);
+	}
+	static ampExtent getTilableExtent(const uint32 size, uint32 & tileCnt)
+	{
+		tileCnt = ((size + TILE_SIZE - 1) / TILE_SIZE);
+		return ampExtent(tileCnt * TILE_SIZE);
+	}
 
 	template<typename T>
-	static ampCopyFuture copyArrToVecAsync(const ampArray<T>& a, std::vector<T>& v, const uint32 size = 0)
+	static void copy(const ampArray<T>& a, std::vector<T>& v, const uint32 size = 0)
 	{
 		if (size)
-			return Concurrency::copy_async(a.section(0, size), v.data());
+			Concurrency::copy(a.section(0, size), v.data());
 		else
-			return Concurrency::copy_async(a, v.data());
+			Concurrency::copy(a, v.data());
 	}
 	template<typename T>
-	static void copyVecToArr(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
+	static void copy(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
 	{
 		if (size)
 			Concurrency::copy(vec.data(), vec.data() + size, a);
@@ -35,7 +44,36 @@ namespace amp
 			Concurrency::copy(vec.data(), vec.data() + vec.size(), a);
 	}
 	template<typename T>
-	static ampCopyFuture copyVecToArrAsync(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
+	static void copy(const std::vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size)
+	{
+		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
+	}
+	template<typename T>
+	static void copy(const ampArray<T>& a, const uint32 idx, T& dest)
+	{
+		Concurrency::copy(a.section(idx, 1), &dest);
+	}
+	template<typename T>
+	static void copy(const ampArrayView<T>& a, const uint32 idx, T& dest)
+	{
+		Concurrency::copy(a.section(idx, 1), &dest);
+	}
+	template<typename T>
+	static void copy(const T& elem, ampArray<T>& dest, const uint32 idx)
+	{
+		Concurrency::copy(&elem, &elem + 1, dest.section(idx, 1));
+	}
+
+	template<typename T>
+	static ampCopyFuture copyAsync(const ampArray<T>& a, std::vector<T>& v, const uint32 size = 0)
+	{
+		if (size)
+			return Concurrency::copy_async(a.section(0, size), v.data());
+		else
+			return Concurrency::copy_async(a, v.data());
+	}
+	template<typename T>
+	static ampCopyFuture copyAsync(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
 	{
 		if (size)
 			return Concurrency::copy_async(vec.data(), vec.data() + size, a);
@@ -43,36 +81,12 @@ namespace amp
 			return Concurrency::copy_async(vec.data(), vec.data() + vec.size(), a);
 	}
 	template<typename T>
-	static void copyVecRangeToArr(const std::vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size)
-	{
-		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
-	}
-	static ampExtent getTilableExtent(const uint32 size)
-	{
-		return ampExtent(((size + TILE_SIZE - 1) / TILE_SIZE) * TILE_SIZE);
-	}
-	static ampExtent getTilableExtent(const uint32 size, uint32& tileCnt)
-	{
-		tileCnt = ((size + TILE_SIZE - 1) / TILE_SIZE);
-		return ampExtent(tileCnt * TILE_SIZE);
-	}
-	template<typename T>
-	static void copySingle(const ampArray<T>& a, const uint32 idx, T& dest)
-	{
-		Concurrency::copy(a.section(idx, 1), &dest);
-	}
-	template<typename T>
-	static ampCopyFuture copySingleAsync(const ampArray<T>& a, const uint32 idx, T& dest)
+	static ampCopyFuture copyAsync(const ampArray<T>& a, const uint32 idx, T& dest)
 	{
 		return Concurrency::copy_async(a.section(idx, 1), &dest);
 	}
 	template<typename T>
-	static void copySingle(const ampArrayView<T>& a, const uint32 idx, T& dest)
-	{
-		Concurrency::copy(a.section(idx, 1), &dest);
-	}
-	template<typename T>
-	static ampCopyFuture copySingleAsync(const ampArrayView<T>& a, const uint32 idx, T& dest)
+	static ampCopyFuture copyAsync(const ampArrayView<T>& a, const uint32 idx, T& dest)
 	{
 		return Concurrency::copy_async(a.section(idx, 1), &dest);
 	}
@@ -204,7 +218,7 @@ namespace amp
 			});
 		}
 		uint32 reducedCnt;
-		ampCopyFuture reducedCntPromise = copySingleAsync(cntSums, sizeMax - 1, reducedCnt);
+		ampCopyFuture reducedCntPromise = copyAsync(cntSums, sizeMax - 1, reducedCnt);
 		forEach(size, [=, &cntSums, &cnts](const int32 i) restrict(amp)
 		{
 			const uint32 cnt = cnts(i);
@@ -311,8 +325,8 @@ namespace amp
             });
         }
 		uint32 lastStart, lastTileStart;
-		ampCopyFuture lastTileStartProm = copySingleAsync(tileSumsView, tileCnt - 1, lastStart);
-		ampCopyFuture lastStartProm = copySingleAsync(outputView, elemCnt - 1, lastTileStart);
+		ampCopyFuture lastTileStartProm = copyAsync(tileSumsView, tileCnt - 1, lastStart);
+		ampCopyFuture lastStartProm = copyAsync(outputView, elemCnt - 1, lastTileStart);
 
         // 4. Add the tile results to the individual results for each tile.
 

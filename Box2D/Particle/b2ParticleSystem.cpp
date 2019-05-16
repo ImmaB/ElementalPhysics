@@ -859,13 +859,13 @@ int32 b2ParticleSystem::CreateParticleMaterial(const b2ParticleMaterialDef & def
 	m_partMatHeatConductivityBuf[idx] = def.heatConductivity;
 	m_world->m_allMaterialFlags |= def.matFlags;
 
-	amp::copyVecToArr(m_partMatFlagsBuf, m_ampMatFlags, m_partMatCount);
-	amp::copyVecToArr(m_partMatPartFlagsBuf, m_ampMatPartFlags, m_partMatCount);
-	amp::copyVecToArr(m_partMatMassBuf, m_ampMatMasses, m_partMatCount);
-	amp::copyVecToArr(m_partMatInvMassBuf, m_ampMatInvMasses, m_partMatCount);
-	amp::copyVecToArr(m_partMatStabilityBuf, m_ampMatStabilities, m_partMatCount);
-	amp::copyVecToArr(m_partMatInvStabilityBuf, m_ampMatInvStabilities, m_partMatCount);
-	amp::copyVecToArr(m_partMatHeatConductivityBuf, m_ampMatHeatConductivities, m_partMatCount);
+	amp::copy(m_partMatFlagsBuf, m_ampMatFlags, m_partMatCount);
+	amp::copy(m_partMatPartFlagsBuf, m_ampMatPartFlags, m_partMatCount);
+	amp::copy(m_partMatMassBuf, m_ampMatMasses, m_partMatCount);
+	amp::copy(m_partMatInvMassBuf, m_ampMatInvMasses, m_partMatCount);
+	amp::copy(m_partMatStabilityBuf, m_ampMatStabilities, m_partMatCount);
+	amp::copy(m_partMatInvStabilityBuf, m_ampMatInvStabilities, m_partMatCount);
+	amp::copy(m_partMatHeatConductivityBuf, m_ampMatHeatConductivities, m_partMatCount);
 	return idx;
 }
 void b2ParticleSystem::PartMatChangeMats(int32 matIdx, float32 colderThan, int32 changeToColdMat,
@@ -1280,7 +1280,7 @@ int32 b2ParticleSystem::CreateGroup(
 	if (m_accelerate)
 	{
 		CopyParticleRangeToGpu(group.m_firstIndex, group.m_lastIndex);
-		Concurrency::copy(&group, &group + 1, m_ampGroups.section(groupDef.idx, 1));
+		amp::copy(group, m_ampGroups, groupDef.idx);
 	}
 
 	// Create pairs and triads between particles in the group->
@@ -1295,20 +1295,20 @@ void b2ParticleSystem::CopyParticleRangeToGpu(const uint32 first, const uint32 l
 {
 	const int32 size = last - first;
 	if (size <= 0) return;
-	amp::copyVecRangeToArr(m_flagsBuffer, m_ampFlags, first, size);
-	amp::copyVecRangeToArr(m_positionBuffer, m_ampPositions, first, size);
-	amp::copyVecRangeToArr(m_velocityBuffer, m_ampVelocities, first, size);
-	amp::copyVecRangeToArr(m_weightBuffer, m_ampWeights, first, size);
-	amp::copyVecRangeToArr(m_heatBuffer, m_ampHeats, first, size);
-	amp::copyVecRangeToArr(m_healthBuffer, m_ampHealths, first, size);
-	amp::copyVecRangeToArr(m_forceBuffer, m_ampForces, first, size);
-	amp::copyVecRangeToArr(m_partMatIdxBuffer, m_ampMatIdxs, first, size);
+	amp::copy(m_flagsBuffer, m_ampFlags, first, size);
+	amp::copy(m_positionBuffer, m_ampPositions, first, size);
+	amp::copy(m_velocityBuffer, m_ampVelocities, first, size);
+	amp::copy(m_weightBuffer, m_ampWeights, first, size);
+	amp::copy(m_heatBuffer, m_ampHeats, first, size);
+	amp::copy(m_healthBuffer, m_ampHealths, first, size);
+	amp::copy(m_forceBuffer, m_ampForces, first, size);
+	amp::copy(m_partMatIdxBuffer, m_ampMatIdxs, first, size);
 	if (!m_staticPressureBuf.empty())
-		amp::copyVecRangeToArr(m_staticPressureBuf, m_ampStaticPressures, first, size);
-	amp::copyVecRangeToArr(m_depthBuffer, m_ampDepths, first, size);
-	amp::copyVecRangeToArr(m_colorBuffer, m_ampColors, first, size);
-	amp::copyVecRangeToArr(m_proxyBuffer, m_ampProxies, first, size);
-	amp::copyVecRangeToArr(m_partGroupIdxBuffer, m_ampGroupIdxs, first, size);
+		amp::copy(m_staticPressureBuf, m_ampStaticPressures, first, size);
+	amp::copy(m_depthBuffer, m_ampDepths, first, size);
+	amp::copy(m_colorBuffer, m_ampColors, first, size);
+	amp::copy(m_proxyBuffer, m_ampProxies, first, size);
+	amp::copy(m_partGroupIdxBuffer, m_ampGroupIdxs, first, size);
 }
 
 void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
@@ -2319,7 +2319,7 @@ void b2ParticleSystem::AmpComputeDepth()
 			}
 		});
 		uint32 updated;
-		Concurrency::copy(ampUpdated.section(t, 1), &updated);
+		amp::copy(ampUpdated, t, updated);
 		if (!updated)
 			break;
 	}
@@ -3376,7 +3376,7 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 		}
 	} callback(this, GetFixtureContactFilter());
 
-	Concurrency::copy(m_ampProxies.section(0, m_count), m_proxyBuffer.data());
+	amp::copy(m_ampProxies, m_proxyBuffer, m_count);
 
 	b2AABB aabb;
 	AmpComputeAABB(aabb);
@@ -3385,7 +3385,7 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 	if (m_def.strictContactCheck)
 		RemoveSpuriousBodyContacts();
 	NotifyBodyContactListenerPostContact(fixtureSet);
-	amp::copyVecToArr(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
+	amp::copy(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
 }
 
 void b2ParticleSystem::RemoveSpuriousBodyContacts()
@@ -3437,12 +3437,9 @@ void b2ParticleSystem::AddBodyContactResults(ampArray<float32> dst, const ampArr
 	if (!m_bodyContactCount) return;
 	ampArrayView<const float32> add = bodyRes.section(0, m_bodyContactCount);
 	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
-	AmpForEachBodyContact([=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
+	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
 	{
-		auto& d = dst[bodyContactPartIdxs[i]];
-		auto& s = add[i];
-		d += s;
-		// amp::atomicAdd(d, s);
+		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
 	});
 }
 void b2ParticleSystem::AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes)
@@ -3450,12 +3447,9 @@ void b2ParticleSystem::AddBodyContactResults(ampArray<b2Vec3> dst, const ampArra
 	if (!m_bodyContactCount) return;
 	ampArrayView<const b2Vec3> add = bodyRes.section(0, m_bodyContactCount);
 	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
-	AmpForEachBodyContact([=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
+	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
 	{
-		auto& d = dst[bodyContactPartIdxs[i]];
-		auto& s = add[i];
-		d += s;
-		// amp::atomicAdd(d, s);
+		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
 	});
 }
 
@@ -4419,21 +4413,21 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 	if (m_accelerate)
 	{
 		AmpComputeWeight();
-		m_ampCopyFutWeights = amp::copyArrToVecAsync(m_ampWeights, m_weightBuffer, m_count);
+		m_ampCopyFutWeights = amp::copyAsync(m_ampWeights, m_weightBuffer, m_count);
 		if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
 		{
 			AmpComputeDepth();
-			m_ampCopyFutDepths = amp::copyArrToVecAsync(m_ampDepths, m_depthBuffer, m_count);
+			m_ampCopyFutDepths = amp::copyAsync(m_ampDepths, m_depthBuffer, m_count);
 		}
 		if (m_allParticleFlags & b2_reactiveParticle)
 		{
 			AmpUpdatePairsAndTriadsWithReactiveParticles();
-			m_ampCopyFutTriads = amp::copyVecToArrAsync(m_triadBuffer, m_ampTriads, m_triadCount);
+			m_ampCopyFutTriads = amp::copyAsync(m_triadBuffer, m_ampTriads, m_triadCount);
 		}
 		if (m_hasForce)
 		{
 			AmpSolveForce(m_subStep);
-			copy(m_ampForces.section(0, m_count), m_forceBuffer.data());
+			amp::copy(m_ampForces, m_forceBuffer, m_count);
 		}
 		if (m_allParticleFlags & b2_viscousParticle)
 			AmpSolveViscous();
@@ -4527,7 +4521,7 @@ void b2ParticleSystem::SolveIteration2(int32 iteration)
 			AmpSolveRigid(m_subStep);
 		if (m_allParticleFlags & b2_wallParticle)
 			AmpSolveWall();
-		m_ampCopyFutVelocities = amp::copyArrToVecAsync(m_ampVelocities, m_velocityBuffer, m_count);
+		m_ampCopyFutVelocities = amp::copyAsync(m_ampVelocities, m_velocityBuffer, m_count);
 
 		// FIRE
 		if (m_allParticleFlags & b2_flameParticle)
@@ -4538,27 +4532,27 @@ void b2ParticleSystem::SolveIteration2(int32 iteration)
 			if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
 				AmpSolveExtinguish();
 		}
-		m_ampCopyFutHealths = amp::copyArrToVecAsync(m_ampHealths, m_healthBuffer, m_count);
+		m_ampCopyFutHealths = amp::copyAsync(m_ampHealths, m_healthBuffer, m_count);
 
 		// HEAT MANAGEMENT
 		if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
 			AmpSolveHeatConduct(m_subStep);
 		if (m_allParticleFlags & b2_heatLoosingParticle)
 			AmpSolveLooseHeat(m_subStep);
-		m_ampCopyFutHeats = amp::copyArrToVecAsync(m_ampHeats, m_heatBuffer, m_count);
+		m_ampCopyFutHeats = amp::copyAsync(m_ampHeats, m_heatBuffer, m_count);
 		AmpSolveChangeMat();
-		m_ampCopyFutMatIdxs = amp::copyArrToVecAsync(m_ampMatIdxs, m_partMatIdxBuffer, m_count);
+		m_ampCopyFutMatIdxs = amp::copyAsync(m_ampMatIdxs, m_partMatIdxBuffer, m_count);
 
 		// AIR
 		if (m_allParticleFlags & b2_airParticle)
 			AmpSolveAir();
 
 		AmpSolveHealth();
-		m_ampCopyFutFlags = amp::copyArrToVecAsync(m_ampFlags, m_flagsBuffer, m_count);
+		m_ampCopyFutFlags = amp::copyAsync(m_ampFlags, m_flagsBuffer, m_count);
 
 		// The particle positions can be updated only at the end of m_subStep.
 		AmpSolvePosition(m_subStep);
-		m_ampCopyFutPositions = amp::copyArrToVecAsync(m_ampPositions, m_positionBuffer, m_count);
+		m_ampCopyFutPositions = amp::copyAsync(m_ampPositions, m_positionBuffer, m_count);
 	}
 	else
 	{
@@ -7213,7 +7207,7 @@ void b2ParticleSystem::AmpSolveZombie()
 		}
 	}
 	if (groupWasDestroyed)
-		amp::copyVecToArr(m_groupBuffer, m_ampGroups, m_groupCount);
+		amp::copy(m_groupBuffer, m_ampGroups, m_groupCount);
 }
 
 void b2ParticleSystem::AddZombieRange(int32 firstIdx, int32 lastIdx)
