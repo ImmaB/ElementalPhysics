@@ -55,7 +55,7 @@ void b2CircleShape::ComputeDistance(const b2Transform& transform, const b2Vec2& 
 // From Section 3.1.2
 // x = s + a * r
 // norm(x) = radius
-bool b2CircleShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+bool b2CircleShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 							const b2Transform& transform, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
@@ -83,9 +83,9 @@ bool b2CircleShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input
 	if (0.0f <= a && a <= input.maxFraction * rr)
 	{
 		a /= rr;
-		output->fraction = a;
-		output->normal = s + a * r;
-		output->normal.Normalize();
+		output.fraction = a;
+		output.normal = s + a * r;
+		output.normal.Normalize();
 		return true;
 	}
 
@@ -101,11 +101,10 @@ void b2CircleShape::ComputeAABB(b2AABB& aabb, const b2Transform& transform, int3
 	aabb.upperBound.Set(p.x + m_radius, p.y + m_radius);
 }
 
-void b2CircleShape::ComputeMass(b2MassData* massData, float32 density) const
+b2MassData b2CircleShape::ComputeMass(float32 density) const
 {
-	massData->mass = density * b2_pi * m_radius * m_radius;
-	massData->center = m_p;
-
-	// inertia about the local origin
-	massData->I = massData->mass * (0.5f * m_radius * m_radius + b2Dot(m_p, m_p));
+	const float32 mass = density * b2_pi * m_radius * m_radius;
+	return b2MassData(mass, m_p,
+		mass * (0.5f * m_radius * m_radius + b2Dot(m_p, m_p))
+	);
 }

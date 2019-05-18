@@ -81,7 +81,7 @@ void b2EdgeShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float3
 // v = v1 + s * e
 // p1 + t * d = v1 + s * e
 // s * e - t * d = p1 - v1
-bool b2EdgeShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+bool b2EdgeShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 							const b2Transform& xf, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
@@ -131,14 +131,14 @@ bool b2EdgeShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
 		return false;
 	}
 
-	output->fraction = t;
+	output.fraction = t;
 	if (numerator > 0.0f)
 	{
-		output->normal = -b2Mul(xf.q, normal);
+		output.normal = -b2Mul(xf.q, normal);
 	}
 	else
 	{
-		output->normal = b2Mul(xf.q, normal);
+		output.normal = b2Mul(xf.q, normal);
 	}
 	return true;
 }
@@ -158,11 +158,8 @@ void b2EdgeShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childIn
 	aabb.upperBound = upper + r;
 }
 
-void b2EdgeShape::ComputeMass(b2MassData* massData, float32 density) const
+b2MassData b2EdgeShape::ComputeMass(float32 density) const
 {
 	B2_NOT_USED(density);
-
-	massData->mass = 0.0f;
-	massData->center = 0.5f * (m_vertex1 + m_vertex2);
-	massData->I = 0.0f;
+	return b2MassData(0.0f, 0.5f * (m_vertex1 + m_vertex2), 0.0f);
 }

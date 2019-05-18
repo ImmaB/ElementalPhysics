@@ -28,61 +28,37 @@
 // GJK using Voronoi regions (Christer Ericson) and Barycentric coordinates.
 int32 b2_gjkCalls, b2_gjkIters, b2_gjkMaxIters;
 
-void b2DistanceProxy::Set(const b2Shape* shape, int32 index)
+void b2DistanceProxy::Set(const b2CircleShape& circle, int32 index)
 {
-	switch (shape->GetType())
-	{
-	case b2Shape::e_circle:
-		{
-			const b2CircleShape* circle = static_cast<const b2CircleShape*>(shape);
-			m_vertices = &circle->m_p;
-			m_count = 1;
-			m_radius = circle->m_radius;
-		}
-		break;
+	m_vertices = &circle.m_p;
+	m_count = 1;
+	m_radius = circle.m_radius;
+}
+void b2DistanceProxy::Set(const b2PolygonShape& poly, int32 index)
+{
+	m_vertices = poly.m_vertices;
+	m_count = poly.m_count;
+	m_radius = poly.m_radius;
+}
+void b2DistanceProxy::Set(const b2ChainShape& chain, int32 index)
+{
+	b2Assert(0 <= index && index < chain->m_count);
 
-	case b2Shape::e_polygon:
-		{
-			const b2PolygonShape* polygon = static_cast<const b2PolygonShape*>(shape);
-			m_vertices = polygon->m_vertices;
-			m_count = polygon->m_count;
-			m_radius = polygon->m_radius;
-		}
-		break;
+	m_buffer[0] = chain.m_vertices[index];
+	if (index + 1 < chain.m_count)
+		m_buffer[1] = chain.m_vertices[index + 1];
+	else
+		m_buffer[1] = chain.m_vertices[0];
 
-	case b2Shape::e_chain:
-		{
-			const b2ChainShape* chain = static_cast<const b2ChainShape*>(shape);
-			b2Assert(0 <= index && index < chain->m_count);
-
-			m_buffer[0] = chain->m_vertices[index];
-			if (index + 1 < chain->m_count)
-			{
-				m_buffer[1] = chain->m_vertices[index + 1];
-			}
-			else
-			{
-				m_buffer[1] = chain->m_vertices[0];
-			}
-
-			m_vertices = m_buffer;
-			m_count = 2;
-			m_radius = chain->m_radius;
-		}
-		break;
-
-	case b2Shape::e_edge:
-		{
-			const b2EdgeShape* edge = static_cast<const b2EdgeShape*>(shape);
-			m_vertices = &edge->m_vertex1;
-			m_count = 2;
-			m_radius = edge->m_radius;
-		}
-		break;
-
-	default:
-		b2Assert(false);
-	}
+	m_vertices = m_buffer;
+	m_count = 2;
+	m_radius = chain.m_radius;
+}
+void b2DistanceProxy::Set(const b2EdgeShape& edge, int32 index)
+{
+	m_vertices = &edge.m_vertex1;
+	m_count = 2;
+	m_radius = edge.m_radius;
 }
 
 

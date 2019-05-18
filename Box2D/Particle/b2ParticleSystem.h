@@ -57,14 +57,14 @@ typedef std::chrono::time_point<std::chrono::steady_clock> Time;
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 class b2World;
-class b2Body;
+struct Body;
 class b2Shape;
 class b2ParticleGroup;
 class b2BlockAllocator;
 class b2StackAllocator;
 class b2QueryCallback;
 class b2RayCastCallback;
-class b2Fixture;
+struct Fixture;
 class b2ContactFilter;
 class b2ContactListener;
 class b2ParticlePairSet;
@@ -79,7 +79,6 @@ using namespace std;
 
 struct b2ParticleContact
 {
-public:
 	int32 idxA, idxB;
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	/// 0.0f ==> particles are just barely touching
@@ -291,14 +290,6 @@ private:
 	b2TimeStep m_subStep;
 
 	HANDLE findBodyContactsThread;
-
-	static DWORD StartBodyContactThread(LPVOID* param) {
-		b2ParticleSystem *sys = (b2ParticleSystem*)param;
-		sys->UpdateBodyContacts();
-		return 0;
-	}
-
-
 
 public:
 	bool m_accelerate;
@@ -593,8 +584,8 @@ public:
 	const b2ParticleContact* GetContacts() const;
 	const int32 GetContactCount() const;
 
-	b2Body** GetBodyBuffer();
-	b2Fixture** GetFixtureBuffer();
+	std::vector<Body> GetBodyBuffer();
+	std::vector<Fixture> GetFixtureBuffer();
 
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
@@ -776,7 +767,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param point1 the ray starting point
 	/// @param point2 the ray ending point
-	void RayCast(b2RayCastCallback* callback, const b2Vec2& point1,
+	void RayCast(b2RayCastCallback& callback, const b2Vec2& point1,
 				 const b2Vec2& point2) const;
 
 	/// Compute the axis-aligned bounding box for all particles contained
@@ -932,9 +923,9 @@ private:
 	static const int32 k_extraDampingFlags =
 		b2_staticPressureParticle;
 
-	b2ParticleSystem(const b2ParticleSystemDef* def, b2World* world,
-					vector<b2Body*>& bodyBuffer,
-					vector<b2Fixture*>& fixtureBuffer);
+	b2ParticleSystem(const b2ParticleSystemDef& def, b2World& world,
+					vector<Body>& bodyBuffer,
+					vector<Fixture>& fixtureBuffer);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -1035,7 +1026,7 @@ private:
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
 	bool b2ParticleSystem::AddContact(int32 a, int32 b, uint32& contactCount);
-	bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const;
+	bool b2ParticleSystem::ShouldCollide(int32 i, const Fixture& f) const;
 	void FindContacts();
 	void AmpFindContacts(bool exceptZombie);
 	void UpdateProxies();
@@ -1240,9 +1231,9 @@ private:
 		bool isRigidGroup, b2ParticleGroup& group, int32 particleIndex,
 		float32 impulse, const b2Vec2& normal);
 
-	vector<b2Body*>& m_bodyBuffer;
+	vector<Body>& m_bodyBuffer;
 	int32 m_bodyCount;
-	vector<b2Fixture*>& m_fixtureBuffer;
+	vector<Fixture>& m_fixtureBuffer;
 
 	Concurrency::accelerator_view m_cpuAccelView = Concurrency::accelerator(Concurrency::accelerator::cpu_accelerator).default_view;
 	Concurrency::accelerator_view m_gpuAccelView = Concurrency::accelerator(Concurrency::accelerator::default_accelerator).default_view;
@@ -1480,7 +1471,7 @@ private:
 
 	b2ParticleSystemDef m_def;
 
-	b2World* m_world;
+	b2World& m_world;
 	b2ParticleSystem* m_prev;
 	b2ParticleSystem* m_next;
 };
@@ -1576,13 +1567,13 @@ inline const int32 b2ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
-inline b2Body** b2ParticleSystem::GetBodyBuffer()
+inline std::vector<Body> b2ParticleSystem::GetBodyBuffer()
 {
-	return m_bodyBuffer.data();
+	return m_bodyBuffer;
 }
-inline b2Fixture** b2ParticleSystem::GetFixtureBuffer()
+inline std::vector<Fixture> b2ParticleSystem::GetFixtureBuffer()
 {
-	return m_fixtureBuffer.data();
+	return m_fixtureBuffer;
 }
 
 inline const b2PartBodyContact* b2ParticleSystem::GetBodyContacts() const

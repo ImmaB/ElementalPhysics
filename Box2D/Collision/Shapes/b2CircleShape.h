@@ -41,14 +41,14 @@ public:
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
 	
 	/// Implement b2Shape.
-	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 				const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeAABB
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	void ComputeMass(b2MassData* massData, float32 density) const;
+	b2MassData ComputeMass(float32 density) const;
 
 	/// Get the supporting vertex index in the given direction.
 	int32 GetSupport(const b2Vec2& d) const;
@@ -80,7 +80,7 @@ public:
 
 inline b2CircleShape::b2CircleShape()
 {
-	m_type = e_circle;
+	m_type = Shape::e_circle;
 	m_radius = 0.0f;
 	m_p.SetZero();
 }

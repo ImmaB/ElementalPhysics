@@ -73,14 +73,13 @@ struct b2BodyDef
 	/// This constructor sets the body definition default values.
 	b2BodyDef()
 	{
-		userData = NULL;
 		position.Set(0.0f, 0.0f);
 		angle = 0.0f;
 		linearVelocity.Set(0.0f, 0.0f);
 		angularVelocity = 0.0f;
 		linearDamping = 0.0f;
 		angularDamping = 0.0f;
-		material = NULL;
+		materialIdx = b2_invalidIndex;
 		heat = 15.f;
 		health = 1.0f;
 		flags = 0;
@@ -102,7 +101,7 @@ struct b2BodyDef
 	/// Note: if a dynamic body would have zero mass, the mass is set to one.
 	b2BodyType type;
 
-	b2BodyMaterial* material;
+	int32 materialIdx;
 
 	/// The world position of the body. Avoid creating bodies at the origin
 	/// since this can lead to many overlapping shapes.
@@ -147,9 +146,6 @@ struct b2BodyDef
 	/// Does this body start out active?
 	bool active;
 
-	/// Use this to store application specific body data.
-	void* userData;
-
 	/// Scale the gravity applied to this body.
 	float32 gravityScale;
 
@@ -158,36 +154,95 @@ struct b2BodyDef
 	uint32 flags;
 };
 
-/// A rigid body. These are created via b2World::CreateBody.
-class b2Body
+
+struct Body
 {
-public:
-	/// Creates a fixture and attach it to this body. Use this function if you need
-	/// to set some fixture parameters, like friction. Otherwise you can create the
-	/// fixture directly from a shape.
-	/// If the density is non-zero, this function automatically updates the mass of the body.
-	/// Contacts are not created until the next time step.
-	/// @param def the fixture definition.
-	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(const b2FixtureDef* def);
+	int32 m_idx;
 
-	/// Creates a fixture from a shape and attach it to this body.
-	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
-	/// like friction, restitution, user data, or filtering.
-	/// If the density is non-zero, this function automatically updates the mass of the body.
-	/// @param shape the shape to be cloned.
-	/// @param density the shape density (set to zero for static bodies).
-	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(const b2Shape* shape, float32 density);
+	b2BodyType m_type;
 
-	/// Destroy a fixture. This removes the fixture from the broad-phase and
-	/// destroys all contacts associated with this fixture. This will
-	/// automatically adjust the mass of the body if the body is dynamic and the
-	/// fixture has positive density.
-	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
-	/// @param fixture the fixture to be removed.
-	/// @warning This function is locked during callbacks.
-	void DestroyFixture(int32 idx);
+	uint16 m_flags;
+
+	int32 m_islandIndex;
+
+	b2Transform m_xf;		// the body origin transform
+	b2Transform m_xf0;		// the previous transform for particle simulation
+	b2Sweep m_sweep;		// the swept motion for CCD
+
+	b2Vec2 m_linearVelocity;
+	float32 m_angularVelocity;
+
+	b2Vec2 m_force;
+	float32 m_torque;
+
+	std::vector<b2Fixture>& m_fixtureBuffer;
+	std::vector<int32> m_fixtureIdxBuffer;
+	std::vector<int32> m_fixtureIdxFreeSlots;
+
+	b2JointEdge* m_jointList;
+	b2ContactEdge* m_contactList;
+
+	float32 m_mass, m_invMass;
+
+	// Rotational inertia about the center of mass.
+	float32 m_I, m_invI;
+
+	float32 m_linearDamping;
+	float32 m_angularDamping;
+	float32 m_gravityScale;
+
+	float32 m_sleepTime;
+
+	int32 m_materialIdx;
+	float32 m_heat;
+
+	float32 m_health;
+
+	void Set(const b2BodyDef def);
+	
+	/// Set the sleep state of the body. A sleeping body has very
+	/// low CPU cost.
+	/// @param flag set to true to wake the body, false to put it to sleep.
+	void SetAwake(bool flag);
+	/// Get the sleeping state of this body.
+	/// @return true if the body is awake.
+	bool IsAwake() const;
+
+	/// Set the active state of the body. An inactive body is not
+	/// simulated and cannot be collided with or woken up.
+	/// If you pass a flag of true, all fixtures will be added to the
+	/// broad-phase.
+	/// If you pass a flag of false, all fixtures will be removed from
+	/// the broad-phase and all contacts will be destroyed.
+	/// Fixtures and joints are otherwise unaffected. You may continue
+	/// to create/destroy fixtures and joints on inactive bodies.
+	/// Fixtures on an inactive body are implicitly inactive and will
+	/// not participate in collisions, ray-casts, or queries.
+	/// Joints connected to an inactive body are implicitly inactive.
+	/// An inactive body is still owned by a b2World object and remains
+	/// in the body list.
+	void SetActive(bool flag);
+	/// Get the active state of the body.
+	bool IsActive() const;
+
+	/// Should this body be treated like a bullet for continuous collision detection?
+	void SetBullet(bool flag);
+	/// Is this body treated like a bullet for continuous collision detection?
+	bool IsBullet() const;
+
+	/// Get the world body origin position.
+	/// @return the world position of the body's origin.
+	const b2Vec2 GetPosition() const;
+
+	/// Get the angle in radians.
+	/// @return the current world rotation angle in radians.
+	float32 GetAngle() const;
+
+	/// Get the world position of the center of mass.
+	const b2Vec2 GetWorldCenter() const;
+
+	/// Get the local position of the center of mass.
+	const b2Vec2 GetLocalCenter() const;
 
 	/// Set the position of the body's origin and rotation.
 	/// Manipulating a body's transform may cause non-physical behavior.
@@ -196,39 +251,25 @@ public:
 	/// @param angle the world rotation in radians.
 	void SetTransform(const b2Vec2& position, float32 angle);
 
-	/// Get the body transform for the body's origin.
-	/// @return the world transform of the body's origin.
-	const b2Transform& GetTransform() const;
-
-	/// Get the world body origin position.
-	/// @return the world position of the body's origin.
-	const b2Vec2& GetPosition() const;
-
-	/// Get the angle in radians.
-	/// @return the current world rotation angle in radians.
-	float32 GetAngle() const;
-
-	/// Get the world position of the center of mass.
-	const b2Vec2& GetWorldCenter() const;
-
-	/// Get the local position of the center of mass.
-	const b2Vec2& GetLocalCenter() const;
-
 	/// Set the linear velocity of the center of mass.
 	/// @param v the new linear velocity of the center of mass.
 	void SetLinearVelocity(const b2Vec2& v);
-
-	/// Get the linear velocity of the center of mass.
-	/// @return the linear velocity of the center of mass.
-	const b2Vec2& GetLinearVelocity() const;
 
 	/// Set the angular velocity.
 	/// @param omega the new angular velocity in radians/second.
 	void SetAngularVelocity(float32 omega);
 
-	/// Get the angular velocity.
-	/// @return the angular velocity in radians/second.
-	float32 GetAngularVelocity() const;
+
+	// This is used to prevent connected bodies from colliding.
+	// It may lie, depending on the collideConnected flag.
+	bool ShouldCollide(const Body& other) const;
+
+	void Advance(float32 t);
+
+	void SynchronizeTransform();
+
+
+
 
 	/// Apply a force at a world point. If the force is not
 	/// applied at the center of mass, it will generate a torque and
@@ -262,27 +303,21 @@ public:
 	/// @param impulse the angular impulse in units of kg*m*m/s
 	/// @param wake also wake up the body
 	void ApplyAngularImpulse(float32 impulse, bool wake);
-
-	/// Get the total mass of the body.
-	/// @return the mass, usually in kilograms (kg).
-	float32 GetMass() const;
-
-	float32 GetInvMass() const;
-
+	
 	/// Get the rotational inertia of the body about the local origin.
 	/// @return the rotational inertia, usually in kg-m^2.
 	float32 GetInertia() const;
 
 	/// Get the mass data of the body.
 	/// @return a struct containing the mass, inertia and center of the body.
-	void GetMassData(b2MassData* data) const;
+	b2MassData GetMassData() const;
 
 	/// Set the mass properties to override the mass properties of the fixtures.
 	/// Note that this changes the center of mass position.
 	/// Note that creating or destroying fixtures can also alter the mass.
 	/// This function has no effect if the body isn't dynamic.
 	/// @param massData the mass properties.
-	void SetMassData(const b2MassData* data);
+	void SetMassData(const b2MassData& data);
 
 	/// This resets the mass properties to the sum of the mass properties of the fixtures.
 	/// This normally does not need to be called unless you called SetMassData to override
@@ -319,35 +354,8 @@ public:
 	/// @return the world velocity of a point.
 	b2Vec2 GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) const;
 
-	/// Get the linear damping of the body.
-	float32 GetLinearDamping() const;
-
-	/// Set the linear damping of the body.
-	void SetLinearDamping(float32 linearDamping);
-
-	/// Get the angular damping of the body.
-	float32 GetAngularDamping() const;
-
-	/// Set the angular damping of the body.
-	void SetAngularDamping(float32 angularDamping);
-
-	/// Get the gravity scale of the body.
-	float32 GetGravityScale() const;
-
-	/// Set the gravity scale of the body.
-	void SetGravityScale(float32 scale);
-
 	/// Set the type of this body. This may alter the mass and velocity.
 	void SetType(b2BodyType type);
-
-	/// Get the type of this body.
-	b2BodyType GetType() const;
-
-	/// Should this body be treated like a bullet for continuous collision detection?
-	void SetBullet(bool flag);
-
-	/// Is this body treated like a bullet for continuous collision detection?
-	bool IsBullet() const;
 
 	/// You can disable sleeping on this body. If you disable sleeping, the
 	/// body will be woken.
@@ -356,33 +364,6 @@ public:
 	/// Is this body allowed to sleep
 	bool IsSleepingAllowed() const;
 
-	/// Set the sleep state of the body. A sleeping body has very
-	/// low CPU cost.
-	/// @param flag set to true to wake the body, false to put it to sleep.
-	void SetAwake(bool flag);
-
-	/// Get the sleeping state of this body.
-	/// @return true if the body is awake.
-	bool IsAwake() const;
-
-	/// Set the active state of the body. An inactive body is not
-	/// simulated and cannot be collided with or woken up.
-	/// If you pass a flag of true, all fixtures will be added to the
-	/// broad-phase.
-	/// If you pass a flag of false, all fixtures will be removed from
-	/// the broad-phase and all contacts will be destroyed.
-	/// Fixtures and joints are otherwise unaffected. You may continue
-	/// to create/destroy fixtures and joints on inactive bodies.
-	/// Fixtures on an inactive body are implicitly inactive and will
-	/// not participate in collisions, ray-casts, or queries.
-	/// Joints connected to an inactive body are implicitly inactive.
-	/// An inactive body is still owned by a b2World object and remains
-	/// in the body list.
-	void SetActive(bool flag);
-
-	/// Get the active state of the body.
-	bool IsActive() const;
-
 	/// Set this body to have fixed rotation. This causes the mass
 	/// to be reset.
 	void SetFixedRotation(bool flag);
@@ -390,379 +371,150 @@ public:
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
-	float32 GetHeat() const;
-	void SetHeat(float32 heat);
-
-	float32 GetHealth() const;
-
-	uint32 GetFlags() const;
 	void AddFlags(uint16 flags);
 	void RemFlags(uint16 flags);
 
 	/// Get the list of all joints attached to this body.
 	b2JointEdge* GetJointList();
 	const b2JointEdge* GetJointList() const;
-
-	/// Get the list of all contacts attached to this body.
-	/// @warning this list changes during the time step and you may
-	/// miss some collisions if you don't use b2ContactListener.
-	b2ContactEdge* GetContactList();
-	const b2ContactEdge* GetContactList() const;
-
-	/// Get the user data pointer that was provided in the body definition.
-	void* GetUserData() const;
-
-	/// Set the user data. Use this to store your application specific data.
-	void SetUserData(void* data);
-
-	/// Get the parent world of this body.
-	b2World* GetWorld();
-	const b2World* GetWorld() const;
-
-	std::vector<int32> GetFixtureIdxBuffer();
-	const std::vector<int32> GetFixtureIdxBuffer() const;
-
-	std::vector<b2Fixture*> GetFixtureBuffer();
-	const std::vector<b2Fixture*> GetFixtureBuffer() const;
-
-	b2BodyMaterial* GetMaterial();
-	const b2BodyMaterial* GetMaterial() const;
-
-	/// Dump this body to a log file
-	void Dump();
-
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-public:
-	/// Get x-coordinate of position.
-	float32 GetPositionX() const { return GetPosition().x; }
-
-	/// Get y-coordinate of position.
-	float32 GetPositionY() const { return GetPosition().y; }
-
-	/// Set b2Transform using direct floats.
-	void SetTransform(float32 positionX, float32 positionY, float32 angle);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-private:
-
-	friend class b2World;
-	friend class b2Island;
-	friend class b2ContactManager;
-	friend class b2ContactSolver;
-	friend class b2Contact;
-
-	friend class b2DistanceJoint;
-	friend class b2FrictionJoint;
-	friend class b2GearJoint;
-	friend class b2MotorJoint;
-	friend class b2MouseJoint;
-	friend class b2PrismaticJoint;
-	friend class b2PulleyJoint;
-	friend class b2RevoluteJoint;
-	friend class b2RopeJoint;
-	friend class b2WeldJoint;
-	friend class b2WheelJoint;
-
-	friend class b2ParticleSystem;
-	friend class b2ParticleGroup;
-
-	// m_flags 
-	/*
-	enum
-	{
-	e_islandFlag		= 0x0001,
-	b2_awakeBody			= 0x0002,
-	b2_autoSleepBody		= 0x0004,
-	b2_bulletBody		= 0x0008,
-	e_fixedRotationFlag	= 0x0010,
-	b2_activeBody		= 0x0020,
-	e_toiFlag			= 0x0040
-	};*/
-
-	b2Body(const b2BodyDef* bd, b2World* world, 
-			std::vector<b2Fixture*>& fixtureBuffer);
-	~b2Body();
-
-	void SynchronizeFixtures();
-	void SynchronizeTransform();
-
-	// This is used to prevent connected bodies from colliding.
-	// It may lie, depending on the collideConnected flag.
-	bool ShouldCollide(const b2Body* other) const;
-
-
-	void Advance(float32 t);
-
-	b2BodyType m_type;
-
-	int32 m_idx;
-	inline void SetIdx(int32 idx)
-	{
-		m_idx = idx;
-	}
-
-	uint16 m_flags;
-
-	int32 m_islandIndex;
-
-	b2Transform m_xf;		// the body origin transform
-	b2Transform m_xf0;		// the previous transform for particle simulation
-	b2Sweep m_sweep;		// the swept motion for CCD
-
-	b2Vec2 m_linearVelocity;
-	float32 m_angularVelocity;
-
-	b2Vec2 m_force;
-	float32 m_torque;
-
-	b2World* m_world;
-
-	std::vector<b2Fixture*>& m_fixtureBuffer;
-	std::vector<int32> m_fixtureIdxBuffer;
-	std::vector<int32> m_fixtureIdxFreeSlots;
-	int32 m_fixtureCount;
-
-	b2JointEdge* m_jointList;
-	b2ContactEdge* m_contactList;
-
-	float32 m_mass, m_invMass;
-
-	// Rotational inertia about the center of mass.
-	float32 m_I, m_invI;
-
-	float32 m_linearDamping;
-	float32 m_angularDamping;
-	float32 m_gravityScale;
-
-	float32 m_sleepTime;
-
-	void* m_userData;
-
-	b2BodyMaterial* m_material;
-	float32 m_heat;
-
-	float32 m_health;
 };
 
-inline std::vector<int32> b2Body::GetFixtureIdxBuffer()
+/// A rigid body. These are created via b2World::CreateBody.
+class b2Body
 {
-	return m_fixtureIdxBuffer;
-}
-inline const  std::vector<int32> b2Body::GetFixtureIdxBuffer() const
-{
-	return m_fixtureIdxBuffer;
-}
+public:
+	/// Creates a fixture and attach it to this body. Use this function if you need
+	/// to set some fixture parameters, like friction. Otherwise you can create the
+	/// fixture directly from a shape.
+	/// If the density is non-zero, this function automatically updates the mass of the body.
+	/// Contacts are not created until the next time step.
+	/// @param def the fixture definition.
+	/// @warning This function is locked during callbacks.
+	int32 CreateFixture(int32 bodyIdx, b2FixtureDef& def);
 
-inline std::vector<b2Fixture*> b2Body::GetFixtureBuffer()
-{
-	return m_fixtureBuffer;
-}
-inline const  std::vector<b2Fixture*> b2Body::GetFixtureBuffer() const
-{
-	return m_fixtureBuffer;
-}
+	/// Creates a fixture from a shape and attach it to this body.
+	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
+	/// like friction, restitution, user data, or filtering.
+	/// If the density is non-zero, this function automatically updates the mass of the body.
+	/// @param shape the shape to be cloned.
+	/// @param density the shape density (set to zero for static bodies).
+	/// @warning This function is locked during callbacks.
+	int32 CreateFixture(int32 bodyIdx, const b2Shape* shape, float32 density);
 
-inline b2BodyMaterial* b2Body::GetMaterial()
-{
-	return m_material;
-}
-inline const b2BodyMaterial* b2Body::GetMaterial() const
-{
-	return m_material;
-}
+	/// Destroy a fixture. This removes the fixture from the broad-phase and
+	/// destroys all contacts associated with this fixture. This will
+	/// automatically adjust the mass of the body if the body is dynamic and the
+	/// fixture has positive density.
+	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
+	/// @param fixture the fixture to be removed.
+	/// @warning This function is locked during callbacks.
+	void DestroyFixture(int32 idx);
+};
 
-inline float32 b2Body::GetHeat() const
-{
-	return m_heat;
-}
-inline void b2Body::SetHeat(float32 heat)
-{
-	m_heat = heat;
-}
-
-inline float32 b2Body::GetHealth() const
-{
-	return m_health;
-}
-
-inline uint32 b2Body::GetFlags() const
-{
-	return m_flags;
-}
-inline void b2Body::AddFlags(uint16 flags)
+inline void Body::AddFlags(uint16 flags)
 {
 	m_flags |= flags;
 }
-inline void b2Body::RemFlags(uint16 flags)
+inline void Body::RemFlags(uint16 flags)
 {
 	m_flags &= ~flags;
 }
 
-inline b2BodyType b2Body::GetType() const
-{
-	return m_type;
-}
-
-inline const b2Transform& b2Body::GetTransform() const
-{
-	return m_xf;
-}
-
-inline const b2Vec2& b2Body::GetPosition() const
+inline const b2Vec2 Body::GetPosition() const
 {
 	return m_xf.p;
 }
 
-inline float32 b2Body::GetAngle() const
+inline float32 Body::GetAngle() const
 {
 	return m_sweep.a;
 }
 
-inline const b2Vec2& b2Body::GetWorldCenter() const
+inline const b2Vec2 Body::GetWorldCenter() const
 {
 	return m_sweep.c;
 }
 
-inline const b2Vec2& b2Body::GetLocalCenter() const
+inline const b2Vec2 Body::GetLocalCenter() const
 {
 	return m_sweep.localCenter;
 }
 
-inline void b2Body::SetLinearVelocity(const b2Vec2& v)
+inline void Body::SetLinearVelocity(const b2Vec2& v)
 {
 	if (m_type == b2_staticBody)
-	{
 		return;
-	}
-
 	if (b2Dot(v, v) > 0.0f)
-	{
 		SetAwake(true);
-	}
-
 	m_linearVelocity = v;
 }
-inline const b2Vec2& b2Body::GetLinearVelocity() const
-{
-	return m_linearVelocity;
-}
 
-inline void b2Body::SetAngularVelocity(float32 w)
+inline void Body::SetAngularVelocity(float32 w)
 {
 	if (m_type == b2_staticBody)
-	{
 		return;
-	}
-
 	if (w * w > 0.0f)
-	{
 		SetAwake(true);
-	}
-
 	m_angularVelocity = w;
 }
-inline float32 b2Body::GetAngularVelocity() const
-{
-	return m_angularVelocity;
-}
 
-inline float32 b2Body::GetMass() const
-{
-	return m_mass;
-}
-
-inline float32 b2Body::GetInvMass() const
-{
-	return m_invMass;
-}
-
-inline float32 b2Body::GetInertia() const
+inline float32 Body::GetInertia() const
 {
 	return m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter);
 }
 
-inline void b2Body::GetMassData(b2MassData* data) const
+inline b2MassData Body::GetMassData() const
 {
-	data->mass = m_mass;
-	data->I = m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter);
-	data->center = m_sweep.localCenter;
+	return b2MassData(
+		m_mass,
+		m_sweep.localCenter,
+		m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter)
+	);
 }
 
-inline b2Vec2 b2Body::GetWorldPoint(const b2Vec2& localPoint) const
+inline b2Vec2 Body::GetWorldPoint(const b2Vec2& localPoint) const
 {
 	return b2Mul(m_xf, localPoint);
 }
 
-inline b2Vec2 b2Body::GetWorldVector(const b2Vec2& localVector) const
+inline b2Vec2 Body::GetWorldVector(const b2Vec2& localVector) const
 {
 	return b2Mul(m_xf.q, localVector);
 }
 
-inline b2Vec2 b2Body::GetLocalPoint(const b2Vec2& worldPoint) const
+inline b2Vec2 Body::GetLocalPoint(const b2Vec2& worldPoint) const
 {
 	return b2MulT(m_xf, worldPoint);
 }
 
-inline b2Vec2 b2Body::GetLocalVector(const b2Vec2& worldVector) const
+inline b2Vec2 Body::GetLocalVector(const b2Vec2& worldVector) const
 {
 	return b2MulT(m_xf.q, worldVector);
 }
 
-inline b2Vec2 b2Body::GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const
+inline b2Vec2 Body::GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const
 {
 	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_sweep.c);
 }
 
-inline b2Vec2 b2Body::GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) const
+inline b2Vec2 Body::GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) const
 {
 	return GetLinearVelocityFromWorldPoint(GetWorldPoint(localPoint));
 }
 
-inline float32 b2Body::GetLinearDamping() const
-{
-	return m_linearDamping;
-}
-inline void b2Body::SetLinearDamping(float32 linearDamping)
-{
-	m_linearDamping = linearDamping;
-}
-
-inline float32 b2Body::GetAngularDamping() const
-{
-	return m_angularDamping;
-}
-inline void b2Body::SetAngularDamping(float32 angularDamping)
-{
-	m_angularDamping = angularDamping;
-}
-
-inline float32 b2Body::GetGravityScale() const
-{
-	return m_gravityScale;
-}
-inline void b2Body::SetGravityScale(float32 scale)
-{
-	m_gravityScale = scale;
-}
-
-inline void b2Body::SetBullet(bool flag)
+inline void Body::SetBullet(bool flag)
 {
 	if (flag)
-	{
 		m_flags |= b2_bulletBody;
-	}
 	else
-	{
 		m_flags &= ~b2_bulletBody;
-	}
 }
-inline bool b2Body::IsBullet() const
+inline bool Body::IsBullet() const
 {
 	return (m_flags & b2_bulletBody) == b2_bulletBody;
 }
 
-inline void b2Body::SetAwake(bool flag)
+inline void Body::SetAwake(bool flag)
 {
 	if (flag)
 	{
@@ -782,76 +534,43 @@ inline void b2Body::SetAwake(bool flag)
 		m_torque = 0.0f;
 	}
 }
-inline bool b2Body::IsAwake() const
+inline bool Body::IsAwake() const
 {
 	return (m_flags & b2_awakeBody) == b2_awakeBody;
 }
 
-inline bool b2Body::IsActive() const
+inline bool Body::IsActive() const
 {
 	return (m_flags & b2_activeBody) == b2_activeBody;
 }
 
-inline bool b2Body::IsFixedRotation() const
+inline bool Body::IsFixedRotation() const
 {
 	return (m_flags & b2_fixedRotationBody) == b2_fixedRotationBody;
 }
 
-inline void b2Body::SetSleepingAllowed(bool flag)
+inline void Body::SetSleepingAllowed(bool flag)
 {
 	if (flag)
-	{
 		m_flags |= b2_autoSleepBody;
-	}
 	else
 	{
 		m_flags &= ~b2_autoSleepBody;
 		SetAwake(true);
 	}
 }
-inline bool b2Body::IsSleepingAllowed() const
+inline bool Body::IsSleepingAllowed() const
 {
 	return (m_flags & b2_autoSleepBody) == b2_autoSleepBody;
 }
 
-inline b2JointEdge* b2Body::GetJointList()
-{
-	return m_jointList;
-}
-inline const b2JointEdge* b2Body::GetJointList() const
-{
-	return m_jointList;
-}
-
-inline b2ContactEdge* b2Body::GetContactList()
-{
-	return m_contactList;
-}
-inline const b2ContactEdge* b2Body::GetContactList() const
-{
-	return m_contactList;
-}
-
-inline void b2Body::SetUserData(void* data)
-{
-	m_userData = data;
-}
-inline void* b2Body::GetUserData() const
-{
-	return m_userData;
-}
-
-inline void b2Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake)
+inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake)
 {
 	if (m_type != b2_dynamicBody)
-	{
 		return;
-	}
 
 	if (wake && (m_flags & b2_awakeBody) == 0)
-	{
 		SetAwake(true);
-	}
 
 	// Don't accumulate a force if the body is sleeping.
 	if (m_flags & b2_awakeBody)
@@ -861,55 +580,39 @@ inline void b2Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wa
 	}
 }
 
-inline void b2Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
+inline void Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
 {
 	if (m_type != b2_dynamicBody)
-	{
 		return;
-	}
 
 	if (wake && (m_flags & b2_awakeBody) == 0)
-	{
 		SetAwake(true);
-	}
 
 	// Don't accumulate a force if the body is sleeping
 	if (m_flags & b2_awakeBody)
-	{
 		m_force += force;
-	}
 }
 
-inline void b2Body::ApplyTorque(float32 torque, bool wake)
+inline void Body::ApplyTorque(float32 torque, bool wake)
 {
 	if (m_type != b2_dynamicBody)
-	{
 		return;
-	}
 
 	if (wake && (m_flags & b2_awakeBody) == 0)
-	{
 		SetAwake(true);
-	}
 
 	// Don't accumulate a force if the body is sleeping
 	if (m_flags & b2_awakeBody)
-	{
 		m_torque += torque;
-	}
 }
 
-inline void b2Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake)
+inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake)
 {
 	if (m_type != b2_dynamicBody)
-	{
 		return;
-	}
 
 	if (wake && (m_flags & b2_awakeBody) == 0)
-	{
 		SetAwake(true);
-	}
 
 	// Don't accumulate velocity if the body is sleeping
 	if (m_flags & b2_awakeBody)
@@ -919,32 +622,26 @@ inline void b2Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& poin
 	}
 }
 
-inline void b2Body::ApplyAngularImpulse(float32 impulse, bool wake)
+inline void Body::ApplyAngularImpulse(float32 impulse, bool wake)
 {
 	if (m_type != b2_dynamicBody)
-	{
 		return;
-	}
 
 	if (wake && (m_flags & b2_awakeBody) == 0)
-	{
 		SetAwake(true);
-	}
 
 	// Don't accumulate velocity if the body is sleeping
 	if (m_flags & b2_awakeBody)
-	{
 		m_angularVelocity += m_invI * impulse;
-	}
 }
 
-inline void b2Body::SynchronizeTransform()
+inline void Body::SynchronizeTransform()
 {
 	m_xf.q.Set(m_sweep.a);
 	m_xf.p = m_sweep.c - b2Mul(m_xf.q, m_sweep.localCenter);
 }
 
-inline void b2Body::Advance(float32 alpha)
+inline void Body::Advance(float32 alpha)
 {
 	// Advance to the new safe time. This doesn't sync the broad-phase.
 	m_sweep.Advance(alpha);
@@ -952,15 +649,6 @@ inline void b2Body::Advance(float32 alpha)
 	m_sweep.a = m_sweep.a0;
 	m_xf.q.Set(m_sweep.a);
 	m_xf.p = m_sweep.c - b2Mul(m_xf.q, m_sweep.localCenter);
-}
-
-inline b2World* b2Body::GetWorld()
-{
-	return m_world;
-}
-inline const b2World* b2Body::GetWorld() const
-{
-	return m_world;
 }
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API

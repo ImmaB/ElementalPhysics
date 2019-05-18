@@ -73,7 +73,7 @@ public:
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
 
 	/// Implement b2Shape.
-	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 					const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeAABB
@@ -81,7 +81,7 @@ public:
 
 	/// Chains have zero mass.
 	/// @see b2Shape::ComputeMass
-	void ComputeMass(b2MassData* massData, float32 density) const;
+	b2MassData ComputeMass(float32 density) const;
 
 	/// The vertices. Owned by this class.
 	b2Vec2* m_vertices;
@@ -95,7 +95,7 @@ public:
 
 inline b2ChainShape::b2ChainShape()
 {
-	m_type = e_chain;
+	m_type = Shape::e_chain;
 	m_radius = b2_polygonRadius;
 	m_vertices = NULL;
 	m_count = 0;

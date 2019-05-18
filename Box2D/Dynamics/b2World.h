@@ -36,8 +36,10 @@ struct b2JointDef;
 class b2Body;
 class b2Draw;
 class b2Fixture;
+class b2FixtureProxy;
 class b2Joint;
 class b2ParticleGroup;
+class b2Contact;
 
 /// The world class manages all physics entities, dynamic simulation,
 /// and asynchronous queries. The world also contains efficient memory
@@ -81,15 +83,13 @@ public:
 	/// Create a rigid body given a definition. No reference to the definition
 	/// is retained.
 	/// @warning This function is locked during callbacks.
-	int32 CreateBody(const b2BodyDef* def);
+	int32 CreateBody(const b2BodyDef& def);
 
 	/// Destroy a rigid body.
 	/// This function is locked during callbacks.
 	/// @warning This automatically deletes all associated shapes and joints.
 	/// @warning This function is locked during callbacks.
 	void DestroyBody(int32 idx);
-
-	int32 AppendFixture(b2Fixture* fixture);
 
 	/// Create a joint to constrain bodies together. No reference to the definition
 	/// is retained. This may cause the connected bodies to cease colliding.
@@ -103,7 +103,7 @@ public:
 	/// Create a particle system given a definition. No reference to the
 	/// definition is retained.
 	/// @warning This function is locked during callbacks.
-	b2ParticleSystem* CreateParticleSystem(const b2ParticleSystemDef* def);
+	b2ParticleSystem* CreateParticleSystem(const b2ParticleSystemDef& def);
 
 	/// Destroy a particle system.
 	/// @warning This function is locked during callbacks.
@@ -171,14 +171,14 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param point1 the ray starting point
 	/// @param point2 the ray ending point
-	void RayCast(b2RayCastCallback* callback, const b2Vec2& point1, const b2Vec2& point2) const;
+	void RayCast(b2RayCastCallback& callback, const b2Vec2& point1, const b2Vec2& point2) const;
 
-	std::vector<b2Body*> GetBodyBuffer();
-	b2Body* GetBodyPtr(int bodyIdx);
-	const std::vector<b2Body*> GetBodyBuffer() const;
+	std::vector<Body> GetBodyBuffer();
+	const std::vector<Body> GetBodyBuffer() const;
+	Body& GetBody(int32 idx);
 
-	std::vector<b2Fixture*> GetFixtureBuffer();
-	const std::vector<b2Fixture*> GetFixtureBuffer() const;
+	std::vector<Fixture> GetFixtureBuffer();
+	const std::vector<Fixture> GetFixtureBuffer() const;
 	
 	/// Get the world joint list. With the returned joint, use b2Joint::GetNext to get
 	/// the next joint in the world list. A NULL joint indicates the end of the list.
@@ -270,12 +270,11 @@ public:
 	void Dump();
 
 
-	b2BodyMaterial* m_bodyMaterialList;
+	vector<b2BodyMaterial> m_bodyMaterials;
 
 	int32 m_allMaterialFlags;
 
-	b2BodyMaterial* AddBodyMaterial(b2BodyMaterialDef def);
-	void DestroyBodyMaterial(b2BodyMaterial* mat);
+	int32 AddBodyMaterial(b2BodyMaterialDef def);
 
 	bool m_stepComplete;
 
@@ -288,6 +287,11 @@ public:
 	const char* GetVersionString() const {
 		return m_liquidFunVersionString;
 	}
+
+	int32 GetBodyInsertIdx();
+	int32 GetFixtureInsertIdx();
+	template<typename T>
+	void RemoveFromBuffer(const int32 idx, vector<T>& buffer, set<int32>& freeIdxs) const;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -320,7 +324,7 @@ private:
 	void SolveTOI(const b2TimeStep& step);
 
 	void DrawJoint(b2Joint* joint);
-	void DrawShape(b2Fixture* shape, const b2Transform& xf, const b2Color& color);
+	void DrawShape(Fixture& shape, const b2Transform& xf, const b2Color& color);
 
 	void DrawParticleSystem(const b2ParticleSystem& system);
 
@@ -333,14 +337,31 @@ private:
 
 	b2ContactManager m_contactManager;
 
-	vector<b2Body*> m_bodyBuffer;
-	std::vector<int32> m_freeBodySlots;
-	std::vector<b2Fixture*> m_fixtureBuffer;
-	std::vector<int32> m_freeFixtureSlots;
+	vector<Body>			m_bodyBuffer;
+	vector<Fixture>			m_fixtureBuffer;
+	vector<b2FixtureProxy*> m_fixtureProxiesBuffer;
+
 	b2Joint* m_jointList;
 	b2ParticleSystem* m_particleSystemList;
 
-	int32 m_bodyCount;
+	vector<Shape>			m_shapeBuffer;
+	vector<b2ChainShape>	m_chainShapeBuffer;
+	vector<b2CircleShape>	m_circleShapeBuffer;
+	vector<b2EdgeShape>		m_edgeShapeBuffer;
+	vector<b2PolygonShape>	m_polygonShapeBuffer;
+	vector<b2Vec2>			m_shapePositionBuffer;
+	vector<b2Vec2>			m_shapeNormalBuffer;
+
+	set<int32> m_freeBodyIdxs;
+	set<int32> m_freeFixtureIdxs;
+	set<int32> m_freeShapeIdxs;
+	set<int32> m_freeChainShapeIdxs;
+	set<int32> m_freeCircleShapeIdxs;
+	set<int32> m_freeEdgeShapeIdxs;
+	set<int32> m_freeShapePositionIdxs;
+	set<int32> m_freeShapeNormalIdxs;
+	set<int32> m_freeFixtureIdxs;
+
 	int32 m_jointCount;
 
 	b2Vec2 m_gravity;
@@ -367,6 +388,72 @@ private:
 	/// the static library.
 	const b2Version *m_liquidFunVersion;
 	const char *m_liquidFunVersionString;
+
+
+
+	void SynchronizeFixtures(const Body& b);
+
+	void ResetMassData(Body& b);
+
+	template<typename T>
+	int32 getBufferInsertIdx(const vector<T> buf, const set<int32> freeIdxs) const;
+
+	b2Shape& GetSubShape(const Shape& s);
+
+public:
+
+	//Fixture
+	Shape::Type GetType(const Fixture& f) const;
+
+	/// Test a point for containment in this fixture.
+	/// @param p a point in world coordinates.
+	bool TestPoint(const Fixture& f, const b2Vec2& p) const;
+
+	/// Compute the distance from this fixture.
+	/// @param p a point in world coordinates.
+	void ComputeDistance(const Fixture& f, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
+
+	/// Cast a ray against this shape.
+	/// @param output the ray-cast results.
+	/// @param input the ray-cast input parameters.
+	bool RayCast(const Fixture& f, b2RayCastOutput& output, const b2RayCastInput& input, int32 childIndex) const;
+
+	/// Get the mass data for this fixture. The mass data is based on the density and
+	/// the shape. The rotational inertia is about the shape's origin. This operation
+	/// may be expensive.
+	b2MassData GetMassData(const Fixture& f) const;
+
+	/// Get the fixture's AABB. This AABB may be enlarge and/or stale.
+	/// If you need a more accurate AABB, compute it using the shape and
+	/// the body transform.
+	const b2AABB& GetAABB(const Fixture& f, int32 childIndex) const;
+
+	/// Set if this fixture is a sensor.
+	void SetSensor(Fixture& f, bool sensor);
+
+	/// Call this if you want to establish collision that was previously disabled by b2ContactFilter::ShouldCollide.
+	void Refilter(Fixture& f);
+
+	/// These support body activation/deactivation.
+	void CreateProxies(Fixture& f, b2BroadPhase* broadPhase, const b2Transform& xf);
+	void DestroyProxies(Fixture& f);
+
+	void Destroy(Fixture& f);
+
+
+	// Contact
+
+	/// Get the world manifold.
+	void GetWorldManifold(b2Contact& c, b2WorldManifold* worldManifold) const;
+	b2Contact* CreateContact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator);
+	void Destroy(b2Contact& contact, b2BlockAllocator* allocator);
+
+	// Collision
+
+	/// Determine if two generic shapes overlap.
+	bool b2TestOverlap(const Shape& shapeA, int32 indexA,
+					   const Shape& shapeB, int32 indexB,
+					   const b2Transform& xfA, const b2Transform& xfB);
 };
 
 inline void b2World::SetDamping(float32 damping)
@@ -379,26 +466,25 @@ inline float32 b2World::GetDamping() const
 	return m_dampingStrength;
 }
 
-inline std::vector<b2Body*> b2World::GetBodyBuffer()
+inline std::vector<Body> b2World::GetBodyBuffer()
 {
 	return m_bodyBuffer;
 }
-inline b2Body* b2World::GetBodyPtr(int bodyIdx)
-{
-	return m_bodyBuffer[bodyIdx];
-}
-
-
-inline const std::vector<b2Body*> b2World::GetBodyBuffer() const
+inline const std::vector<Body> b2World::GetBodyBuffer() const
 {
 	return m_bodyBuffer;
 }
+inline Body& b2World::GetBody(int32 idx)
+{
+	return m_bodyBuffer[idx];
+}
 
-inline std::vector<b2Fixture*> b2World::GetFixtureBuffer()
+
+inline std::vector<Fixture> b2World::GetFixtureBuffer()
 {
 	return m_fixtureBuffer;
 }
-inline const std::vector<b2Fixture*> b2World::GetFixtureBuffer() const
+inline const std::vector<Fixture> b2World::GetFixtureBuffer() const
 {
 	return m_fixtureBuffer;
 }
@@ -435,7 +521,7 @@ inline const b2Contact* b2World::GetContactList() const
 
 inline int32 b2World::GetBodyCount() const
 {
-	return m_bodyCount;
+	return m_bodyBuffer.size() - m_freeBodyIdxs.size();
 }
 
 inline int32 b2World::GetJointCount() const

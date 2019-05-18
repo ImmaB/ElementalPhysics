@@ -130,7 +130,7 @@ void b2GetPointStates(b2PointState state1[b2_maxManifoldPoints], b2PointState st
 }
 
 // From Real-time Collision Detection, p179.
-bool b2AABB::RayCast(b2RayCastOutput* output, const b2RayCastInput& input) const
+bool b2AABB::RayCast(b2RayCastOutput& output, const b2RayCastInput& input) const
 {
 	float32 tmin = -b2_maxFloat;
 	float32 tmax = b2_maxFloat;
@@ -192,8 +192,8 @@ bool b2AABB::RayCast(b2RayCastOutput* output, const b2RayCastInput& input) const
 	}
 
 	// Intersection.
-	output->fraction = tmin;
-	output->normal = normal;
+	output.fraction = tmin;
+	output.normal = normal;
 	return true;
 }
 
@@ -228,25 +228,4 @@ int32 b2ClipSegmentToLine(b2ClipVertex vOut[2], const b2ClipVertex vIn[2],
 	}
 
 	return numOut;
-}
-
-bool b2TestOverlap(	const b2Shape* shapeA, int32 indexA,
-					const b2Shape* shapeB, int32 indexB,
-					const b2Transform& xfA, const b2Transform& xfB)
-{
-	b2DistanceInput input;
-	input.proxyA.Set(shapeA, indexA);
-	input.proxyB.Set(shapeB, indexB);
-	input.transformA = xfA;
-	input.transformB = xfB;
-	input.useRadii = true;
-
-	b2SimplexCache cache;
-	cache.count = 0;
-
-	b2DistanceOutput output;
-
-	b2Distance(&output, &cache, &input);
-
-	return output.distance < 10.0f * b2_epsilon;
 }

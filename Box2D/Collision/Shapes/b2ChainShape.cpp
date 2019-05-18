@@ -112,7 +112,7 @@ int32 b2ChainShape::GetChildCount() const
 void b2ChainShape::GetChildEdge(b2EdgeShape* edge, int32 index) const
 {
 	b2Assert(0 <= index && index < m_count - 1);
-	edge->m_type = b2Shape::e_edge;
+	edge->m_type = Shape::e_edge;
 	edge->m_radius = m_radius;
 
 	edge->m_vertex1 = m_vertices[index + 0];
@@ -155,7 +155,7 @@ bool b2ChainShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
 	return false;
 }
 
-bool b2ChainShape::RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+bool b2ChainShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 							const b2Transform& xf, int32 childIndex) const
 {
 	b2Assert(childIndex < m_count);
@@ -193,11 +193,8 @@ void b2ChainShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childI
 	aabb.upperBound = b2Max(v1, v2);
 }
 
-void b2ChainShape::ComputeMass(b2MassData* massData, float32 density) const
+b2MassData b2ChainShape::ComputeMass(float32 density) const
 {
 	B2_NOT_USED(density);
-
-	massData->mass = 0.0f;
-	massData->center.SetZero();
-	massData->I = 0.0f;
+	return b2MassData(0.0f, b2Vec2_zero, 0.0f);
 }

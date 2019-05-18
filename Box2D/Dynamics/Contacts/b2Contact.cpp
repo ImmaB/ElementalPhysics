@@ -34,22 +34,22 @@
 #include <Box2D/Dynamics/b2Fixture.h>
 #include <Box2D/Dynamics/b2World.h>
 
-b2ContactRegister b2Contact::s_registers[b2Shape::e_typeCount][b2Shape::e_typeCount];
+b2ContactRegister b2Contact::s_registers[Shape::e_typeCount][Shape::e_typeCount];
 bool b2Contact::s_initialized = false;
 
 void b2Contact::InitializeRegisters()
 {
-	AddType(b2CircleContact::Create, b2CircleContact::Destroy, b2Shape::e_circle, b2Shape::e_circle);
-	AddType(b2PolygonAndCircleContact::Create, b2PolygonAndCircleContact::Destroy, b2Shape::e_polygon, b2Shape::e_circle);
-	AddType(b2PolygonContact::Create, b2PolygonContact::Destroy, b2Shape::e_polygon, b2Shape::e_polygon);
-	AddType(b2EdgeAndCircleContact::Create, b2EdgeAndCircleContact::Destroy, b2Shape::e_edge, b2Shape::e_circle);
-	AddType(b2EdgeAndPolygonContact::Create, b2EdgeAndPolygonContact::Destroy, b2Shape::e_edge, b2Shape::e_polygon);
-	AddType(b2ChainAndCircleContact::Create, b2ChainAndCircleContact::Destroy, b2Shape::e_chain, b2Shape::e_circle);
-	AddType(b2ChainAndPolygonContact::Create, b2ChainAndPolygonContact::Destroy, b2Shape::e_chain, b2Shape::e_polygon);
+	AddType(b2CircleContact::Create, b2CircleContact::Destroy, Shape::e_circle, Shape::e_circle);
+	AddType(b2PolygonAndCircleContact::Create, b2PolygonAndCircleContact::Destroy, Shape::e_polygon, Shape::e_circle);
+	AddType(b2PolygonContact::Create, b2PolygonContact::Destroy, Shape::e_polygon, Shape::e_polygon);
+	AddType(b2EdgeAndCircleContact::Create, b2EdgeAndCircleContact::Destroy, Shape::e_edge, Shape::e_circle);
+	AddType(b2EdgeAndPolygonContact::Create, b2EdgeAndPolygonContact::Destroy, Shape::e_edge, Shape::e_polygon);
+	AddType(b2ChainAndCircleContact::Create, b2ChainAndCircleContact::Destroy, Shape::e_chain, Shape::e_circle);
+	AddType(b2ChainAndPolygonContact::Create, b2ChainAndPolygonContact::Destroy, Shape::e_chain, Shape::e_polygon);
 }
 
 void b2Contact::AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* destoryFcn,
-						b2Shape::Type type1, b2Shape::Type type2)
+						Shape::Type type1, Shape::Type type2)
 {
 	b2Assert(0 <= type1 && type1 < b2Shape::e_typeCount);
 	b2Assert(0 <= type2 && type2 < b2Shape::e_typeCount);
@@ -66,69 +66,12 @@ void b2Contact::AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* dest
 	}
 }
 
-b2Contact* b2Contact::Create(b2Fixture* fixtureA, int32 indexA, b2Fixture* fixtureB, int32 indexB, b2BlockAllocator* allocator)
-{
-	if (s_initialized == false)
-	{
-		InitializeRegisters();
-		s_initialized = true;
-	}
-
-	b2Shape::Type type1 = fixtureA->GetType();
-	b2Shape::Type type2 = fixtureB->GetType();
-
-	b2Assert(0 <= type1 && type1 < b2Shape::e_typeCount);
-	b2Assert(0 <= type2 && type2 < b2Shape::e_typeCount);
-	
-	b2ContactCreateFcn* createFcn = s_registers[type1][type2].createFcn;
-	if (createFcn)
-	{
-		if (s_registers[type1][type2].primary)
-		{
-			return createFcn(fixtureA, indexA, fixtureB, indexB, allocator);
-		}
-		else
-		{
-			return createFcn(fixtureB, indexB, fixtureA, indexA, allocator);
-		}
-	}
-	else
-	{
-		return NULL;
-	}
-}
-
-void b2Contact::Destroy(b2Contact* contact, b2BlockAllocator* allocator)
-{
-	b2Assert(s_initialized == true);
-
-	b2Fixture* fixtureA = contact->m_fixtureA;
-	b2Fixture* fixtureB = contact->m_fixtureB;
-
-	if (contact->m_manifold.pointCount > 0 &&
-		fixtureA->IsSensor() == false &&
-		fixtureB->IsSensor() == false)
-	{
-		fixtureA->GetBody()->SetAwake(true);
-		fixtureB->GetBody()->SetAwake(true);
-	}
-
-	b2Shape::Type typeA = fixtureA->GetType();
-	b2Shape::Type typeB = fixtureB->GetType();
-
-	b2Assert(0 <= typeA && typeB < b2Shape::e_typeCount);
-	b2Assert(0 <= typeA && typeB < b2Shape::e_typeCount);
-
-	b2ContactDestroyFcn* destroyFcn = s_registers[typeA][typeB].destroyFcn;
-	destroyFcn(contact, allocator);
-}
-
-b2Contact::b2Contact(b2Fixture* fA, int32 indexA, b2Fixture* fB, int32 indexB)
+b2Contact::b2Contact(Fixture& fA, int32 indexA, Fixture& fB, int32 indexB)
 {
 	m_flags = e_enabledFlag;
 
-	m_fixtureA = fA;
-	m_fixtureB = fB;
+	m_fixtureA = &fA;
+	m_fixtureB = &fB;
 
 	m_indexA = indexA;
 	m_indexB = indexB;
@@ -172,10 +115,10 @@ void b2Contact::Update(b2ContactListener* listener)
 	bool sensorB = m_fixtureB->IsSensor();
 	bool sensor = sensorA || sensorB;
 
-	b2Body* bodyA = m_fixtureA->GetBody();
-	b2Body* bodyB = m_fixtureB->GetBody();
-	const b2Transform& xfA = bodyA->GetTransform();
-	const b2Transform& xfB = bodyB->GetTransform();
+	b2Body& bodyA = m_fixtureA->GetBody();
+	b2Body& bodyB = m_fixtureB->GetBody();
+	const b2Transform& xfA = bodyA.GetTransform();
+	const b2Transform& xfB = bodyB.GetTransform();
 
 	// Is this contact a sensor?
 	if (sensor)
@@ -216,8 +159,8 @@ void b2Contact::Update(b2ContactListener* listener)
 
 		if (touching != wasTouching)
 		{
-			bodyA->SetAwake(true);
-			bodyB->SetAwake(true);
+			bodyA.SetAwake(true);
+			bodyB.SetAwake(true);
 		}
 	}
 

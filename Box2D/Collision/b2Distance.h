@@ -21,6 +21,10 @@
 #define B2_DISTANCE_H
 
 #include <Box2D/Common/b2Math.h>
+#include <Box2D/Collision/Shapes/b2ChainShape.h>
+#include <Box2D/Collision/Shapes/b2CircleShape.h>
+#include <Box2D/Collision/Shapes/b2EdgeShape.h>
+#include <Box2D/Collision/Shapes/b2PolygonShape.h>
 
 class b2Shape;
 
@@ -32,7 +36,10 @@ struct b2DistanceProxy
 
 	/// Initialize the proxy using the given shape. The shape
 	/// must remain in scope while the proxy is in use.
-	void Set(const b2Shape* shape, int32 index);
+	void Set(const b2ChainShape& chain, int32 index);
+	void Set(const b2CircleShape& circle, int32 index);
+	void Set(const b2EdgeShape& edge, int32 index);
+	void Set(const b2PolygonShape& poly, int32 index);
 
 	/// Get the supporting vertex index in the given direction.
 	int32 GetSupport(const b2Vec2& d) const;

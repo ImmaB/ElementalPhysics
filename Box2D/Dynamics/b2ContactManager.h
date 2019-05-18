@@ -26,6 +26,7 @@ class b2ContactFilter;
 class b2ContactListener;
 class b2BlockAllocator;
 class b2ParticleSystem;
+class b2World;
 
 // Delegate of b2World.
 class b2ContactManager
@@ -33,7 +34,7 @@ class b2ContactManager
 public:
 	friend class b2ParticleSystem;
 
-	b2ContactManager();
+	b2ContactManager(b2World& world);
 
 	// Broad-phase callback.
 	void AddPair(void* proxyUserDataA, void* proxyUserDataB);
@@ -50,6 +51,9 @@ public:
 	b2ContactFilter* m_contactFilter;
 	b2ContactListener* m_contactListener;
 	b2BlockAllocator* m_allocator;
+
+private:
+	b2World& m_world;
 };
 
 #endif

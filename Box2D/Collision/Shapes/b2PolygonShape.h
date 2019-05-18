@@ -63,14 +63,14 @@ public:
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
 
 	/// Implement b2Shape.
-	bool RayCast(b2RayCastOutput* output, const b2RayCastInput& input,
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 					const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeAABB
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	void ComputeMass(b2MassData* massData, float32 density) const;
+	b2MassData ComputeMass(float32 density) const;
 
 	/// Get the vertex count.
 	int32 GetVertexCount() const { return m_count; }
@@ -106,7 +106,7 @@ public:
 
 inline b2PolygonShape::b2PolygonShape()
 {
-	m_type = e_polygon;
+	m_type = Shape::e_polygon;
 	m_radius = b2_polygonRadius;
 	m_count = 0;
 	m_centroid.SetZero();

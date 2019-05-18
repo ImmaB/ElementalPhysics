@@ -90,8 +90,6 @@ public:
 	/// is called for each proxy that overlaps the supplied AABB.
 	template <typename T>
 	void Query(T* callback, const b2AABB& aabb) const;
-	template <typename T>
-	void AFQuery(T* callback, const b2AABB& aabb) const;
 
 	/// Ray-cast against the proxies in the tree. This relies on the callback
 	/// to perform a exact ray-cast in the case were the proxy contains a shape.
@@ -101,7 +99,7 @@ public:
 	/// @param input the ray-cast input data. The ray extends from p1 to p1 + maxFraction * (p2 - p1).
 	/// @param callback a callback class that is called for each proxy that is hit by the ray.
 	template <typename T>
-	void RayCast(T* callback, const b2RayCastInput& input) const;
+	void RayCast(T& callback, const b2RayCastInput& input) const;
 
 	/// Validate this tree. For testing.
 	void Validate() const;
@@ -201,43 +199,9 @@ inline void b2DynamicTree::Query(T* callback, const b2AABB& aabb) const
 		}
 	}
 }
-template <typename T>
-inline void b2DynamicTree::AFQuery(T* callback, const b2AABB& aabb) const
-{
-	b2GrowableStack<int32, 256> stack;
-	stack.Push(m_root);
-
-	while (stack.GetCount() > 0)
-	{
-		int32 nodeId = stack.Pop();
-		if (nodeId == b2_nullNode)
-		{
-			continue;
-		}
-
-		const b2TreeNode* node = m_nodes + nodeId;
-
-		if (b2TestOverlap(node->aabb, aabb))
-		{
-			if (node->IsLeaf())
-			{
-				bool proceed = callback->AFQueryCallback(nodeId);
-				if (proceed == false)
-				{
-					return;
-				}
-			}
-			else
-			{
-				stack.Push(node->child1);
-				stack.Push(node->child2);
-			}
-		}
-	}
-}
 
 template <typename T>
-inline void b2DynamicTree::RayCast(T* callback, const b2RayCastInput& input) const
+inline void b2DynamicTree::RayCast(T& callback, const b2RayCastInput& input) const
 {
 	b2Vec2 p1 = input.p1;
 	b2Vec2 p2 = input.p2;
@@ -297,7 +261,7 @@ inline void b2DynamicTree::RayCast(T* callback, const b2RayCastInput& input) con
 			subInput.p2 = input.p2;
 			subInput.maxFraction = maxFraction;
 
-			float32 value = callback->RayCastCallback(subInput, nodeId);
+			float32 value = callback.RayCastCallback(subInput, nodeId);
 
 			if (value == 0.0f)
 			{

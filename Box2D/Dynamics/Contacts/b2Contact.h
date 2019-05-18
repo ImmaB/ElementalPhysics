@@ -46,8 +46,8 @@ inline float32 b2MixRestitution(float32 restitution1, float32 restitution2)
 	return restitution1 > restitution2 ? restitution1 : restitution2;
 }
 
-typedef b2Contact* b2ContactCreateFcn(	b2Fixture* fixtureA, int32 indexA,
-										b2Fixture* fixtureB, int32 indexB,
+typedef b2Contact* b2ContactCreateFcn(	Fixture& fixtureA, int32 indexA,
+										Fixture& fixtureB, int32 indexB,
 										b2BlockAllocator* allocator);
 typedef void b2ContactDestroyFcn(b2Contact* contact, b2BlockAllocator* allocator);
 
@@ -65,7 +65,7 @@ struct b2ContactRegister
 /// nodes, one for each attached body.
 struct b2ContactEdge
 {
-	b2Body* other;			///< provides quick access to the other body attached.
+	Body* other;			///< provides quick access to the other body attached.
 	b2Contact* contact;		///< the contact
 	b2ContactEdge* prev;	///< the previous contact edge in the body's contact list
 	b2ContactEdge* next;	///< the next contact edge in the body's contact list
@@ -83,9 +83,6 @@ public:
 	b2Manifold* GetManifold();
 	const b2Manifold* GetManifold() const;
 
-	/// Get the world manifold.
-	void GetWorldManifold(b2WorldManifold* worldManifold) const;
-
 	/// Is this contact touching?
 	bool IsTouching() const;
 
@@ -102,15 +99,15 @@ public:
 	const b2Contact* GetNext() const;
 
 	/// Get fixture A in this contact.
-	b2Fixture* GetFixtureA();
-	const b2Fixture* GetFixtureA() const;
+	Fixture* GetFixtureA();
+	const Fixture* GetFixtureA() const;
 
 	/// Get the child primitive index for fixture A.
 	int32 GetChildIndexA() const;
 
 	/// Get fixture B in this contact.
-	b2Fixture* GetFixtureB();
-	const b2Fixture* GetFixtureB() const;
+	Fixture* GetFixtureB();
+	const Fixture* GetFixtureB() const;
 	/*
 	inline int32 GetFixtureIdxA();
 	inline const int32 GetFixtureIdxA() const;
@@ -183,19 +180,16 @@ protected:
 	void FlagForFiltering();
 
 	static void AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* destroyFcn,
-						b2Shape::Type typeA, b2Shape::Type typeB);
+						Shape::Type typeA, Shape::Type typeB);
 	static void InitializeRegisters();
-	static b2Contact* Create(b2Fixture* fixtureA, int32 indexA, b2Fixture* fixtureB, int32 indexB, b2BlockAllocator* allocator);
-	static void Destroy(b2Contact* contact, b2Shape::Type typeA, b2Shape::Type typeB, b2BlockAllocator* allocator);
-	static void Destroy(b2Contact* contact, b2BlockAllocator* allocator);
 
 	b2Contact() : m_fixtureA(NULL), m_fixtureB(NULL) {}
-	b2Contact(b2Fixture* fixtureA, int32 indexA, b2Fixture* fixtureB, int32 indexB);
+	b2Contact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB);
 	virtual ~b2Contact() {}
 
 	void Update(b2ContactListener* listener);
 
-	static b2ContactRegister s_registers[b2Shape::e_typeCount][b2Shape::e_typeCount];
+	static b2ContactRegister s_registers[Shape::e_typeCount][Shape::e_typeCount];
 	static bool s_initialized;
 
 	uint32 m_flags;
@@ -208,8 +202,8 @@ protected:
 	b2ContactEdge m_nodeA;
 	b2ContactEdge m_nodeB;
 
-	b2Fixture* m_fixtureA;
-	b2Fixture* m_fixtureB;
+	Fixture* m_fixtureA;
+	Fixture* m_fixtureB;
 
 	//int32 m_fixtureIdxA;
 	//int32 m_fixtureIdxB;
@@ -238,26 +232,12 @@ inline const b2Manifold* b2Contact::GetManifold() const
 	return &m_manifold;
 }
 
-inline void b2Contact::GetWorldManifold(b2WorldManifold* worldManifold) const
-{
-	const b2Body* bodyA = m_fixtureA->GetBody();
-	const b2Body* bodyB = m_fixtureB->GetBody();
-	const b2Shape* shapeA = m_fixtureA->GetShape();
-	const b2Shape* shapeB = m_fixtureB->GetShape();
-
-	worldManifold->Initialize(&m_manifold, bodyA->GetTransform(), shapeA->m_radius, bodyB->GetTransform(), shapeB->m_radius);
-}
-
 inline void b2Contact::SetEnabled(bool flag)
 {
 	if (flag)
-	{
 		m_flags |= e_enabledFlag;
-	}
 	else
-	{
 		m_flags &= ~e_enabledFlag;
-	}
 }
 
 inline bool b2Contact::IsEnabled() const
@@ -280,17 +260,17 @@ inline const b2Contact* b2Contact::GetNext() const
 	return m_next;
 }
 
-inline b2Fixture* b2Contact::GetFixtureA()
+inline Fixture* b2Contact::GetFixtureA()
 {
 	return m_fixtureA;
 }
 
-inline const b2Fixture* b2Contact::GetFixtureA() const
+inline const Fixture* b2Contact::GetFixtureA() const
 {
 	return m_fixtureA;
 }
 
-inline b2Fixture* b2Contact::GetFixtureB()
+inline Fixture* b2Contact::GetFixtureB()
 {
 	return m_fixtureB;
 }
@@ -317,7 +297,7 @@ inline int32 b2Contact::GetChildIndexA() const
 	return m_indexA;
 }
 
-inline const b2Fixture* b2Contact::GetFixtureB() const
+inline const Fixture* b2Contact::GetFixtureB() const
 {
 	return m_fixtureB;
 }

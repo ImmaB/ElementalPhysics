@@ -64,7 +64,7 @@ struct b2Jacobian
 /// nodes, one for each attached body.
 struct b2JointEdge
 {
-	b2Body* other;			///< provides quick access to the other body attached.
+	Body* other;			///< provides quick access to the other body attached.
 	b2Joint* joint;			///< the joint
 	b2JointEdge* prev;		///< the previous joint edge in the body's joint list
 	b2JointEdge* next;		///< the next joint edge in the body's joint list
@@ -89,10 +89,10 @@ struct b2JointDef
 	void* userData;
 
 	/// The first attached body.
-	b2Body* bodyA;
+	Body* bodyA;
 
 	/// The second attached body.
-	b2Body* bodyB;
+	Body* bodyB;
 
 	/// Set this flag to true if the attached bodies should collide.
 	bool collideConnected;
@@ -108,10 +108,10 @@ public:
 	b2JointType GetType() const;
 
 	/// Get the first body attached to this joint.
-	b2Body* GetBodyA();
+	Body* GetBodyA();
 
 	/// Get the second body attached to this joint.
-	b2Body* GetBodyB();
+	Body* GetBodyB();
 
 	/// Get the anchor point on bodyA in world coordinates.
 	virtual b2Vec2 GetAnchorA() const = 0;
@@ -172,8 +172,8 @@ protected:
 	b2Joint* m_next;
 	b2JointEdge m_edgeA;
 	b2JointEdge m_edgeB;
-	b2Body* m_bodyA;
-	b2Body* m_bodyB;
+	Body* m_bodyA;
+	Body* m_bodyB;
 
 	int32 m_index;
 
@@ -188,12 +188,12 @@ inline b2JointType b2Joint::GetType() const
 	return m_type;
 }
 
-inline b2Body* b2Joint::GetBodyA()
+inline Body* b2Joint::GetBodyA()
 {
 	return m_bodyA;
 }
 
-inline b2Body* b2Joint::GetBodyB()
+inline Body* b2Joint::GetBodyB()
 {
 	return m_bodyB;
 }

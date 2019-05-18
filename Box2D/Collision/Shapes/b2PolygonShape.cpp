@@ -321,7 +321,7 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 	}
 }
 
-bool b2PolygonShape::RayCast(b2RayCastOutput * output, const b2RayCastInput & input,
+bool b2PolygonShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	const b2Transform & xf, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
@@ -385,8 +385,8 @@ bool b2PolygonShape::RayCast(b2RayCastOutput * output, const b2RayCastInput & in
 
 	if (index >= 0)
 	{
-		output->fraction = lower;
-		output->normal = b2Mul(xf.q, m_normals[index]);
+		output.fraction = lower;
+		output.normal = b2Mul(xf.q, m_normals[index]);
 		return true;
 	}
 
@@ -412,7 +412,7 @@ void b2PolygonShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 chil
 	aabb.upperBound = upper + r;
 }
 
-void b2PolygonShape::ComputeMass(b2MassData* massData, float32 density) const
+b2MassData b2PolygonShape::ComputeMass(float32 density) const
 {
 	// Polygon mass, centroid, and inertia.
 	// Let rho be the polygon density in mass per unit area.
@@ -481,18 +481,20 @@ void b2PolygonShape::ComputeMass(b2MassData* massData, float32 density) const
 	}
 
 	// Total mass
-	massData->mass = density * area;
-
-	// Center of mass
 	b2Assert(area > b2_epsilon);
 	center *= 1.0f / area;
-	massData->center = center + s;
+	float32 mMass = density * area;
+
+	// Center of mass
+	b2Vec2 mCenter = center + s;
 
 	// Inertia tensor relative to the local origin (point s).
-	massData->I = density * I;
-	
+	float32 mI = density * I;
+
 	// Shift to center of mass then to original body origin.
-	massData->I += massData->mass * (b2Dot(massData->center, massData->center) - b2Dot(center, center));
+	mI += mMass * (b2Dot(mCenter, mCenter) - b2Dot(center, center));
+
+	return b2MassData(mMass, mCenter, mI);
 }
 
 bool b2PolygonShape::Validate() const

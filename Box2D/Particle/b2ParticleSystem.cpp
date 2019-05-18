@@ -399,10 +399,10 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 	return b2_invalidIndex;
 }
 
-b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
-	b2World* world,
-	vector<b2Body*>& bodyBuffer,
-	vector<b2Fixture*>& fixtureBuffer) :
+b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef& def,
+	b2World& world,
+	vector<Body>& bodyBuffer,
+	vector<Fixture>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_bodyBuffer(bodyBuffer),
 	m_fixtureBuffer(fixtureBuffer),
@@ -459,12 +459,14 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 
 	// pairs and triads
 	m_ampPairs(TILE_SIZE, m_gpuAccelView),
-	m_ampTriads(TILE_SIZE, m_gpuAccelView)
+	m_ampTriads(TILE_SIZE, m_gpuAccelView),
 
 	//m_ampBodyCntacts(TILE_SIZE, m_gpuAccelView)
 	//m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 	//m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	//m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView)
+	//m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+
+	m_world(world)
 {
 	b2Assert(def);
 	m_paused = false;
@@ -477,11 +479,11 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	m_hasDepth = false;
 	m_iterationIndex = 0;
 
-	SetStrictContactCheck(def->strictContactCheck);
-	SetDensity(def->density);
-	SetGravityScale(def->gravityScale);
-	SetRadius(def->radius);
-	SetMaxParticleCount(def->maxCount);
+	SetStrictContactCheck(def.strictContactCheck);
+	SetDensity(def.density);
+	SetGravityScale(def.gravityScale);
+	SetRadius(def.radius);
+	SetMaxParticleCount(def.maxCount);
 
 	m_freeGroupIdxs.reserve(256);
 
@@ -508,10 +510,9 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef* def,
 	hasBodyContactCountBuffer		 = false;
 	hasConsecutiveContactStepsBuffer = false;
 
-	b2Assert(def->lifetimeGranularity > 0.0f);
-	m_def = *def;
+	b2Assert(def.lifetimeGranularity > 0.0f);
 
-	m_world = world;
+	m_def = def;
 
 	m_stuckThreshold = 0;
 
@@ -532,7 +533,7 @@ template <typename T> void b2ParticleSystem::FreeBuffer(T** b, int capacity)
 	if (*b == NULL)
 		return;
 
-	m_world->m_blockAllocator.Free(*b, sizeof(**b) * capacity);
+	m_world.m_blockAllocator.Free(*b, sizeof(**b) * capacity);
 	*b = NULL;
 }
 
@@ -551,12 +552,12 @@ template <typename T> T* b2ParticleSystem::ReallocateBuffer(
 	T* oldBuffer, int32 oldCapacity, int32 newCapacity)
 {
 	b2Assert(newCapacity > oldCapacity);
-	T* newBuffer = (T*) m_world->m_blockAllocator.Allocate(
+	T* newBuffer = (T*) m_world.m_blockAllocator.Allocate(
 		sizeof(T) * newCapacity);
 	if (oldBuffer)
 	{
 		memcpy(newBuffer, oldBuffer, sizeof(T) * oldCapacity);
-		m_world->m_blockAllocator.Free(oldBuffer, sizeof(T) * oldCapacity);
+		m_world.m_blockAllocator.Free(oldBuffer, sizeof(T) * oldCapacity);
 	}
 	return newBuffer;
 }
@@ -857,7 +858,7 @@ int32 b2ParticleSystem::CreateParticleMaterial(const b2ParticleMaterialDef & def
 	m_partMatStabilityBuf[idx] = def.stability;
 	m_partMatInvStabilityBuf[idx] = 1 / def.stability;
 	m_partMatHeatConductivityBuf[idx] = def.heatConductivity;
-	m_world->m_allMaterialFlags |= def.matFlags;
+	m_world.m_allMaterialFlags |= def.matFlags;
 
 	amp::copy(m_partMatFlagsBuf, m_ampMatFlags, m_partMatCount);
 	amp::copy(m_partMatPartFlagsBuf, m_ampMatPartFlags, m_partMatCount);
@@ -936,8 +937,8 @@ void b2ParticleSystem::DestroyOldestParticle(
 
 void b2ParticleSystem::DestroyParticlesInGroup(const b2ParticleGroup& group)
 {
-	b2Assert(m_world->IsLocked() == false);
-	if (m_world->IsLocked()) return;
+	b2Assert(m_world.IsLocked() == false);
+	if (m_world.IsLocked()) return;
 
 	for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++) {
 		DestroyParticle(i, false);
@@ -948,8 +949,8 @@ int32 b2ParticleSystem::DestroyParticlesInShape(
 	const b2Shape& shape, const b2Transform& xf,
 	bool callDestructionListener)
 {
-	b2Assert(m_world->IsLocked() == false);
-	if (m_world->IsLocked())
+	b2Assert(m_world.IsLocked() == false);
+	if (m_world.IsLocked())
 	{
 		return 0;
 	}
@@ -999,7 +1000,7 @@ int32 b2ParticleSystem::DestroyParticlesInShape(
 	} callback(this, shape, xf, callDestructionListener);
 	b2AABB aabb;
 	shape.ComputeAABB(aabb, xf, 0);
-	m_world->QueryAABB(&callback, aabb);
+	m_world.QueryAABB(&callback, aabb);
 	return callback.Destroyed();
 }
 
@@ -1230,7 +1231,7 @@ pair<int32, int32> b2ParticleSystem::CreateParticlesWithShapesForGroup(
 int32 b2ParticleSystem::CreateGroup(
 	b2ParticleGroupDef& groupDef)
 {
-	if (m_world->IsLocked()) return b2_invalidIndex;
+	if (m_world.IsLocked()) return b2_invalidIndex;
 
 	// get group Index
 	if (!m_freeGroupIdxs.empty())
@@ -1314,8 +1315,8 @@ void b2ParticleSystem::CopyParticleRangeToGpu(const uint32 first, const uint32 l
 void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
 										  int32 groupBIdx)
 {
-	b2Assert(m_world->IsLocked() == false);
-	if (m_world->IsLocked())
+	b2Assert(m_world.IsLocked() == false);
+	if (m_world.IsLocked())
 	{
 		return;
 	}
@@ -1373,7 +1374,7 @@ void b2ParticleSystem::SplitParticleGroup(b2ParticleGroup& group)
 	// We create several linked lists. Each list represents a set of connected
 	// particles.
 	ParticleListNode* nodeBuffer =
-		(ParticleListNode*) m_world->m_stackAllocator.Allocate(
+		(ParticleListNode*) m_world.m_stackAllocator.Allocate(
 									sizeof(ParticleListNode) * particleCount);
 	InitializeParticleLists(group, nodeBuffer);
 	MergeParticleListsInContact(group, nodeBuffer);
@@ -1382,7 +1383,7 @@ void b2ParticleSystem::SplitParticleGroup(b2ParticleGroup& group)
 	MergeZombieParticleListNodes(group, nodeBuffer, survivingList);
 	CreateParticleGroupsFromParticleList(group, nodeBuffer, survivingList);
 	UpdatePairsAndTriadsWithParticleList(group, nodeBuffer);
-	m_world->m_stackAllocator.Free(nodeBuffer);
+	m_world.m_stackAllocator.Free(nodeBuffer);
 }
 
 void b2ParticleSystem::InitializeParticleLists(
@@ -1731,7 +1732,7 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 	if (particleFlags & k_triadFlags)
 	{
 		b2VoronoiDiagram diagram(
-			&m_world->m_stackAllocator, lastIndex - firstIndex);
+			&m_world.m_stackAllocator, lastIndex - firstIndex);
 		for (int32 i = firstIndex; i < lastIndex; i++)
 		{
 			uint32 flags = m_flagsBuffer[i];
@@ -1902,7 +1903,7 @@ void b2ParticleSystem::AmpUpdatePairsAndTriads(
 	if (m_allParticleFlags & k_triadFlags)
 	{
 		b2VoronoiDiagram diagram(
-			&m_world->m_stackAllocator, lastIndex - firstIndex);
+			&m_world.m_stackAllocator, lastIndex - firstIndex);
 		for (int32 i = firstIndex; i < lastIndex; i++)
 		{
 			uint32 flags = m_flagsBuffer[i];
@@ -2037,8 +2038,8 @@ void b2ParticleSystem::DestroyGroup(int32 groupIdx, bool destroyParticles)
 				m_flagsBuffer[i] = b2_zombieParticle;
 		}
 	}
-	//if (m_world->m_destructionListener)
-	//	m_world->m_destructionListener->SayGoodbye(group);
+	//if (m_world.m_destructionListener)
+	//	m_world.m_destructionListener->SayGoodbye(group);
 
 	//SetGroupFlags(group, 0);
 	m_needsUpdateAllGroupFlags = true;
@@ -2482,11 +2483,11 @@ inline bool b2ParticleSystem::AddContact(int32 a, int32 b, uint32& contactCount)
 	return true;
 }
 
-inline bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const
+inline bool b2ParticleSystem::ShouldCollide(int32 i, const Fixture& f) const
 {
-	if (!f->TestZPos(m_positionBuffer[i].z))
+	if (!f.TestZPos(m_positionBuffer[i].z))
 		return false;
-	if (f->GetFilterData().groupIndex >= 0)
+	if (f.GetFilterData().groupIndex >= 0)
 		return true;
 	const int32 groupIdx = m_partGroupIdxBuffer[i];
 	if (groupIdx == b2_invalidIndex)
@@ -2494,7 +2495,7 @@ inline bool b2ParticleSystem::ShouldCollide(int32 i, b2Fixture* f) const
 	const int32 partColGroup = m_groupBuffer[groupIdx].m_collisionGroup;
 	if (!partColGroup || !(partColGroup < 0))
 		return true;
-	if (partColGroup != f->GetFilterData().groupIndex)
+	if (partColGroup != f.GetFilterData().groupIndex)
 		return true;
 	return false;
 }
@@ -2605,7 +2606,7 @@ static inline bool b2ParticleContactIsZombie(const b2ParticleContact& contact)
 inline b2ContactFilter* b2ParticleSystem::GetParticleContactFilter() const
 {
 	return (m_allParticleFlags & b2_particleContactFilterParticle) ?
-		m_world->m_contactManager.m_contactFilter : NULL;
+		m_world.m_contactManager.m_contactFilter : NULL;
 }
 
 // Get the world's contact listener if any particles with the
@@ -2613,7 +2614,7 @@ inline b2ContactFilter* b2ParticleSystem::GetParticleContactFilter() const
 inline b2ContactListener* b2ParticleSystem::GetParticleContactListener() const
 {
 	return (m_allParticleFlags & b2_particleContactListenerParticle) ?
-		m_world->m_contactManager.m_contactListener : NULL;
+		m_world.m_contactManager.m_contactListener : NULL;
 }
 
 
@@ -2836,7 +2837,7 @@ void b2ParticleSystem::DetectStuckParticle(int32 particle)
 inline b2ContactListener* b2ParticleSystem::GetFixtureContactListener() const
 {
 	return (m_allParticleFlags & b2_fixtureContactListenerParticle) ?
-		m_world->m_contactManager.m_contactListener : NULL;
+		m_world.m_contactManager.m_contactListener : NULL;
 }
 
 // Get the world's contact filter if any particles with the
@@ -2844,7 +2845,7 @@ inline b2ContactListener* b2ParticleSystem::GetFixtureContactListener() const
 inline b2ContactFilter* b2ParticleSystem::GetFixtureContactFilter() const
 {
 	return (m_allParticleFlags & b2_fixtureContactFilterParticle) ?
-		m_world->m_contactManager.m_contactFilter : NULL;
+		m_world.m_contactManager.m_contactFilter : NULL;
 }
 
 /// Compute the axis-aligned bounding box for all particles contained
@@ -3119,19 +3120,19 @@ private:
 	// inside aabb of the fixture.
 	bool ReportFixture(int32 fixtureIdx)
 	{
-		b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
-		if (fixture->IsSensor())
+		Fixture& fixture = m_system->m_fixtureBuffer[fixtureIdx];
+		if (fixture.m_isSensor)
 		{
 			return true;
 		}
-		const b2Shape* shape = fixture->GetShape();
+		const b2Shape* shape = fixture.m_shape;
 		int32 childCount = shape->GetChildCount();
 		for (int32 childIndex = 0; childIndex < childCount; childIndex++)
 		{
-			b2AABB aabb = fixture->GetAABB(childIndex);
+			b2AABB aabb = fixture.GetAABB(childIndex);
 			b2ParticleSystem::InsideBoundsEnumerator enumerator =
 								m_system->GetInsideBoundsEnumerator(aabb);
-			b2Vec2 bodyPos = fixture->GetBody()->GetPosition();
+			// b2Vec2 bodyPos = fixture.GetBody().GetPosition();
 			int32 index;
 
 			while ((index = enumerator.GetNext()) >= 0)
@@ -3215,7 +3216,7 @@ void b2ParticleSystem::UpdateBodyContacts()
 {
 	// If the particle contact listener is enabled, generate a set of
 	// fixture / particle contacts.
-	FixtureParticleSet fixtureSet(&m_world->m_stackAllocator);
+	FixtureParticleSet fixtureSet(&m_world.m_stackAllocator);
 	NotifyBodyContactListenerPreContact(&fixtureSet);
 
 	if (m_stuckThreshold > 0)
@@ -3238,22 +3239,22 @@ void b2ParticleSystem::UpdateBodyContacts()
 	{
 		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
 		{
-			b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
+			b2Fixture& fixture = m_system->m_fixtureBuffer[fixtureIdx];
 			if (m_system->ShouldCollide(a, fixture))
 			{
 				b2Vec2 ap = b2Vec2(m_system->m_positionBuffer[a]);
 				float32 d;
 				b2Vec2 n;
 
-				fixture->ComputeDistance(ap, &d, &n, childIndex);
+				fixture.ComputeDistance(ap, &d, &n, childIndex);
 				if (d < m_system->m_particleDiameter)
 				{
-					int32 bIdx = fixture->GetBodyIdx();
-					b2Body* b = m_system->m_bodyBuffer[bIdx];
-					b2Vec2 bp = b->GetWorldCenter();
-					float32 bm = b->GetMass();
+					int32 bIdx = fixture.GetBodyIdx();
+					b2Body& b = m_system->m_bodyBuffer[bIdx];
+					b2Vec2 bp = b.GetWorldCenter();
+					float32 bm = b.GetMass();
 					float32 bI =
-						b->GetInertia() - bm * b->GetLocalCenter().LengthSquared();
+						b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
 					float32 invBm = bm > 0 ? 1 / bm : 0;
 					float32 invBI = bI > 0 ? 1 / bI : 0;
 					float32 invAm =
@@ -3267,8 +3268,8 @@ void b2ParticleSystem::UpdateBodyContacts()
 					m_system->ResizeBodyContactBuffers(m_system->m_bodyContactCount);
 					b2PartBodyContact& contact = m_system->m_bodyContactBuf[bodyContactIdx];
 					m_system->m_bodyContactPartIdxs[bodyContactIdx] = a;
-					contact.body = b;
-					contact.fixture = fixture;
+					contact.body = &b;
+					contact.fixture = &fixture;
 					contact.weight = 1 - d * m_system->m_inverseDiameter;
 					contact.normal = -n;
 					contact.mass = invM > 0 ? 1 / invM : 0;
@@ -3290,7 +3291,7 @@ void b2ParticleSystem::UpdateBodyContacts()
 
 	b2AABB aabb;
 	ComputeAABB(&aabb);
-	m_world->QueryAABB(&callback, aabb);
+	m_world.QueryAABB(&callback, aabb);
 	
 	if (m_def.strictContactCheck)
 	{
@@ -3303,7 +3304,7 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 {
 	// If the particle contact listener is enabled, generate a set of
 	// fixture / particle contacts.
-	FixtureParticleSet fixtureSet(&m_world->m_stackAllocator);
+	FixtureParticleSet fixtureSet(&m_world.m_stackAllocator);
 	NotifyBodyContactListenerPreContact(&fixtureSet);
 
 	if (m_stuckThreshold > 0)
@@ -3326,22 +3327,22 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 	{
 		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
 		{
-			b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
+			b2Fixture& fixture = m_system->m_fixtureBuffer[fixtureIdx];
 			if (m_system->ShouldCollide(a, fixture))
 			{
 				b2Vec2 ap = b2Vec2(m_system->m_positionBuffer[a]);
 				float32 d;
 				b2Vec2 n;
 
-				fixture->ComputeDistance(ap, &d, &n, childIndex);
+				fixture.ComputeDistance(ap, &d, &n, childIndex);
 				if (d < m_system->m_particleDiameter)
 				{
-					int32 bIdx = fixture->GetBodyIdx();
-					b2Body* b = m_system->m_bodyBuffer[bIdx];
-					b2Vec2 bp = b->GetWorldCenter();
-					float32 bm = b->GetMass();
+					int32 bIdx = fixture.GetBodyIdx();
+					b2Body& b = m_system->m_bodyBuffer[bIdx];
+					b2Vec2 bp = b.GetWorldCenter();
+					float32 bm = b.GetMass();
 					float32 bI =
-						b->GetInertia() - bm * b->GetLocalCenter().LengthSquared();
+						b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
 					float32 invBm = bm > 0 ? 1 / bm : 0;
 					float32 invBI = bI > 0 ? 1 / bI : 0;
 					float32 invAm =
@@ -3355,8 +3356,8 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 					m_system->ResizeBodyContactBuffers(m_system->m_bodyContactCount);
 					b2PartBodyContact & contact = m_system->m_bodyContactBuf[bodyContactIdx];
 					m_system->m_bodyContactPartIdxs[bodyContactIdx] = a;
-					contact.body = b;
-					contact.fixture = fixture;
+					contact.body = &b;
+					contact.fixture = &fixture;
 					contact.weight = 1 - d * m_system->m_inverseDiameter;
 					contact.normal = -n;
 					contact.mass = invM > 0 ? 1 / invM : 0;
@@ -3380,7 +3381,7 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 
 	b2AABB aabb;
 	AmpComputeAABB(aabb);
-	m_world->AmpQueryAABB(&callback, aabb);
+	m_world.AmpQueryAABB(&callback, aabb);
 
 	if (m_def.strictContactCheck)
 		RemoveSpuriousBodyContacts();
@@ -3505,9 +3506,9 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 
 		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
 		{
-			b2Fixture* fixture = m_system->m_fixtureBuffer[fixtureIdx];
+			b2Fixture& fixture = m_system->m_fixtureBuffer[fixtureIdx];
 			if (m_system->ShouldCollide(a, fixture)) {
-				b2Body* body = fixture->GetBody();
+				b2Body& body = fixture.GetBody();
 				b2Vec2 ap = b2Vec2(m_system->m_positionBuffer[a]);
 				b2Vec2 av = b2Vec2(m_system->m_velocityBuffer[a]);
 				b2RayCastOutput output;
@@ -3515,21 +3516,21 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 				if (m_system->m_iterationIndex == 0)
 				{
 					// Put 'ap' in the local space of the previous frame
-					b2Vec2 p1 = b2MulT(body->m_xf0, ap);
-					if (fixture->GetShape()->GetType() == b2Shape::e_circle)
+					b2Vec2 p1 = b2MulT(body.m_xf0, ap);
+					if (fixture.GetShape()->GetType() == b2Shape::e_circle)
 					{
 						// Make relative to the center of the circle
-						p1 -= body->GetLocalCenter();
+						p1 -= body.GetLocalCenter();
 						// Re-apply rotation about the center of the
 						// circle
-						p1 = b2Mul(body->m_xf0.q, p1);
+						p1 = b2Mul(body.m_xf0.q, p1);
 						// Subtract rotation of the current frame
-						p1 = b2MulT(body->m_xf.q, p1);
+						p1 = b2MulT(body.m_xf.q, p1);
 						// Return to local space
-						p1 += body->GetLocalCenter();
+						p1 += body.GetLocalCenter();
 					}
 					// Return to global space and apply rotation of current frame
-					input.p1 = b2Mul(body->m_xf, p1);
+					input.p1 = b2Mul(body.m_xf, p1);
 				}
 				else
 				{
@@ -3537,7 +3538,7 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 				}
 				input.p2 = ap + m_step.dt * av;
 				input.maxFraction = 1;
-				if (fixture->RayCast(&output, input, childIndex))
+				if (fixture.RayCast(output, input, childIndex))
 				{
 					b2Vec2 n = output.normal;
 					b2Vec2 p =
@@ -3565,7 +3566,7 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 			m_contactFilter = contactFilter;
 		}
 	} callback(this, step, GetFixtureContactFilter());
-	m_world->QueryAABB(&callback, aabb);
+	m_world.QueryAABB(&callback, aabb);
 }
 
 template <typename T>
@@ -3585,11 +3586,11 @@ void b2ParticleSystem::AmpSolveCollision(const b2TimeStep& step)
 	{
 		bool ReportFixture(int32 fixtureIdx)
 		{
-			const b2Fixture& fixture = *(m_system->m_fixtureBuffer[fixtureIdx]);
+			const b2Fixture& fixture = m_system->m_fixtureBuffer[fixtureIdx];
 			if (fixture.IsSensor())
 				return true;
 			const int32 iterationIdx = m_system->m_iterationIndex;
-			const b2Body& body = *(fixture.GetBody());
+			const b2Body& body = fixture.GetBody();
 			const b2Vec2& bodyLocalCentre = body.GetLocalCenter();
 			const b2Transform& bodyTransform = body.m_xf;
 			const b2Transform& bodyTransform0 = body.m_xf0;
@@ -3945,7 +3946,7 @@ void b2ParticleSystem::AmpSolveCollision(const b2TimeStep& step)
 
 	b2AABB aabb;
 	AmpComputeAABB(aabb, true);
-	m_world->AmpQueryAABB(&callback, aabb);	// calls "ReportFixture" of callback
+	m_world.AmpQueryAABB(&callback, aabb);	// calls "ReportFixture" of callback
 }
 
 void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
@@ -4348,7 +4349,7 @@ void b2ParticleSystem::AmpSolveBarrier(const b2TimeStep& step)
 
 void b2ParticleSystem::SolveInit() 
 {
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
 		return;
 
 	//if (!m_expireTimeBuf.empty())
@@ -4372,7 +4373,7 @@ void b2ParticleSystem::SolveInit()
 
 void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 {
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
 		return;
 
 	if (m_accelerate)
@@ -4401,7 +4402,7 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 
 void b2ParticleSystem::SolveIteration(int32 iteration)
 {
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
 		return;
 	
 	m_iterationIndex = iteration;
@@ -4512,7 +4513,7 @@ void b2ParticleSystem::SolveIteration(int32 iteration)
 }
 void b2ParticleSystem::SolveIteration2(int32 iteration)
 {
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
 		return;
 
 	if (m_accelerate)
@@ -4527,15 +4528,15 @@ void b2ParticleSystem::SolveIteration2(int32 iteration)
 		if (m_allParticleFlags & b2_flameParticle)
 		{
 			AmpSolveFlame(m_subStep);
-			if (m_world->m_allMaterialFlags & b2_flammableMaterial)
+			if (m_world.m_allMaterialFlags & b2_flammableMaterial)
 				AmpSolveIgnite();
-			if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
+			if (m_world.m_allMaterialFlags & b2_extinguishingMaterial)
 				AmpSolveExtinguish();
 		}
 		m_ampCopyFutHealths = amp::copyAsync(m_ampHealths, m_healthBuffer, m_count);
 
 		// HEAT MANAGEMENT
-		if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
+		if (m_world.m_allMaterialFlags & b2_heatConductingMaterial)
 			AmpSolveHeatConduct(m_subStep);
 		if (m_allParticleFlags & b2_heatLoosingParticle)
 			AmpSolveLooseHeat(m_subStep);
@@ -4583,14 +4584,14 @@ void b2ParticleSystem::SolveIteration2(int32 iteration)
 		if (m_allParticleFlags & b2_flameParticle)
 		{
 			SolveFlame(m_subStep);
-			if (m_world->m_allMaterialFlags & b2_flammableMaterial)
+			if (m_world.m_allMaterialFlags & b2_flammableMaterial)
 				SolveIgnite();
-			if (m_world->m_allMaterialFlags & b2_extinguishingMaterial)
+			if (m_world.m_allMaterialFlags & b2_extinguishingMaterial)
 				SolveExtinguish();
 		}
 
 		// HEAT MANAGEMENT
-		if (m_world->m_allMaterialFlags & b2_heatConductingMaterial)
+		if (m_world.m_allMaterialFlags & b2_heatConductingMaterial)
 			SolveHeatConduct(m_subStep);
 		if (m_allParticleFlags & b2_heatLoosingParticle)
 			SolveLooseHeat(m_subStep);
@@ -4611,7 +4612,7 @@ void b2ParticleSystem::SolveIteration2(int32 iteration)
 
 void b2ParticleSystem::SolveEnd() 
 {
-	if (!m_world->m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
 		return;
 	if (m_allParticleFlags & b2_zombieParticle)
 		AmpSolveZombie();
@@ -4740,7 +4741,7 @@ void b2ParticleSystem::AmpLimitVelocity(const b2TimeStep& step)
 
 void b2ParticleSystem::SolveGravity(const b2TimeStep& step)
 {
-	b2Vec2 gravity = step.dt * m_def.gravityScale * m_world->GetGravity();
+	b2Vec2 gravity = step.dt * m_def.gravityScale * m_world.GetGravity();
 	for (int32 i = 0; i < m_count; i++)
 	{
 		m_velocityBuffer[i] += gravity;
@@ -4748,7 +4749,7 @@ void b2ParticleSystem::SolveGravity(const b2TimeStep& step)
 }
 void b2ParticleSystem::AmpSolveGravity(const b2TimeStep& step)
 {
-	const b2Vec3 gravity = step.dt * m_def.gravityScale * m_world->GetGravity();
+	const b2Vec3 gravity = step.dt * m_def.gravityScale * m_world.GetGravity();
 	const uint32 cnt = m_count;
 	auto& velocities = m_ampVelocities;
 	AmpForEachParticle([=, &velocities](const int32 i) restrict(amp)
@@ -6950,7 +6951,7 @@ void b2ParticleSystem::SolveZombie()
 		if (flags & b2_zombieParticle)
 		{
 			b2DestructionListener * const destructionListener =
-				m_world->m_destructionListener;
+				m_world.m_destructionListener;
 			if ((flags & b2_destructionListenerParticle) &&
 				destructionListener)
 			{
@@ -7585,7 +7586,7 @@ template <typename T> void b2ParticleSystem::SetUserOverridableBuffer(
 	b2Assert((newData && newCapacity) || (!newData && !newCapacity));
 	if (!buffer->userSuppliedCapacity && buffer->data())
 	{
-		m_world->m_blockAllocator.Free(
+		m_world.m_blockAllocator.Free(
 			buffer->data(), sizeof(T) * m_capacity);
 	}
 	buffer->data = newData;
@@ -7911,7 +7912,7 @@ void b2ParticleSystem::QueryShapeAABB(b2QueryCallback* callback,
 	QueryAABB(callback, aabb);
 }
 
-void b2ParticleSystem::RayCast(b2RayCastCallback* callback,
+void b2ParticleSystem::RayCast(b2RayCastCallback& callback,
 							   const b2Vec2& point1,
 							   const b2Vec2& point2) const
 {
@@ -7955,7 +7956,7 @@ void b2ParticleSystem::RayCast(b2RayCastCallback* callback,
 			}
 			b2Vec2 n = p + t * v;
 			n.Normalize();
-			float32 f = callback->ReportParticle(this, i, point1 + t * v, n, t);
+			float32 f = callback.ReportParticle(this, i, point1 + t * v, n, t);
 			fraction = b2Min(fraction, f);
 			if (fraction <= 0)
 			{

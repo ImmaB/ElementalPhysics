@@ -24,7 +24,7 @@
 
 struct b2Vec2;
 struct b2Transform;
-class b2Fixture;
+class Fixture;
 class b2Body;
 class b2Joint;
 class b2Contact;
@@ -50,7 +50,7 @@ public:
 
 	/// Called when any fixture is about to be destroyed due
 	/// to the destruction of its parent body.
-	virtual void SayGoodbye(b2Fixture* fixture) = 0;
+	virtual void SayGoodbye(Fixture& fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
 	virtual void SayGoodbye(b2ParticleGroup& group)
@@ -86,7 +86,7 @@ public:
 
 	/// Called when any fixture is about to be destroyed due
 	/// to the destruction of its parent body.
-	virtual void SayGoodbye(b2Fixture* fixture) = 0;
+	virtual void SayGoodbye(Fixture* fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
 	virtual void SayGoodbye(int32 groupIdx)
@@ -120,12 +120,12 @@ public:
 
 	/// Return true if contact calculations should be performed between these two shapes.
 	/// @warning for performance reasons this is only called when the AABBs begin to overlap.
-	virtual bool ShouldCollide(b2Fixture* fixtureA, b2Fixture* fixtureB);
+	virtual bool ShouldCollide(Fixture& fixtureA, Fixture& fixtureB);
 
 	/// Return true if contact calculations should be performed between a
 	/// fixture and particle.  This is only called if the
 	/// b2_fixtureContactListenerParticle flag is set on the particle.
-	virtual bool ShouldCollide(b2Fixture* fixture,
+	virtual bool ShouldCollide(Fixture& fixture,
 							   b2ParticleSystem* particleSystem,
 							   int32 particleIndex)
 	{
@@ -189,7 +189,7 @@ public:
 
 	/// Called when a fixture and particle stop touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
-	virtual void EndContact(b2Fixture* fixture,
+	virtual void EndContact(Fixture& fixture,
 							b2ParticleSystem* particleSystem, int32 index)
 	{
 		B2_NOT_USED(fixture);
@@ -296,8 +296,8 @@ public:
 	/// @param normal the normal vector at the point of intersection
 	/// @return -1 to filter, 0 to terminate, fraction to clip the ray for
 	/// closest hit, 1 to continue
-	virtual float32 ReportFixture(	b2Fixture* fixture, const b2Vec2& point,
-									const b2Vec2& normal, float32 fraction) = 0;
+	virtual float32 ReportFixture(Fixture& fixture, const b2Vec2& point,
+								  const b2Vec2& normal, float32 fraction) = 0;
 
 	/// Called for each particle found in the query. You control how the ray
 	/// cast proceeds by returning a float:
