@@ -44,7 +44,7 @@ struct b2WheelJointDef : public b2JointDef
 
 	/// Initialize the bodies, anchors, axis, and reference angle using the world
 	/// anchor and world axis.
-	void Initialize(b2Body* bodyA, b2Body* bodyB, const b2Vec2& anchor, const b2Vec2& axis);
+	void Initialize(Body& bodyA, Body& bodyB, const b2Vec2& anchor, const b2Vec2& axis);
 
 	/// The local anchor point relative to bodyA's origin.
 	b2Vec2 localAnchorA;

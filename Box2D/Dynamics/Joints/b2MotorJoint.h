@@ -35,7 +35,7 @@ struct b2MotorJointDef : public b2JointDef
 	}
 
 	/// Initialize the bodies and offsets using the current transforms.
-	void Initialize(b2Body* bodyA, b2Body* bodyB);
+	void Initialize(Body& bodyA, Body& bodyB);
 
 	/// Position of bodyB minus the position of bodyA, in bodyA's frame, in meters.
 	b2Vec2 linearOffset;

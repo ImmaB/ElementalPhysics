@@ -35,11 +35,11 @@
 // K = J * invM * JT
 //   = invMass1 + invI1 * cross(r1, u)^2 + invMass2 + invI2 * cross(r2, u)^2
 
-void b2DistanceJointDef::Initialize(b2Body* b1, b2Body* b2,
+void b2DistanceJointDef::Initialize(Body& b1, Body& b2,
 									const b2Vec2& anchor1, const b2Vec2& anchor2)
 {
-	bodyA = b1;
-	bodyB = b2;
+	bodyA = &b1;
+	bodyB = &b2;
 	localAnchorA = bodyA->GetLocalPoint(anchor1);
 	localAnchorB = bodyB->GetLocalPoint(anchor2);
 	b2Vec2 d = anchor2 - anchor1;

@@ -37,7 +37,7 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def)
 	b2Assert(b2IsValid(def->dampingRatio) && def->dampingRatio >= 0.0f);
 
 	m_targetA = def->target;
-	m_localAnchorB = b2MulT(m_bodyB->GetTransform(), m_targetA);
+	m_localAnchorB = b2MulT(m_bodyB->m_xf, m_targetA);
 
 	m_maxForce = def->maxForce;
 	m_impulse.SetZero();
@@ -107,7 +107,7 @@ void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 
 	b2Rot qB(aB);
 
-	float32 mass = m_bodyB->GetMass();
+	float32 mass = m_bodyB->m_mass;
 
 	// Frequency
 	float32 omega = 2.0f * b2_pi * m_frequencyHz;

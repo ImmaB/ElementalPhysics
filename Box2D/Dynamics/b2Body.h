@@ -208,20 +208,6 @@ struct Body
 	/// @return true if the body is awake.
 	bool IsAwake() const;
 
-	/// Set the active state of the body. An inactive body is not
-	/// simulated and cannot be collided with or woken up.
-	/// If you pass a flag of true, all fixtures will be added to the
-	/// broad-phase.
-	/// If you pass a flag of false, all fixtures will be removed from
-	/// the broad-phase and all contacts will be destroyed.
-	/// Fixtures and joints are otherwise unaffected. You may continue
-	/// to create/destroy fixtures and joints on inactive bodies.
-	/// Fixtures on an inactive body are implicitly inactive and will
-	/// not participate in collisions, ray-casts, or queries.
-	/// Joints connected to an inactive body are implicitly inactive.
-	/// An inactive body is still owned by a b2World object and remains
-	/// in the body list.
-	void SetActive(bool flag);
 	/// Get the active state of the body.
 	bool IsActive() const;
 
@@ -244,12 +230,6 @@ struct Body
 	/// Get the local position of the center of mass.
 	const b2Vec2 GetLocalCenter() const;
 
-	/// Set the position of the body's origin and rotation.
-	/// Manipulating a body's transform may cause non-physical behavior.
-	/// Note: contacts are updated on the next call to b2World::Step.
-	/// @param position the world position of the body's local origin.
-	/// @param angle the world rotation in radians.
-	void SetTransform(const b2Vec2& position, float32 angle);
 
 	/// Set the linear velocity of the center of mass.
 	/// @param v the new linear velocity of the center of mass.
@@ -319,11 +299,6 @@ struct Body
 	/// @param massData the mass properties.
 	void SetMassData(const b2MassData& data);
 
-	/// This resets the mass properties to the sum of the mass properties of the fixtures.
-	/// This normally does not need to be called unless you called SetMassData to override
-	/// the mass and you later want to reset the mass.
-	void ResetMassData();
-
 	/// Get the world coordinates of a point given the local coordinates.
 	/// @param localPoint a point on the body measured relative the the body's origin.
 	/// @return the same point expressed in world coordinates.
@@ -354,9 +329,6 @@ struct Body
 	/// @return the world velocity of a point.
 	b2Vec2 GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) const;
 
-	/// Set the type of this body. This may alter the mass and velocity.
-	void SetType(b2BodyType type);
-
 	/// You can disable sleeping on this body. If you disable sleeping, the
 	/// body will be woken.
 	void SetSleepingAllowed(bool flag);
@@ -364,51 +336,17 @@ struct Body
 	/// Is this body allowed to sleep
 	bool IsSleepingAllowed() const;
 
-	/// Set this body to have fixed rotation. This causes the mass
-	/// to be reset.
-	void SetFixedRotation(bool flag);
-
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
 	void AddFlags(uint16 flags);
 	void RemFlags(uint16 flags);
-
-	/// Get the list of all joints attached to this body.
-	b2JointEdge* GetJointList();
-	const b2JointEdge* GetJointList() const;
 };
 
 /// A rigid body. These are created via b2World::CreateBody.
 class b2Body
 {
 public:
-	/// Creates a fixture and attach it to this body. Use this function if you need
-	/// to set some fixture parameters, like friction. Otherwise you can create the
-	/// fixture directly from a shape.
-	/// If the density is non-zero, this function automatically updates the mass of the body.
-	/// Contacts are not created until the next time step.
-	/// @param def the fixture definition.
-	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(int32 bodyIdx, b2FixtureDef& def);
-
-	/// Creates a fixture from a shape and attach it to this body.
-	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
-	/// like friction, restitution, user data, or filtering.
-	/// If the density is non-zero, this function automatically updates the mass of the body.
-	/// @param shape the shape to be cloned.
-	/// @param density the shape density (set to zero for static bodies).
-	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(int32 bodyIdx, const b2Shape* shape, float32 density);
-
-	/// Destroy a fixture. This removes the fixture from the broad-phase and
-	/// destroys all contacts associated with this fixture. This will
-	/// automatically adjust the mass of the body if the body is dynamic and the
-	/// fixture has positive density.
-	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
-	/// @param fixture the fixture to be removed.
-	/// @warning This function is locked during callbacks.
-	void DestroyFixture(int32 idx);
 };
 
 inline void Body::AddFlags(uint16 flags)

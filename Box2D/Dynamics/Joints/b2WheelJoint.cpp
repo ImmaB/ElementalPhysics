@@ -36,10 +36,10 @@
 // Cdot = wB - wA
 // J = [0 0 -1 0 0 1]
 
-void b2WheelJointDef::Initialize(b2Body* bA, b2Body* bB, const b2Vec2& anchor, const b2Vec2& axis)
+void b2WheelJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor, const b2Vec2& axis)
 {
-	bodyA = bA;
-	bodyB = bB;
+	bodyA = &bA;
+	bodyB = &bB;
 	localAnchorA = bodyA->GetLocalPoint(anchor);
 	localAnchorB = bodyB->GetLocalPoint(anchor);
 	localAxisA = bodyA->GetLocalVector(axis);
@@ -348,8 +348,8 @@ float32 b2WheelJoint::GetReactionTorque(float32 inv_dt) const
 
 float32 b2WheelJoint::GetJointTranslation() const
 {
-	b2Body* bA = m_bodyA;
-	b2Body* bB = m_bodyB;
+	Body* bA = m_bodyA;
+	Body* bB = m_bodyB;
 
 	b2Vec2 pA = bA->GetWorldPoint(m_localAnchorA);
 	b2Vec2 pB = bB->GetWorldPoint(m_localAnchorB);

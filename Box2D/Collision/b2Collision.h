@@ -253,29 +253,29 @@ struct b2AABB
 };
 
 /// Compute the collision manifold between two circles.
-void b2CollideCircles(b2Manifold* manifold,
-					  const b2CircleShape* circleA, const b2Transform& xfA,
-					  const b2CircleShape* circleB, const b2Transform& xfB);
+void b2CollideCircles(b2Manifold& manifold,
+					  const b2CircleShape& circleA, const b2Transform& xfA,
+					  const b2CircleShape& circleB, const b2Transform& xfB);
 
 /// Compute the collision manifold between a polygon and a circle.
-void b2CollidePolygonAndCircle(b2Manifold* manifold,
-							   const b2PolygonShape* polygonA, const b2Transform& xfA,
-							   const b2CircleShape* circleB, const b2Transform& xfB);
+void b2CollidePolygonAndCircle(b2Manifold& manifold,
+							   const b2PolygonShape& polygonA, const b2Transform& xfA,
+							   const b2CircleShape& circleB, const b2Transform& xfB);
 
 /// Compute the collision manifold between two polygons.
-void b2CollidePolygons(b2Manifold* manifold,
-					   const b2PolygonShape* polygonA, const b2Transform& xfA,
-					   const b2PolygonShape* polygonB, const b2Transform& xfB);
+void b2CollidePolygons(b2Manifold& manifold,
+					   const b2PolygonShape& polygonA, const b2Transform& xfA,
+					   const b2PolygonShape& polygonB, const b2Transform& xfB);
 
 /// Compute the collision manifold between an edge and a circle.
-void b2CollideEdgeAndCircle(b2Manifold* manifold,
-							   const b2EdgeShape* polygonA, const b2Transform& xfA,
-							   const b2CircleShape* circleB, const b2Transform& xfB);
+void b2CollideEdgeAndCircle(b2Manifold& manifold,
+							   const b2EdgeShape& polygonA, const b2Transform& xfA,
+							   const b2CircleShape& circleB, const b2Transform& xfB);
 
 /// Compute the collision manifold between an edge and a circle.
-void b2CollideEdgeAndPolygon(b2Manifold* manifold,
-							   const b2EdgeShape* edgeA, const b2Transform& xfA,
-							   const b2PolygonShape* circleB, const b2Transform& xfB);
+void b2CollideEdgeAndPolygon(b2Manifold& manifold,
+							   const b2EdgeShape& edgeA, const b2Transform& xfA,
+							   const b2PolygonShape& circleB, const b2Transform& xfB);
 
 /// Clipping for contact manifolds.
 int32 b2ClipSegmentToLine(b2ClipVertex vOut[2], const b2ClipVertex vIn[2],

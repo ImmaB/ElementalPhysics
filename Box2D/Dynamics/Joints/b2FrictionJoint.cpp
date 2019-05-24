@@ -32,10 +32,10 @@
 // J = [0 0 -1 0 0 1]
 // K = invI1 + invI2
 
-void b2FrictionJointDef::Initialize(b2Body* bA, b2Body* bB, const b2Vec2& anchor)
+void b2FrictionJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor)
 {
-	bodyA = bA;
-	bodyB = bB;
+	bodyA = &bA;
+	bodyB = &bB;
 	localAnchorA = bodyA->GetLocalPoint(anchor);
 	localAnchorB = bodyB->GetLocalPoint(anchor);
 }

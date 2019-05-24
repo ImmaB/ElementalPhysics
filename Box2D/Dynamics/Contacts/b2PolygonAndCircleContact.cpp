@@ -28,10 +28,10 @@ b2Contact* b2PolygonAndCircleContact::Create(Fixture& fixtureA, int32, Fixture& 
 	return new (mem) b2PolygonAndCircleContact(fixtureA, fixtureB);
 }
 
-void b2PolygonAndCircleContact::Destroy(b2Contact* contact, b2BlockAllocator* allocator)
+void b2PolygonAndCircleContact::Destroy(b2Contact& contact, b2BlockAllocator* allocator)
 {
-	((b2PolygonAndCircleContact*)contact)->~b2PolygonAndCircleContact();
-	allocator->Free(contact, sizeof(b2PolygonAndCircleContact));
+	((b2PolygonAndCircleContact&)contact).~b2PolygonAndCircleContact();
+	allocator->Free(&contact, sizeof(b2PolygonAndCircleContact));
 }
 
 b2PolygonAndCircleContact::b2PolygonAndCircleContact(Fixture& fixtureA, Fixture& fixtureB)
@@ -41,9 +41,3 @@ b2PolygonAndCircleContact::b2PolygonAndCircleContact(Fixture& fixtureA, Fixture&
 	b2Assert(m_fixtureB->GetType() == b2Shape::e_circle);
 }
 
-void b2PolygonAndCircleContact::Evaluate(b2Manifold* manifold, const b2Transform& xfA, const b2Transform& xfB)
-{
-	b2CollidePolygonAndCircle(	manifold,
-								(b2PolygonShape*)m_fixtureA->GetShape(), xfA,
-								(b2CircleShape*)m_fixtureB->GetShape(), xfB);
-}

@@ -173,10 +173,10 @@ public:
 	virtual ~b2ContactListener() {}
 
 	/// Called when two fixtures begin to touch.
-	virtual void BeginContact(b2Contact* contact) { B2_NOT_USED(contact); }
+	virtual void BeginContact(b2Contact& contact) { B2_NOT_USED(contact); }
 
 	/// Called when two fixtures cease to touch.
-	virtual void EndContact(b2Contact* contact) { B2_NOT_USED(contact); }
+	virtual void EndContact(b2Contact& contact) { B2_NOT_USED(contact); }
 
 	/// Called when a fixture and particle start touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
@@ -226,7 +226,7 @@ public:
 	/// Note: if you set the number of contact points to zero, you will not
 	/// get an EndContact callback. However, you may get a BeginContact callback
 	/// the next step.
-	virtual void PreSolve(b2Contact* contact, const b2Manifold* oldManifold)
+	virtual void PreSolve(b2Contact& contact, const b2Manifold* oldManifold)
 	{
 		B2_NOT_USED(contact);
 		B2_NOT_USED(oldManifold);

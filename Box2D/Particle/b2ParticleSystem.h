@@ -100,9 +100,9 @@ struct b2ParticleContact
 struct b2PartBodyContact
 {
 	/// The body making contact.
-	b2Body* body;
+	Body* body;
 	/// The specific fixture making contact
-	b2Fixture* fixture;
+	Fixture* fixture;
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	float32 weight;
 	/// The normalized direction from the particle to the body.

@@ -42,30 +42,28 @@ struct b2ContactPositionConstraint
 	int32 pointCount;
 };
 
-b2ContactSolver::b2ContactSolver(b2ContactSolverDef* def)
+b2ContactSolver::b2ContactSolver(b2ContactSolverDef& def, b2World& world) : m_world(world)
 {
-	m_step = def->step;
-	m_allocator = def->allocator;
-	m_count = def->count;
+	m_step = def.step;
+	m_allocator = def.allocator;
+	m_count = def.count;
 	m_positionConstraints = (b2ContactPositionConstraint*)m_allocator->Allocate(m_count * sizeof(b2ContactPositionConstraint));
 	m_velocityConstraints = (b2ContactVelocityConstraint*)m_allocator->Allocate(m_count * sizeof(b2ContactVelocityConstraint));
-	m_positions = def->positions;
-	m_velocities = def->velocities;
-	m_contacts = def->contacts;
+	m_positions = def.positions;
+	m_velocities = def.velocities;
+	m_contacts = def.contacts;
 
 	// Initialize position independent portions of the constraints.
 	for (int32 i = 0; i < m_count; ++i)
 	{
 		b2Contact* contact = m_contacts[i];
 
-		b2Fixture* fixtureA = contact->m_fixtureA;
-		b2Fixture* fixtureB = contact->m_fixtureB;
-		b2Shape* shapeA = fixtureA->GetShape();
-		b2Shape* shapeB = fixtureB->GetShape();
-		float32 radiusA = shapeA->m_radius;
-		float32 radiusB = shapeB->m_radius;
-		b2Body& bodyA = fixtureA->GetBody();
-		b2Body& bodyB = fixtureB->GetBody();
+		Fixture* fixtureA = contact->m_fixtureA;
+		Fixture* fixtureB = contact->m_fixtureB;
+		float32 radiusA = m_world.m_shapeBuffer[fixtureA->m_shapeIdx].m_radius;
+		float32 radiusB = m_world.m_shapeBuffer[fixtureB->m_shapeIdx].m_radius;
+		Body& bodyA = m_world.m_bodyBuffer[fixtureA->m_bodyIdx];
+		Body& bodyB = m_world.m_bodyBuffer[fixtureB->m_bodyIdx];
 		b2Manifold* manifold = contact->GetManifold();
 
 		int32 pointCount = manifold->pointCount;

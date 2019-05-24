@@ -33,10 +33,10 @@
 // J = [0 0 -1 0 0 1]
 // K = invI1 + invI2
 
-void b2RevoluteJointDef::Initialize(b2Body* bA, b2Body* bB, const b2Vec2& anchor)
+void b2RevoluteJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor)
 {
-	bodyA = bA;
-	bodyB = bB;
+	bodyA = &bA;
+	bodyB = &bB;
 	localAnchorA = bodyA->GetLocalPoint(anchor);
 	localAnchorB = bodyB->GetLocalPoint(anchor);
 	referenceAngle = bodyB->GetAngle() - bodyA->GetAngle();
@@ -397,16 +397,12 @@ float32 b2RevoluteJoint::GetReactionTorque(float32 inv_dt) const
 
 float32 b2RevoluteJoint::GetJointAngle() const
 {
-	b2Body* bA = m_bodyA;
-	b2Body* bB = m_bodyB;
-	return bB->m_sweep.a - bA->m_sweep.a - m_referenceAngle;
+	return m_bodyB->m_sweep.a - m_bodyA->m_sweep.a - m_referenceAngle;
 }
 
 float32 b2RevoluteJoint::GetJointSpeed() const
 {
-	b2Body* bA = m_bodyA;
-	b2Body* bB = m_bodyB;
-	return bB->m_angularVelocity - bA->m_angularVelocity;
+	return m_bodyB->m_angularVelocity - m_bodyA->m_angularVelocity;
 }
 
 bool b2RevoluteJoint::IsMotorEnabled() const

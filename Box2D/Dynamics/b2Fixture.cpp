@@ -41,48 +41,8 @@ void Fixture::Set(const b2FixtureDef& def, const int32 bodyIdx)
 
 	m_shapeIdx = def.shapeIdx;
 
-	// Reserve proxy space
-	int32 childCount = m_shape->GetChildCount();
-	m_proxies = (b2FixtureProxy*)allocator->Allocate(childCount * sizeof(b2FixtureProxy));
-	for (int32 i = 0; i < childCount; ++i)
-	{
-		m_proxies[i].fixture = NULL;
-		m_proxies[i].fixtureIdx = b2_invalidIndex;
-		m_proxies[i].proxyId = b2BroadPhase::e_nullProxy;
-	}
-	m_proxyCount = 0;
 
 	m_density = def.density;
 }
 
-void Fixture::Synchronize(b2BroadPhase& broadPhase, const b2Transform& transform1, const b2Transform& transform2)
-{
-	if (m_proxyCount == 0)
-	{	
-		return;
-	}
-
-	for (int32 i = 0; i < m_proxyCount; ++i)
-	{
-		b2FixtureProxy* proxy = m_proxies + i;
-
-		// Compute an AABB that covers the swept shape (may miss some rotation effect).
-		b2AABB aabb1, aabb2;
-		m_shape->ComputeAABB(aabb1, transform1, proxy->childIndex);
-		m_shape->ComputeAABB(aabb2, transform2, proxy->childIndex);
-	
-		proxy->aabb.Combine(aabb1, aabb2);
-
-		b2Vec2 displacement = transform2.p - transform1.p;
-
-		broadPhase.MoveProxy(proxy->proxyId, proxy->aabb, displacement);
-	}
-}
-
-void b2Fixture::SetFilterData(const b2Filter& filter)
-{
-	m_filter = filter;
-
-	Refilter();
-}
 

@@ -28,10 +28,10 @@ b2Contact* b2EdgeAndCircleContact::Create(Fixture& fixtureA, int32, Fixture& fix
 	return new (mem) b2EdgeAndCircleContact(fixtureA, fixtureB);
 }
 
-void b2EdgeAndCircleContact::Destroy(b2Contact* contact, b2BlockAllocator* allocator)
+void b2EdgeAndCircleContact::Destroy(b2Contact& contact, b2BlockAllocator* allocator)
 {
-	((b2EdgeAndCircleContact*)contact)->~b2EdgeAndCircleContact();
-	allocator->Free(contact, sizeof(b2EdgeAndCircleContact));
+	((b2EdgeAndCircleContact&)contact).~b2EdgeAndCircleContact();
+	allocator->Free(&contact, sizeof(b2EdgeAndCircleContact));
 }
 
 b2EdgeAndCircleContact::b2EdgeAndCircleContact(Fixture& fixtureA, Fixture& fixtureB)
@@ -39,11 +39,4 @@ b2EdgeAndCircleContact::b2EdgeAndCircleContact(Fixture& fixtureA, Fixture& fixtu
 {
 	b2Assert(m_fixtureA.GetType() == b2Shape::e_edge);
 	b2Assert(m_fixtureB.GetType() == b2Shape::e_circle);
-}
-
-void b2EdgeAndCircleContact::Evaluate(b2Manifold* manifold, const b2Transform& xfA, const b2Transform& xfB)
-{
-	b2CollideEdgeAndCircle(	manifold,
-								(b2EdgeShape*)m_fixtureA->GetShape(), xfA,
-								(b2CircleShape*)m_fixtureB->GetShape(), xfB);
 }

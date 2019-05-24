@@ -31,10 +31,10 @@ b2Contact* b2PolygonContact::Create(Fixture& fixtureA, int32, Fixture& fixtureB,
 	return new (mem) b2PolygonContact(fixtureA, fixtureB);
 }
 
-void b2PolygonContact::Destroy(b2Contact* contact, b2BlockAllocator* allocator)
+void b2PolygonContact::Destroy(b2Contact& contact, b2BlockAllocator* allocator)
 {
-	((b2PolygonContact*)contact)->~b2PolygonContact();
-	allocator->Free(contact, sizeof(b2PolygonContact));
+	((b2PolygonContact&)contact).~b2PolygonContact();
+	allocator->Free(&contact, sizeof(b2PolygonContact));
 }
 
 b2PolygonContact::b2PolygonContact(Fixture& fixtureA, Fixture& fixtureB)
@@ -42,11 +42,4 @@ b2PolygonContact::b2PolygonContact(Fixture& fixtureA, Fixture& fixtureB)
 {
 	b2Assert(m_fixtureA.GetType() == b2Shape::e_polygon);
 	b2Assert(m_fixtureB.GetType() == b2Shape::e_polygon);
-}
-
-void b2PolygonContact::Evaluate(b2Manifold* manifold, const b2Transform& xfA, const b2Transform& xfB)
-{
-	b2CollidePolygons(	manifold,
-						(b2PolygonShape*)m_fixtureA->GetShape(), xfA,
-						(b2PolygonShape*)m_fixtureB->GetShape(), xfB);
 }

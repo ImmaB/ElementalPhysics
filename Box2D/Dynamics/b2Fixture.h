@@ -95,6 +95,13 @@ struct b2FixtureProxy
 	int32 fixtureIdx;
 	int32 childIndex;
 	int32 proxyId;
+
+	b2FixtureProxy()
+	{
+		fixture = nullptr;
+		fixtureIdx = b2_invalidIndex;
+		proxyId = b2_invalidIndex; // b2BroadPhase::e_nullProxy;
+	}
 };
 
 struct Fixture
@@ -118,18 +125,9 @@ struct Fixture
 	void Set(const b2FixtureDef& def, const int32 bodyIdx);
 
 
-	void Synchronize(b2BroadPhase& broadPhase, const b2Transform& xf1, const b2Transform& xf2);
-
-
-
 	/// Is this fixture a sensor (non-solid)?
 	/// @return the true if the shape is a sensor.
 	bool IsSensor() const;
-
-	/// Set the contact filtering data. This will not update contacts until the next time
-	/// step when either parent body is active and awake.
-	/// This automatically calls Refilter.
-	void SetFilterData(const b2Filter& filter);
 
 
 	/// Get the next fixture in the parent body's fixture list.

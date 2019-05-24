@@ -36,48 +36,48 @@ b2ContactManager::b2ContactManager(b2World& world) : m_world(world)
 	m_allocator = NULL;
 }
 
-void b2ContactManager::Destroy(b2Contact* c)
+void b2ContactManager::Destroy(b2Contact& c)
 {
-	Fixture* fixtureA = c->GetFixtureA();
-	Fixture* fixtureB = c->GetFixtureB();
+	Fixture* fixtureA = c.GetFixtureA();
+	Fixture* fixtureB = c.GetFixtureB();
 	Body& bodyA = m_world.m_bodyBuffer[fixtureA->m_bodyIdx];
 	Body& bodyB = m_world.m_bodyBuffer[fixtureB->m_bodyIdx];
 
-	if (m_contactListener && c->IsTouching())
+	if (m_contactListener && c.IsTouching())
 		m_contactListener->EndContact(c);
 
 	// Remove from the world.
-	if (c->m_prev)
-		c->m_prev->m_next = c->m_next;
+	if (c.m_prev)
+		c.m_prev->m_next = c.m_next;
 
-	if (c->m_next)
-		c->m_next->m_prev = c->m_prev;
+	if (c.m_next)
+		c.m_next->m_prev = c.m_prev;
 
-	if (c == m_contactList)
-		m_contactList = c->m_next;
+	if (&c == m_contactList)
+		m_contactList = c.m_next;
 
 	// Remove from body 1
-	if (c->m_nodeA.prev)
-		c->m_nodeA.prev->next = c->m_nodeA.next;
+	if (c.m_nodeA.prev)
+		c.m_nodeA.prev->next = c.m_nodeA.next;
 
-	if (c->m_nodeA.next)
-		c->m_nodeA.next->prev = c->m_nodeA.prev;
+	if (c.m_nodeA.next)
+		c.m_nodeA.next->prev = c.m_nodeA.prev;
 
-	if (&c->m_nodeA == bodyA.m_contactList)
-		bodyA.m_contactList = c->m_nodeA.next;
+	if (&c.m_nodeA == bodyA.m_contactList)
+		bodyA.m_contactList = c.m_nodeA.next;
 
 	// Remove from body 2
-	if (c->m_nodeB.prev)
-		c->m_nodeB.prev->next = c->m_nodeB.next;
+	if (c.m_nodeB.prev)
+		c.m_nodeB.prev->next = c.m_nodeB.next;
 
-	if (c->m_nodeB.next)
-		c->m_nodeB.next->prev = c->m_nodeB.prev;
+	if (c.m_nodeB.next)
+		c.m_nodeB.next->prev = c.m_nodeB.prev;
 
-	if (&c->m_nodeB == bodyB.m_contactList)
-		bodyB.m_contactList = c->m_nodeB.next;
+	if (&c.m_nodeB == bodyB.m_contactList)
+		bodyB.m_contactList = c.m_nodeB.next;
 
 	// Call the factory.
-	m_world.Destroy(*c, m_allocator);
+	m_world.Destroy(c, m_allocator);
 	--m_contactCount;
 }
 
@@ -105,7 +105,7 @@ void b2ContactManager::Collide()
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
-				Destroy(cNuke);
+				Destroy(*cNuke);
 				continue;
 			}
 
@@ -114,7 +114,7 @@ void b2ContactManager::Collide()
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
-				Destroy(cNuke);
+				Destroy(*cNuke);
 				continue;
 			}
 
@@ -142,12 +142,12 @@ void b2ContactManager::Collide()
 		{
 			b2Contact* cNuke = c;
 			c = cNuke->GetNext();
-			Destroy(cNuke);
+			Destroy(*cNuke);
 			continue;
 		}
 
 		// The contact persists.
-		c->Update(m_contactListener);
+		m_world.Update(*c);
 		c = c->GetNext();
 	}
 }

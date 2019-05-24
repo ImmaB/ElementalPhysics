@@ -59,7 +59,7 @@ struct b2ParticleGroupDef
 		idx = 0;
 		flags = 0;
 		groupFlags = 0;
-		position = b2Vec2_zero;
+		position = b2Vec3_zero;
 		angle = 0;
 		linearVelocity = b2Vec2_zero;
 		angularVelocity = 0;
@@ -103,7 +103,7 @@ struct b2ParticleGroupDef
 
 	/// The world position of the group.
 	/// Moves the group's shape a distance equal to the value of position.
-	b2Vec2 position;
+	b2Vec3 position;
 
 	/// The world angle of the group in radians.
 	/// Rotates the shape by an angle equal to the value of angle.

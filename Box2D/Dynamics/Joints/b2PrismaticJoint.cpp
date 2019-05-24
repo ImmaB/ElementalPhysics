@@ -87,14 +87,14 @@
 // Now compute impulse to be applied:
 // df = f2 - f1
 
-void b2PrismaticJointDef::Initialize(b2Body* bA, b2Body* bB, const b2Vec2& anchor, const b2Vec2& axis)
+void b2PrismaticJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor, const b2Vec2& axis)
 {
-	bodyA = bA;
-	bodyB = bB;
-	localAnchorA = bodyA->GetLocalPoint(anchor);
-	localAnchorB = bodyB->GetLocalPoint(anchor);
-	localAxisA = bodyA->GetLocalVector(axis);
-	referenceAngle = bodyB->GetAngle() - bodyA->GetAngle();
+	bodyA = &bA;
+	bodyB = &bB;
+	localAnchorA = bA.GetLocalPoint(anchor);
+	localAnchorB = bB.GetLocalPoint(anchor);
+	localAxisA = bA.GetLocalVector(axis);
+	referenceAngle = bB.GetAngle() - bA.GetAngle();
 }
 
 b2PrismaticJoint::b2PrismaticJoint(const b2PrismaticJointDef* def)
@@ -514,8 +514,8 @@ float32 b2PrismaticJoint::GetJointTranslation() const
 
 float32 b2PrismaticJoint::GetJointSpeed() const
 {
-	b2Body* bA = m_bodyA;
-	b2Body* bB = m_bodyB;
+	Body* bA = m_bodyA;
+	Body* bB = m_bodyB;
 
 	b2Vec2 rA = b2Mul(bA->m_xf.q, m_localAnchorA - bA->m_sweep.localCenter);
 	b2Vec2 rB = b2Mul(bB->m_xf.q, m_localAnchorB - bB->m_sweep.localCenter);

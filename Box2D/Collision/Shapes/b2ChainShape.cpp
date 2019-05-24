@@ -109,42 +109,42 @@ int32 b2ChainShape::GetChildCount() const
 	return m_count - 1;
 }
 
-void b2ChainShape::GetChildEdge(b2EdgeShape* edge, int32 index) const
+void b2ChainShape::GetChildEdge(b2EdgeShape& edge, int32 index) const
 {
 	b2Assert(0 <= index && index < m_count - 1);
-	edge->m_type = Shape::e_edge;
-	edge->m_radius = m_radius;
+	edge.m_type = Shape::e_edge;
+	edge.m_radius = m_radius;
 
-	edge->m_vertex1 = m_vertices[index + 0];
-	edge->m_vertex2 = m_vertices[index + 1];
+	edge.m_vertex1 = m_vertices[index + 0];
+	edge.m_vertex2 = m_vertices[index + 1];
 
 	if (index > 0)
 	{
-		edge->m_vertex0 = m_vertices[index - 1];
-		edge->m_hasVertex0 = true;
+		edge.m_vertex0 = m_vertices[index - 1];
+		edge.m_hasVertex0 = true;
 	}
 	else
 	{
-		edge->m_vertex0 = m_prevVertex;
-		edge->m_hasVertex0 = m_hasPrevVertex;
+		edge.m_vertex0 = m_prevVertex;
+		edge.m_hasVertex0 = m_hasPrevVertex;
 	}
 
 	if (index < m_count - 2)
 	{
-		edge->m_vertex3 = m_vertices[index + 2];
-		edge->m_hasVertex3 = true;
+		edge.m_vertex3 = m_vertices[index + 2];
+		edge.m_hasVertex3 = true;
 	}
 	else
 	{
-		edge->m_vertex3 = m_nextVertex;
-		edge->m_hasVertex3 = m_hasNextVertex;
+		edge.m_vertex3 = m_nextVertex;
+		edge.m_hasVertex3 = m_hasNextVertex;
 	}
 }
 
 void b2ChainShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const
 {
 	b2EdgeShape edge;
-	GetChildEdge(&edge, childIndex);
+	GetChildEdge(edge, childIndex);
 	edge.ComputeDistance(xf, p, distance, normal, 0);
 }
 

@@ -8,12 +8,10 @@
 
 class b2NewRaycastCallback : public b2RayCastCallback {
 public:
-    b2NewRaycastCallback(int m, bool shouldQ) : numFixtures(0), numParticles(0), mode(m), shouldQuery(shouldQ) {}
+    b2NewRaycastCallback(int32 m, bool shouldQ) : numFixtures(0), numParticles(0), mode(m), shouldQuery(shouldQ) {}
     virtual float32 ReportFixture(Fixture& fixture, const b2Vec2& point,
                                   const b2Vec2& normal, float32 fraction) {
         ++numFixtures;
-        fixturesArray.push_back((int64)fixture.GetBody().GetUserData());
-        fixturesArray.push_back((int64)fixture.GetUserData());
         fixturesArray.push_back(point.x);
         fixturesArray.push_back(point.y);
         fixturesArray.push_back(normal.x);
@@ -38,7 +36,7 @@ public:
     virtual bool ShouldQueryParticleSystem(const b2ParticleSystem* partSys) {
         return shouldQuery;
     }
-    float* GetData() {
+    float32* GetData() {
         lengthsArray.push_back(numFixtures);
         lengthsArray.push_back(numParticles);
         returnArray.reserve(lengthsArray.size() + fixturesArray.size() + particlesArray.size());
@@ -49,10 +47,10 @@ public:
         return positionArray;
     }
 private:
-    float* positionArray;
-    int numFixtures;
-    int numParticles;
-    int mode;
+    float32* positionArray;
+    int32 numFixtures;
+    int32 numParticles;
+    int32 mode;
     bool shouldQuery;
     std::vector<float> fixturesArray;
     std::vector<float> particlesArray;
@@ -108,7 +106,7 @@ public:
         //particleArray.push_back(particleContact->GetNormal().y);
     }
     
-    float* GetData() {
+    float32* GetData() {
         
         lengthsArray.push_back(fixtureContacts);
         lengthsArray.push_back(mixedContacts);
@@ -134,10 +132,10 @@ public:
         return infoArray;
     }
 private:
-    int fixtureContacts;
-    int mixedContacts;
-    int particleContacts;
-    float* infoArray;
+    int32 fixtureContacts;
+    int32 mixedContacts;
+    int32 particleContacts;
+    float32* infoArray;
     std::vector<float> fixturesArray;
     std::vector<float> mixedArray;
     std::vector<float> particleArray;
@@ -147,64 +145,64 @@ private:
 
 
 #pragma region GlobalVariables
-b2World* world;
+b2World* pWorld;
 b2NewRaycastCallback* newRC;
-float* positionArray;
+float32* positionArray;
 int* returnArray;
 #pragma endregion
 
 #pragma region API World
-extern "C" __declspec(dllexport) void* CreateWorld(float gravX, float gravY) {
+extern "C" __declspec(dllexport) b2World* CreateWorld(float32 gravX, float32 gravY) {
     b2Vec2 gravity(gravX, gravY);
-	world = new b2World(gravity);
-    return static_cast<void*>(world);
+	pWorld = new b2World(gravity);
+    return pWorld;
 }
-extern "C" __declspec(dllexport) int DestroyWorld(void* worldPointer) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	if (world)
-		delete world;
+extern "C" __declspec(dllexport) int32 DestroyWorld(b2World* pWorld)
+{
+	if (pWorld)
+		delete pWorld;
 	return 0;
 }
 
-extern "C" __declspec(dllexport) void SetStepParams(void* worldPtr, float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations) {
-	b2World* world = static_cast<b2World*>(worldPtr);
-	world->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
+extern "C" __declspec(dllexport) void SetStepParams(b2World* pWorld, float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations) {
+	b2World* world = pWorld;
+	pWorld->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
 }
-extern "C" __declspec(dllexport) void StepPreParticle(void* worldPtr) {
-	b2World* world = static_cast<b2World*>(worldPtr);
-	world->StepPreParticle();
+extern "C" __declspec(dllexport) void StepPreParticle(b2World* pWorld) {
+	b2World* world = pWorld;
+	pWorld->StepPreParticle();
 }
-extern "C" __declspec(dllexport) void StepPostParticle(void* worldPtr) {
-	b2World* world = static_cast<b2World*>(worldPtr);
-	world->StepPostParticle();
-}
-
-extern "C" __declspec(dllexport) bool GetAllowSleeping(void* worldPointer) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	return world->GetAllowSleeping();
-}
-extern "C" __declspec(dllexport) void SetAllowSleeping(void* worldPointer, bool flag) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	world->SetAllowSleeping(flag);
+extern "C" __declspec(dllexport) void StepPostParticle(b2World* pWorld) {
+	b2World* world = pWorld;
+	pWorld->StepPostParticle();
 }
 
-extern "C" __declspec(dllexport) float* GetWorldGravity(void* worldPointer) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	float* returnArray = new float[2];
-	returnArray[0] = world->GetGravity().x;
-	returnArray[1] = world->GetGravity().y;
+extern "C" __declspec(dllexport) bool GetAllowSleeping(b2World* pWorld)
+{
+	return pWorld->GetAllowSleeping();
+}
+extern "C" __declspec(dllexport) void SetAllowSleeping(b2World* pWorld, bool flag)
+{
+	pWorld->SetAllowSleeping(flag);
+}
+
+extern "C" __declspec(dllexport) float32* GetWorldGravity(b2World* pWorld)
+{
+	float32* returnArray = new float[2];
+	returnArray[0] = pWorld->GetGravity().x;
+	returnArray[1] = pWorld->GetGravity().y;
 	return returnArray;
 }
-extern "C" __declspec(dllexport) void SetWorldGravity(void* worldPointer, float x, float y) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	world->SetGravity(b2Vec2(x, y));
+extern "C" __declspec(dllexport) void SetWorldGravity(b2World* pWorld, float32 x, float32 y)
+{
+	pWorld->SetGravity(b2Vec2(x, y));
 }
-extern "C" __declspec(dllexport) void SetWorldDamping(void* worldPointer, float s) {
-	b2World* world = static_cast<b2World*>(worldPointer);
-	world->SetDamping(s);
+extern "C" __declspec(dllexport) void SetWorldDamping(b2World* pWorld, float32 s)
+{
+	pWorld->SetDamping(s);
 }
 
-extern "C" __declspec(dllexport) int AddParticleMaterial(void* partSysPtr, int matFlags, int partFlags, float density, float stability, float heatConductivity) {
+extern "C" __declspec(dllexport) int32 AddParticleMaterial(void* partSysPtr, int32 matFlags, int32 partFlags, float32 density, float32 stability, float32 heatConductivity) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2ParticleMaterialDef md;
 	md.matFlags = matFlags;
@@ -214,14 +212,14 @@ extern "C" __declspec(dllexport) int AddParticleMaterial(void* partSysPtr, int m
 	md.heatConductivity = heatConductivity;
 	return partSys->CreateParticleMaterial(md);
 }
-extern "C" __declspec(dllexport) void AddParticleMatChangeMats(void* partSysPtr, int matIdx, 
-	float colderThan, int changeToColdMat, float hotterThan, int changeToHotMat, float ignitionPoint, int burnToMat) {
+extern "C" __declspec(dllexport) void AddParticleMatChangeMats(void* partSysPtr, int32 matIdx, 
+	float32 colderThan, int32 changeToColdMat, float32 hotterThan, int32 changeToHotMat, float32 ignitionPoint, int32 burnToMat) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->PartMatChangeMats(matIdx, colderThan, changeToColdMat, hotterThan, changeToHotMat, ignitionPoint, burnToMat);
 }
 
 
-extern "C" __declspec(dllexport) int32 AddBodyMaterial(b2World* worldPtr, int materialFlags, float density, float friction, float bounciness, float stability, float extinguishingPoint, float meltingPoint, float ignitionPoint, float heatConductivity) {
+extern "C" __declspec(dllexport) int32 AddBodyMaterial(b2World* worldPtr, int32 materialFlags, float32 density, float32 friction, float32 bounciness, float32 stability, float32 extinguishingPoint, float32 meltingPoint, float32 ignitionPoint, float32 heatConductivity) {
 	b2BodyMaterialDef md;
 	md.matFlags = materialFlags;
 	md.density = density;
@@ -243,13 +241,13 @@ extern "C" __declspec(dllexport) void* GetDebug() {
 
 
 /*
-extern "C" __declspec(dllexport) void* SetContactListener(void* worldPointer) {
-	b2World* world = static_cast<b2World*>(worldPointer);
+extern "C" __declspec(dllexport) void* SetContactListener(b2World* pWorld)
+{
 	b2NewContactListener* cL = new b2NewContactListener();
-	world->SetContactListener(cL);
+	pWorld->SetContactListener(cL);
 	return static_cast<void*>(cL);
 }
-extern "C" __declspec(dllexport) float* UpdateContactListener(void* contactPointer) {
+extern "C" __declspec(dllexport) float32* UpdateContactListener(void* contactPointer) {
 	b2NewContactListener* cL = static_cast<b2NewContactListener*>(contactPointer);
 	return cL->GetData();
 }*/
@@ -257,11 +255,11 @@ extern "C" __declspec(dllexport) float* UpdateContactListener(void* contactPoint
 
 #pragma region API Particle Systems
 
-extern "C" __declspec(dllexport) void* CreateParticleSystem(void* worldPtr, bool accelerate, float radius, float damping, float gravityScale, int userData, float roomTemp, float heatLossRatio, float pointsPerLayer, int lowestLayer, int highestLayer)
+extern "C" __declspec(dllexport) void* CreateParticleSystem(b2World* pWorld, bool accelerate, float32 radius, float32 damping, float32 gravityScale, int32 userData, float32 roomTemp, float32 heatLossRatio, float32 pointsPerLayer, int32 lowestLayer, int32 highestLayer)
 {
-	b2World* world = static_cast<b2World*>(worldPtr);
+	b2World* world = pWorld;
 	const b2ParticleSystemDef particleSystemDef;
-	b2ParticleSystem* partSys = world->CreateParticleSystem(particleSystemDef);
+	b2ParticleSystem* partSys = pWorld->CreateParticleSystem(particleSystemDef);
 	partSys->SetAccelerate(accelerate);
 	partSys->SetRadius(radius);
 	partSys->SetDamping(damping);
@@ -280,7 +278,7 @@ extern "C" __declspec(dllexport) void SetAccelerate(void* partsysPointer, bool a
 	b2ParticleSystem* sys = static_cast<b2ParticleSystem*>(partsysPointer);
 	sys->SetAccelerate(acc);
 }
-extern "C" __declspec(dllexport) void SetParticleSystemIndex(void* partsysPointer, int userData) {
+extern "C" __declspec(dllexport) void SetParticleSystemIndex(void* partsysPointer, int32 userData) {
 	b2ParticleSystem* sys = static_cast<b2ParticleSystem*>(partsysPointer);
 
 	sys->MyIndex = userData;
@@ -311,7 +309,7 @@ extern "C" __declspec(dllexport) void SolveEnd(void* partSysPtr) {
 	partSys->SolveEnd();
 }
 
-extern "C" __declspec(dllexport) void SetStaticPressureIterations(void* systemPointer,int iterations)
+extern "C" __declspec(dllexport) void SetStaticPressureIterations(void* systemPointer,int32 iterations)
 {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
     parts->SetStaticPressureIterations(iterations);
@@ -330,7 +328,7 @@ extern "C" __declspec(dllexport) bool GetDestructionByAge(void* systemPointer) {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
     return parts->GetDestructionByAge();
 }
-extern "C" __declspec(dllexport) int DestroyParticlesInShape(void* systemPointer, void* shapePointer, float x, float y, float rot, bool call) {
+extern "C" __declspec(dllexport) int32 DestroyParticlesInShape(void* systemPointer, void* shapePointer, float32 x, float32 y, float32 rot, bool call) {
     b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
     b2Shape* shape = static_cast<b2Shape*>(shapePointer);
     b2Vec2 position = b2Vec2(x, y);
@@ -339,40 +337,40 @@ extern "C" __declspec(dllexport) int DestroyParticlesInShape(void* systemPointer
     return parts->DestroyParticlesInShape(*shape, transform, call);
 }
 
-extern "C" __declspec(dllexport) void DeleteParticleSystem(void* worldPointer, void* partSysPtr) {
-    b2World* world = static_cast<b2World*>(worldPointer);
+extern "C" __declspec(dllexport) void DeleteParticleSystem(b2World* pWorld, void* partSysPtr)
+{
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    world->DestroyParticleSystem(partSys);
+    pWorld->DestroyParticleSystem(partSys);
 }
-extern "C" __declspec(dllexport) int GetParticleCount(b2ParticleSystem* pPartSys)
+extern "C" __declspec(dllexport) int32 GetParticleCount(b2ParticleSystem* pPartSys)
 {
     return pPartSys->GetParticleCount();
 }
-extern "C" __declspec(dllexport) int GetContactCount(b2ParticleSystem* pPartSys)
+extern "C" __declspec(dllexport) int32 GetContactCount(b2ParticleSystem* pPartSys)
 {
 	return pPartSys->GetContactCount();
 }
-extern "C" __declspec(dllexport) void SetAllParticleFlags(void* partSysPtr, int flags) {
+extern "C" __declspec(dllexport) void SetAllParticleFlags(void* partSysPtr, int32 flags) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    int numParts = partSys->GetParticleCount();
-    for (int i = 0; i < numParts; ++i) {
+    int32 numParts = partSys->GetParticleCount();
+    for (int32 i = 0; i < numParts; ++i) {
         partSys->SetParticleFlags(i, flags);
     }
 }
 
-extern "C" __declspec(dllexport) int GetStuckCandidateCount(void* partSysPtr) {
+extern "C" __declspec(dllexport) int32 GetStuckCandidateCount(void* partSysPtr) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     return partSys->GetStuckCandidateCount();
 }
-extern "C" __declspec(dllexport) void SetStuckThreshold(void* partSysPtr, int iterations) {
+extern "C" __declspec(dllexport) void SetStuckThreshold(void* partSysPtr, int32 iterations) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     partSys->SetStuckThreshold(iterations);
 }
-extern "C" __declspec(dllexport) void SetMaxParticleCount(void* partSysPtr, int count) {
+extern "C" __declspec(dllexport) void SetMaxParticleCount(void* partSysPtr, int32 count) {
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     system->SetMaxParticleCount(count);
 }
-extern "C" __declspec(dllexport) int GetMaxParticleCount(void* partSysPtr) {
+extern "C" __declspec(dllexport) int32 GetMaxParticleCount(void* partSysPtr) {
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     return system->GetMaxParticleCount();
 }
@@ -380,7 +378,7 @@ extern "C" __declspec(dllexport) int GetMaxParticleCount(void* partSysPtr) {
 #pragma endregion
 
 #pragma region API Particles
-extern "C" __declspec(dllexport) void AddFlagsToPartsInShape(void* partSysPtr, int flags, void* shapePtr, float shapeX, float shapeY, float shapeRot) {
+extern "C" __declspec(dllexport) void AddFlagsToPartsInShape(void* partSysPtr, int32 flags, void* shapePtr, float32 shapeX, float32 shapeY, float32 shapeRot) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape* shape = static_cast<b2Shape*>(shapePtr);
 	b2Vec2 position = b2Vec2(shapeX, shapeY);
@@ -409,17 +407,17 @@ extern "C" __declspec(dllexport) void AddFlagsToPartsInShape(void* partSysPtr, i
 		}
 	}
 }
-extern "C" __declspec(dllexport) void AddFlagsToPartsWithMatInShape(void* partSysPtr, uint32 flag, int matIdx, void* shapePtr, float shapeX, float shapeY, float shapeRot) {
+extern "C" __declspec(dllexport) void AddFlagsToPartsWithMatInShape(void* partSysPtr, uint32 flag, int32 matIdx, void* shapePtr, float32 shapeX, float32 shapeY, float32 shapeRot) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape& shape = *(static_cast<b2Shape*>(shapePtr));
 	partSys->AddFlagInsideShape(flag, matIdx, shape, b2Transform(b2Vec2(shapeX, shapeY), b2Rot(shapeRot)));
 }
 
-extern "C" __declspec(dllexport) void RemoveFlagsFromAll(void* partSysPtr, int flags) {
+extern "C" __declspec(dllexport) void RemoveFlagsFromAll(void* partSysPtr, int32 flags) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->RemovePartFlagsFromAll(flags);
 }
-extern "C" __declspec(dllexport) void ApplyForceInDirIfHasFlag(void* partSysPtr, b2Vec3 pos, float strength, int flag) {
+extern "C" __declspec(dllexport) void ApplyForceInDirIfHasFlag(void* partSysPtr, b2Vec3 pos, float32 strength, int32 flag) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	partSys->ApplyForceInDirIfHasFlag(pos, strength, flag);
 }
@@ -454,7 +452,7 @@ extern "C" __declspec(dllexport) void GetPartBufPtrs(void* partSysPtr,
 #pragma region ParticleGroups
 
 
-extern "C" __declspec(dllexport) int CreatePG(void* partSysPtr, int partFlags, int groupFlags, int matIdx, int collisionGroup, float angle, float strength, float angVel, float linVelX, float linVelY, void* shape, int color, float stride, float lifetime, float health, float heat, int userData) {
+extern "C" __declspec(dllexport) int32 CreatePG(void* partSysPtr, int32 partFlags, int32 groupFlags, int32 matIdx, int32 collisionGroup, float32 angle, float32 strength, float32 angVel, float32 linVelX, float32 linVelY, void* shape, int32 color, float32 stride, float32 lifetime, float32 health, float32 heat, int32 userData) {
 	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2Shape* m_shape = static_cast<b2Shape*>(shape);
 	b2ParticleGroupFlag bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
@@ -475,10 +473,10 @@ extern "C" __declspec(dllexport) int CreatePG(void* partSysPtr, int partFlags, i
 	pd.color = color;
 	pd.userData = userData;
 	pd.heat = heat;
-	int ret = partSys->CreateGroup(pd);
+	int32 ret = partSys->CreateGroup(pd);
 	return ret;
 }
-extern "C" __declspec(dllexport) int CreatePG2(void* partSysPtr, int partCount, int partFlags, int groupFlags, int matIdx, int collisionGroup, float strength, b2Vec3* poss, float velX, float velY, int* col, float lifetime, float health, float heat, int userData) {
+extern "C" __declspec(dllexport) int32 CreatePG2(void* partSysPtr, int32 partCount, int32 partFlags, int32 groupFlags, int32 matIdx, int32 collisionGroup, float32 strength, b2Vec3* poss, float32 velX, float32 velY, int* col, float32 lifetime, float32 health, float32 heat, int32 userData) {
 	b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2ParticleGroupFlag bgf;
 	bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
@@ -498,10 +496,10 @@ extern "C" __declspec(dllexport) int CreatePG2(void* partSysPtr, int partCount, 
 	pd.particleCount = partCount;
 	pd.positionData = poss;
 	pd.colorData = col;
-	int ret = parts->CreateGroup(pd);
+	int32 ret = parts->CreateGroup(pd);
 	return ret;
 }
-extern "C" __declspec(dllexport) void JoinParticleGroups(void* partSysPtr, int groupAIdx, int groupBIdx)
+extern "C" __declspec(dllexport) void JoinParticleGroups(void* partSysPtr, int32 groupAIdx, int32 groupBIdx)
 {
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     system->JoinParticleGroups(groupAIdx, groupBIdx);
@@ -511,7 +509,7 @@ extern "C" __declspec(dllexport) void ApplyForceToParticleGroup(void* partSysPtr
 	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
 	system->ApplyForce(*group, force);
 }
-extern "C" __declspec(dllexport) void ApplyLinearImpulseToParticleGroup(void* partSysPtr, void* groupPointer, float forceX, float forceY) {
+extern "C" __declspec(dllexport) void ApplyLinearImpulseToParticleGroup(void* partSysPtr, void* groupPointer, float32 forceX, float32 forceY) {
 	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
 	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
     b2Vec2 impulse = b2Vec2(forceX, forceY);
@@ -528,7 +526,7 @@ extern "C" __declspec(dllexport) void DeleteParticlesInGroup(void* partSysPtr, v
 
 #pragma region Shapes
 
-extern "C" __declspec(dllexport) bool IsPointInShape(void* shapePointer, float x, float y, float rot)
+extern "C" __declspec(dllexport) bool IsPointInShape(void* shapePointer, float32 x, float32 y, float32 rot)
 {
 	b2Shape* shape = static_cast<b2Shape*>(shapePointer);
 	b2Vec2 position = b2Vec2(x, y);
@@ -536,76 +534,54 @@ extern "C" __declspec(dllexport) bool IsPointInShape(void* shapePointer, float x
 	b2Transform transform = b2Transform(position, rotation);
 	return shape->TestPoint(transform, position);
 }
-extern "C" __declspec(dllexport) void* GetBoxShapeDef(float width, float height, float centreX, float centreY, float angle, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) b2PolygonShape* GetBoxShapeDef(float32 width, float32 height, float32 centreX, float32 centreY, float32 angle, float32 zPos, float32 zHeight) {
     b2Vec2 centre = b2Vec2(centreX, centreY);
     b2PolygonShape* shape = new b2PolygonShape();
     shape->SetAsBox(width, height, centre, angle);
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
-    return static_cast<void*>(shape);
+    return shape;
 }
-extern "C" __declspec(dllexport) void* GetCircleShapeDef(float radius, float centreX, float centreY, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) b2CircleShape* GetCircleShapeDef(float32 radius, float32 centreX, float32 centreY, float32 zPos, float32 zHeight) {
     b2Vec2 centre = b2Vec2(centreX, centreY);
     b2CircleShape* shape = new b2CircleShape();
     shape->m_p = centre;
     shape->m_radius = radius;
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
-    return static_cast<void*>(shape);
+    return shape;
 }
-extern "C" __declspec(dllexport) void* GetChainShapeDef(float* vertArray, bool loop, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) void* GetChainShapeDef(float32* vertArray, bool loop, float32 zPos, float32 zHeight) {
     b2ChainShape* shape = new b2ChainShape();
-    int numberOfVertices = vertArray[0];
+    int32 numberOfVertices = vertArray[0];
     b2Vec2* vertices = new b2Vec2[numberOfVertices];
-    
-    int j = 0;
-    for (int i = 1; i < (vertArray[0] * 2); i += 2)
-    {
-        vertices[j] = b2Vec2(vertArray[i], vertArray[i + 1]);
-        ++j;
-    }
-    
-    if (loop) {
+    for (int32 i = 1, j = 0; i < (vertArray[0] * 2); i += 2)
+        vertices[j++] = b2Vec2(vertArray[i], vertArray[i + 1]);
+    if (loop)
         shape->CreateLoop(vertices, numberOfVertices);
-    }
-    else {
+    else
         shape->CreateChain(vertices, numberOfVertices);
-    }
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport) void* GetPolygonShapeDef(float* vertArray, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) void* GetPolygonShapeDef(float32* vertArray, float32 zPos, float32 zHeight) {
     b2PolygonShape* shape = new b2PolygonShape();
-    int numberOfVertices = vertArray[0];
+    int32 numberOfVertices = vertArray[0];
     b2Vec2* vertices = new b2Vec2[numberOfVertices];
     
-    int j = 0;
-    for (int i = 1; i < (vertArray[0] * 2); i += 2)
-    {
-        vertices[j] = b2Vec2(vertArray[i], vertArray[i + 1]);
-        ++j;
-    }
+    for (int32 i = 1, j = 0; i < (vertArray[0] * 2); i += 2)
+        vertices[j++] = b2Vec2(vertArray[i], vertArray[i + 1]);
     
     shape->Set(vertices, numberOfVertices);
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport) void* GetEdgeShapeDef(float x1, float y1, float x2, float y2, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) void* GetEdgeShapeDef(float32 x1, float32 y1, float32 x2, float32 y2, float32 zPos, float32 zHeight) {
     b2Vec2 vec1 = b2Vec2(x1, y1);
     b2Vec2 vec2 = b2Vec2(x2, y2);
     b2EdgeShape* shape = new b2EdgeShape();
     shape->Set(vec1, vec2);
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
     return static_cast<void*>(shape);
 }
-extern "C" __declspec(dllexport) void* GetEllipseShapeDef(float outerRadius, float divisions, float zPos, float zHeight) {
+extern "C" __declspec(dllexport) void* GetEllipseShapeDef(float32 outerRadius, float32 divisions, float32 zPos, float32 zHeight) {
     /*b2ChainShape* chainShape;
      std::vector<b2Vec2> vertices;
      const float32 SPIKE_DEGREE = 2 * 3.14159265358979323846f / 180;
-     for (int idx = 0; idx < divisions; idx++) {
+     for (int32 idx = 0; idx < divisions; idx++) {
      float32 angle = ((3.14159265358979323846f * 2) / divisions)*idx;
      float32 xPos, yPos;
      
@@ -618,10 +594,10 @@ extern "C" __declspec(dllexport) void* GetEllipseShapeDef(float outerRadius, flo
      return static_cast<void*>(chainShape);*/
     
     b2PolygonShape* shape = new b2PolygonShape();
-    int numberOfVertices = divisions;
+    int32 numberOfVertices = divisions;
     b2Vec2* vertices = new b2Vec2[numberOfVertices];
     
-    for (int idx = 0; idx < divisions; idx++) {
+    for (int32 idx = 0; idx < divisions; idx++) {
         float32 angle = ((3.14159265358979323846f * 2) / divisions)*idx;
         float32 xPos, yPos;
         
@@ -631,13 +607,11 @@ extern "C" __declspec(dllexport) void* GetEllipseShapeDef(float outerRadius, flo
     }
     
     shape->Set(vertices, numberOfVertices);
-	shape->m_zPos = zPos;
-	shape->m_height = zHeight;
     return static_cast<void*>(shape);
     
 }
-extern "C" __declspec(dllexport) float* GetPolyShapeCentroid(void* shapePointer) {
-    float * positionArray = new float[2];
+extern "C" __declspec(dllexport) float32* GetPolyShapeCentroid(void* shapePointer) {
+    float32 * positionArray = new float[2];
     b2PolygonShape* m_shape = static_cast<b2PolygonShape*>(shapePointer);
     positionArray[0] = m_shape->m_centroid.x;
     positionArray[1] = m_shape->m_centroid.y;
@@ -648,7 +622,7 @@ extern "C" __declspec(dllexport) float* GetPolyShapeCentroid(void* shapePointer)
 
 #pragma region Body
 
-extern "C" __declspec(dllexport) int CreateBody(b2World* pWorld, int type, float xPosition, float yPosition, float angle, float linearDamping, float angularDamping, int32 materialIdx, float heat, float health, int flags, float gravityScale, int userData) {
+extern "C" __declspec(dllexport) int32 CreateBody(b2World* pWorld, int32 type, float32 xPosition, float32 yPosition, float32 angle, float32 linearDamping, float32 angularDamping, int32 materialIdx, float32 heat, float32 health, int32 flags, float32 gravityScale, int32 userData) {
     b2Vec2 position = b2Vec2(xPosition, yPosition);
     b2BodyType bodyType;
 	b2BodyFlag bf;
@@ -674,28 +648,27 @@ extern "C" __declspec(dllexport) int CreateBody(b2World* pWorld, int type, float
     
 	bd.gravityScale = gravityScale;
 
-    int bodyIdx = pWorld->CreateBody(bd);
+    int32 bodyIdx = pWorld->CreateBody(bd);
     return bodyIdx;
 }
-extern "C" __declspec(dllexport) float* GetBodyInfo(void* bodyPointer) {
-    
+extern "C" __declspec(dllexport) float32* GetBodyInfo(Body* pBody)
+{
     if (positionArray != NULL)
         delete positionArray;
-    
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+
     positionArray = new float[6];
-    positionArray[0] = m_body->GetPosition().x;
-    positionArray[1] = m_body->GetPosition().y;
-    positionArray[2] = m_body->GetAngle();
-	positionArray[3] = m_body->GetHealth();
-	positionArray[4] = m_body->GetHeat();
-	positionArray[5] = m_body->GetFlags();
+    positionArray[0] = pBody->GetPosition().x;
+    positionArray[1] = pBody->GetPosition().y;
+    positionArray[2] = pBody->GetAngle();
+	positionArray[3] = pBody->m_health;
+	positionArray[4] = pBody->m_heat;
+	positionArray[5] = pBody->m_flags;
     
     return positionArray;
 }
-extern "C" __declspec(dllexport) float* GetAllBodyInfo(void* worldPtr, int* bodyIdxs, int numbodies)
+extern "C" __declspec(dllexport) float32* GetAllBodyInfo(b2World* pWorld, int* bodyIdxs, int32 numbodies)
 {
-	b2World* world = static_cast<b2World*>(worldPtr);
+	b2World* world = pWorld;
     if (positionArray != NULL)
     {
         delete positionArray;
@@ -703,522 +676,343 @@ extern "C" __declspec(dllexport) float* GetAllBodyInfo(void* worldPtr, int* body
     
     positionArray = new float[numbodies*6];
     
-	const std::vector<b2Body>& bodies = world->GetBodyBuffer();
-    for (int i = 0; i < numbodies; i++)
+	const std::vector<Body>& bodies = pWorld->GetBodyBuffer();
+    for (int32 i = 0; i < numbodies; i++)
     {
-		const b2Body& m_body = bodies[bodyIdxs[i]];
+		const Body& m_body = bodies[bodyIdxs[i]];
         positionArray[i*6] = m_body.GetPosition().x;
         positionArray[(i*6) + 1] = m_body.GetPosition().y;
         positionArray[(i*6) + 2] = m_body.GetAngle();
-		positionArray[(i * 6) + 3] = m_body.GetHealth();
-		positionArray[(i * 6) + 4] = m_body.GetHeat();
-		positionArray[(i * 6) + 5] = m_body.GetFlags();
+		positionArray[(i * 6) + 3] = m_body.m_health;
+		positionArray[(i * 6) + 4] = m_body.m_heat;
+		positionArray[(i * 6) + 5] = m_body.m_flags;
     }
     
     return positionArray;
 }
-extern "C" __declspec(dllexport) int* GetBodyContacts(void* bodyPointer)
-{
-    if (returnArray != NULL)
-    {
-        delete returnArray;
-    }
-    
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    //b2ContactEdge * contacts =  m_body->GetContactList() ;
-    
-    int numconts = 0;
-    std::vector<int> conts;
-    
-    for ( b2ContactEdge * ce =  m_body->GetContactList(); ce; ce = ce->next)
-    {
-        numconts++;
-        conts.push_back((int64)(ce->other->GetUserData()));
-    }
-    
-    returnArray = new int[numconts+1];
-    returnArray[0] = numconts;
-    for (int i = 0; i < numconts; i++)
-    {
-        returnArray[i+1] = conts[i];
-    }
-    
-    return returnArray;
-    
-}
-extern "C" __declspec(dllexport) void ApplyForceToCentreOfBody(void* bodyPointer, float impulseX, float impulseY) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+extern "C" __declspec(dllexport) void ApplyForceToCentreOfBody(Body* pBody, float32 impulseX, float32 impulseY) {
     b2Vec2 impulse = b2Vec2(impulseX, impulseY);
-    m_body->ApplyForceToCenter(impulse, true);
+	pBody->ApplyForceToCenter(impulse, true);
 }
-extern "C" __declspec(dllexport) void SetBodyAwake(void* bodyPointer, bool isAwake) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetAwake(isAwake);
+extern "C" __declspec(dllexport) void SetBodyAwake(Body* pBody, bool isAwake)
+{
+	pBody->SetAwake(isAwake);
 }
-extern "C" __declspec(dllexport) void SetBodyType(void* bodyPointer, int type) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    
-    b2BodyType bodyType;
-    
+extern "C" __declspec(dllexport) void SetBodyType(Body* pBody, int32 type)
+{  
     if (type == 1)
-        bodyType = b2_dynamicBody;
+		pBody->m_type = b2_dynamicBody;
     else if (type == 2)
-        bodyType = b2_kinematicBody;
+		pBody->m_type = b2_kinematicBody;
     else
-        bodyType = b2_staticBody;
-    
-    m_body->SetType(bodyType);
+		pBody->m_type = b2_staticBody;
 }
-extern "C" __declspec(dllexport) bool GetBodyAwake(void* worldPtr, int bodyIdx) {
-	const b2Body& bodyPtr = (static_cast<b2World*>(worldPtr))->GetBody(bodyIdx);
-    return bodyPtr.IsAwake();
+extern "C" __declspec(dllexport) bool GetBodyAwake(b2World* pWorld, int32 bodyIdx)
+{
+	const Body& body = pWorld->GetBody(bodyIdx);
+    return body.IsAwake();
 }
-extern "C" __declspec(dllexport) void SetBodyActive(void* bodyPointer, bool isActive) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetActive(isActive);
+extern "C" __declspec(dllexport) void SetBodyActive(Body* pBody, bool isActive)
+{
+	pWorld->SetActive(*pBody, isActive);
 }
-extern "C" __declspec(dllexport) bool GetBodyActive(void* worldPtr, int bodyIdx) {
-    const b2Body& bodyPtr = (static_cast<b2World*>(worldPtr))->GetBody(bodyIdx);
-    return bodyPtr.IsActive();
+extern "C" __declspec(dllexport) bool GetBodyActive(b2World* pWorld, int32 bodyIdx)
+{
+    const Body& body = pWorld->GetBody(bodyIdx);
+    return body.IsActive();
 }
-extern "C" __declspec(dllexport) int GetBodyUserData(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return (int64)m_body->GetUserData();
+extern "C" __declspec(dllexport) void SetBodyPosition(Body* pBody, float32 x, float32 y)
+{
+	pWorld->SetTransform(*pBody, b2Vec2(x, y), pBody->GetAngle());
 }
-extern "C" __declspec(dllexport) void SetBodyPosition(void* bodyPointer, float x, float y) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    b2Vec2 pos = b2Vec2(x, y);
-    m_body->SetTransform(pos, m_body->GetAngle());
+extern "C" __declspec(dllexport) void SetBodyRotation(Body* pBody, float32 rotation) {
+	pWorld->SetTransform(*pBody, pBody->GetPosition(), rotation);
 }
-extern "C" __declspec(dllexport) void SetBodyRotation(void* bodyPointer, float rotation) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetTransform(m_body->GetPosition(), rotation);
-}
-extern "C" __declspec(dllexport) void SetBodyLinearVelocity(void* worldPtr, int idx, float x, float y) {
-    b2World* world = static_cast<b2World*>(worldPtr);
-	b2Body& body = world->GetBodyBuffer()[idx];
+extern "C" __declspec(dllexport) void SetBodyLinearVelocity(b2World* pWorld, int32 idx, float32 x, float32 y)
+{
+    b2World* world = pWorld;
+	Body& body = pWorld->GetBodyBuffer()[idx];
     b2Vec2 vel = b2Vec2(x, y);
 	body.SetLinearVelocity(vel);
 }
-extern "C" __declspec(dllexport) float* GetBodyLinearVelocity(void* worldPtr, int idx) {
-	b2World* world = static_cast<b2World*>(worldPtr);
-	b2Body& body = world->GetBodyBuffer()[idx];
-    if (positionArray != NULL)
-        delete positionArray;
-    
-    positionArray = new float[2];
-    positionArray[0] = body.GetLinearVelocity().x;
-    positionArray[1] = body.GetLinearVelocity().y;
-    return positionArray;
-}
-extern "C" __declspec(dllexport) void SetBodyLinearDamping(void* bodyPointer, float lD) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetLinearDamping(lD);
-}
-extern "C" __declspec(dllexport) float GetBodyLinearDamping(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetLinearDamping();
-}
-extern "C" __declspec(dllexport) void SetBodyAngularDamping(void* bodyPointer, float aD) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetAngularDamping(aD);
-}
-extern "C" __declspec(dllexport) float GetBodyAngularDamping(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetAngularDamping();
-}
-extern "C" __declspec(dllexport) void SetBodyAngularVelocity(void* bodyPointer, float w) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetAngularVelocity(w);
-}
-extern "C" __declspec(dllexport) float GetBodyAngularVelocity(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetAngularVelocity();
-}
-extern "C" __declspec(dllexport) void SetBodyGravityScale(void* bodyPointer, float scale) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetGravityScale(scale);
-}
-extern "C" __declspec(dllexport) float GetBodyGravityScale(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetGravityScale();
-}
-extern "C" __declspec(dllexport) void SetBodyIsBullet(void* bodyPointer, bool isBullet) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetBullet(isBullet);
-}
-extern "C" __declspec(dllexport) bool GetBodyIsBullet(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->IsBullet();
-}
-extern "C" __declspec(dllexport) void SetBodyFixedRotation(void* bodyPointer, bool flag) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->SetFixedRotation(flag);
-}
-extern "C" __declspec(dllexport) bool GetBodyFixedRotation(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->IsFixedRotation();
-}
 
-extern "C" __declspec(dllexport) void ApplyAngularImpulseToBody(void* bodyPointer, float impulse, bool wake) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->ApplyAngularImpulse(impulse, wake);
+extern "C" __declspec(dllexport) void ApplyAngularImpulseToBody(Body* pBody, float32 impulse, bool wake)
+{
+	pBody->ApplyAngularImpulse(impulse, wake);
 }
-extern "C" __declspec(dllexport) void ApplyForceToBody(void* bodyPointer, float forceX, float forceY, float posX, float posY, bool wake) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+extern "C" __declspec(dllexport) void ApplyForceToBody(Body* pBody, float32 forceX, float32 forceY, float32 posX, float32 posY, bool wake)
+{
     b2Vec2 force = b2Vec2(forceX, forceY);
     b2Vec2 position = b2Vec2(posX, posY);
-    m_body->ApplyForce(force, position, wake);
+	pBody->ApplyForce(force, position, wake);
 }
-extern "C" __declspec(dllexport) void ApplyLinearImpulseToBody(void* bodyPointer, float forceX, float forceY, float posX, float posY, bool wake) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
+extern "C" __declspec(dllexport) void ApplyLinearImpulseToBody(Body* pBody, float32 forceX, float32 forceY, float32 posX, float32 posY, bool wake)
+{
     b2Vec2 force = b2Vec2(forceX, forceY);
     b2Vec2 position = b2Vec2(posX, posY);
-    m_body->ApplyLinearImpulse(force, position, wake);
+	pBody->ApplyLinearImpulse(force, position, wake);
 }
-extern "C" __declspec(dllexport) void ApplyTorqueToBody(void* bodyPointer, float torque, bool wake) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    m_body->ApplyTorque(torque, wake);
-}
-
-extern "C" __declspec(dllexport) float GetBodyMass(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetMass();
-}
-extern "C" __declspec(dllexport) float GetBodyInertia(void* bodyPointer) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    return m_body->GetInertia();
-}
-extern "C" __declspec(dllexport) void SetBodyTransform(void* bodyPointer, float x, float y, float angle) {
-    b2Body* m_body = static_cast<b2Body*>(bodyPointer);
-    b2Vec2 pos = b2Vec2(x, y);
-    m_body->SetTransform(pos, angle);
+extern "C" __declspec(dllexport) void ApplyTorqueToBody(Body* pBody, float32 torque, bool wake)
+{
+    pBody->ApplyTorque(torque, wake);
 }
 
-extern "C" __declspec(dllexport) void DeleteBody(void* worldPtr, int idx) {
-    b2World* world = static_cast<b2World*>(worldPtr);
-    world->DestroyBody(idx);
+extern "C" __declspec(dllexport) void SetBodyTransform(Body* pBody, float32 x, float32 y, float32 angle)
+{
+	pWorld->SetTransform(*pBody, b2Vec2(x, y), angle);
+}
+
+extern "C" __declspec(dllexport) void DeleteBody(b2World* pWorld, int32 idx)
+{
+	pWorld->DestroyBody(idx);
 }
 
 #pragma endregion
 
 #pragma region Fixture
 
-extern "C" __declspec(dllexport) int AddFixture(void* worldPtr, int bodyIdx, int shapeType, void* shapePointer, bool isSensor, int userData) {
-	b2World* world = static_cast<b2World*>(worldPtr);
-	b2Body& body = world->GetBodyBuffer()[bodyIdx];
+extern "C" __declspec(dllexport) int32 AddFixture(b2World* pWorld, int32 bodyIdx, int32 shapeType, int32 shapeIdx, bool isSensor)
+{
+	b2World* world = pWorld;
+	Body& body = pWorld->GetBodyBuffer()[bodyIdx];
     b2FixtureDef fd;
-	body.GetMaterial()->m_density;
-	body.GetMaterial()->m_friction;
 	fd.isSensor = isSensor;
-	body.GetMaterial()->m_bounciness;
-    fd.userData = (void*)userData;
-    if (shapeType == 0) {
-        b2PolygonShape* aShape = static_cast<b2PolygonShape*>(shapePointer);
-        b2PolygonShape shape = *aShape;
-        fd.shape = &shape;
-        int idx = body.CreateFixture(&fd);
-        return idx;
-    }
-    else if (shapeType == 1) {
-        b2CircleShape* aShape = static_cast<b2CircleShape*>(shapePointer);
-        b2CircleShape shape = *aShape;
-        fd.shape = &shape;
-		int idx = body.CreateFixture(&fd);
-        return idx;
-    }
-    else if (shapeType == 2) {
-        b2EdgeShape* aShape = static_cast<b2EdgeShape*>(shapePointer);
-        b2EdgeShape shape = *aShape;
-        fd.shape = &shape;
-		int idx = body.CreateFixture(&fd);
-        return idx;
-    }
-    else {
-        b2ChainShape* aShape = static_cast<b2ChainShape*>(shapePointer);
-        b2ChainShape shape = *aShape;
-        fd.shape = &shape;
-		int idx = body.CreateFixture(&fd);
-        return idx;
-    }
-    
+    fd.shapeIdx = shapeIdx;
+    int32 idx = pWorld->CreateFixture(body, fd);
+    return idx;
 }
 
-extern "C" __declspec(dllexport) float* GetFixtureInfo(void* fixturePointer) {
-    
-    if (positionArray != NULL)
-    {
-        delete positionArray;
-    }
-    
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    positionArray = new float[3];
-    positionArray[0] = m_fixture->GetBody().GetPosition().x;
-    positionArray[1] = m_fixture->GetBody().GetPosition().y;
-    positionArray[2] = m_fixture->GetBody().GetAngle();
-    
-    return positionArray;
+extern "C" __declspec(dllexport) bool TestPoint(Fixture* pFixture, float32 x, float32 y)
+{
+	return pWorld->TestPoint(*pFixture, b2Vec2(x, y));
 }
 
-extern "C" __declspec(dllexport) int GetFixtureUserData(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return (int64)m_fixture->GetUserData();
-}
-
-extern "C" __declspec(dllexport) bool TestPoint(void* fixturePointer, float x, float y) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    b2Vec2 pos = b2Vec2(x, y);
-    return m_fixture->TestPoint(pos);
-}
-
-extern "C" __declspec(dllexport) void SetFixtureFilterData(void* WorldPtr, int idx, int32 groupIndex, uint16 categoryBits, uint16 maskBits) {
-	b2World* world = static_cast<b2World*>(WorldPtr);
+extern "C" __declspec(dllexport) void SetFixtureFilterData(b2World* pWorld, int32 idx, int32 groupIndex, uint16 categoryBits, uint16 maskBits)
+{
     b2Filter filter = b2Filter();
     filter.groupIndex = groupIndex;
     filter.maskBits = maskBits;
     filter.categoryBits = categoryBits;
-	b2Fixture& fixture = world->GetFixtureBuffer()[idx];
-	fixture.SetFilterData(filter);
+	Fixture& fixture = pWorld->GetFixtureBuffer()[idx];
+	pWorld->SetFilterData(fixture, filter);
 }
-extern "C" __declspec(dllexport) uint16 GetFixtureGroupIndex(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetFilterData().groupIndex;
+extern "C" __declspec(dllexport) uint16 GetFixtureGroupIndex(Fixture* pFixture)
+{
+    return pFixture->m_filter.groupIndex;
 }
-extern "C" __declspec(dllexport) uint16 GetFixtureMaskBits(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetFilterData().maskBits;
+extern "C" __declspec(dllexport) uint16 GetFixtureMaskBits(Fixture* pFixture)
+{
+    return pFixture->m_filter.maskBits;
 }
-extern "C" __declspec(dllexport) uint16 GetFixtureCategoryBits(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetFilterData().categoryBits;
-}
-
-extern "C" __declspec(dllexport) bool GetFixtureIsSensor(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->IsSensor();
-}
-extern "C" __declspec(dllexport) void SetFixtureIsSensor(void* fixturePointer, bool flag) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    m_fixture->SetSensor(flag);
+extern "C" __declspec(dllexport) uint16 GetFixtureCategoryBits(Fixture* pFixture)
+{
+    return pFixture->m_filter.categoryBits;
 }
 
-extern "C" __declspec(dllexport) float GetFixtureDensity(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetDensity();
+extern "C" __declspec(dllexport) bool GetFixtureIsSensor(Fixture* pFixture)
+{
+    return pFixture->IsSensor();
 }
-extern "C" __declspec(dllexport) void SetFixtureDensity(void* fixturePointer, float density) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    m_fixture->SetDensity(density);
-}
-
-extern "C" __declspec(dllexport) float GetFixtureFriction(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetFriction();
-}
-extern "C" __declspec(dllexport) void SetFixtureFriction(void* fixturePointer, float friction) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    m_fixture->SetFriction(friction);
+extern "C" __declspec(dllexport) void SetFixtureIsSensor(Fixture* pFixture, bool flag)
+{
+	pWorld->SetSensor(*pFixture, flag);
 }
 
-extern "C" __declspec(dllexport) float GetFixtureRestitution(void* fixturePointer) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    return m_fixture->GetRestitution();
+extern "C" __declspec(dllexport) float32 GetFixtureDensity(Fixture* pFixture)
+{
+    return pFixture->m_density;
 }
-extern "C" __declspec(dllexport) void SetFixtureRestitution(void* fixturePointer, float restitution) {
-    b2Fixture* m_fixture = static_cast<b2Fixture*>(fixturePointer);
-    m_fixture->SetRestitution(restitution);
+extern "C" __declspec(dllexport) void SetFixtureDensity(Fixture* pFixture, float32 density)
+{
+    pFixture->SetDensity(density);
 }
 
-extern "C" __declspec(dllexport) void DeleteFixture(void* bodyPtr, int idx) {
-    b2Body* body = static_cast<b2Body*>(bodyPtr);
-    body->DestroyFixture(idx);
+extern "C" __declspec(dllexport) void DeleteFixture(Body* pBody, int32 idx)
+{
+	pWorld->DestroyFixture(*pBody, idx);
 }
 #pragma endregion
 
 #pragma region Joints
 
 #pragma region DistanceJoints
-extern "C" __declspec(dllexport) void* CreateDistanceJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, float length, bool collideConnected) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
+extern "C" __declspec(dllexport) b2DistanceJoint* CreateDistanceJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 length, bool collideConnected)
+{
     b2DistanceJoint* dj;
     b2DistanceJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnected;
     jd.length = length;
-    dj = (b2DistanceJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(dj);
+    dj = (b2DistanceJoint*)pWorld->CreateJoint(&jd);
+    return dj;
 }
-extern "C" __declspec(dllexport) void SetDistanceJointFrequency(void* joint, float frequency) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    m_joint->SetFrequency(frequency);
+extern "C" __declspec(dllexport) void SetDistanceJointFrequency(b2DistanceJoint* pJoint, float32 frequency)
+{
+	pJoint->SetFrequency(frequency);
 }
-extern "C" __declspec(dllexport) float GetDistanceJointFrequency(void* joint) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    return m_joint->GetFrequency();
+extern "C" __declspec(dllexport) float32 GetDistanceJointFrequency(b2DistanceJoint* pJoint)
+{
+    return pJoint->GetFrequency();
 }
-extern "C" __declspec(dllexport) void SetDistanceJointDampingRatio(void* joint, float ratio) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    m_joint->SetDampingRatio(ratio);
+extern "C" __declspec(dllexport) void SetDistanceJointDampingRatio(b2DistanceJoint* pJoint, float32 ratio)
+{
+	pJoint->SetDampingRatio(ratio);
 }
-extern "C" __declspec(dllexport) float GetDistanceJointDampingRatio(void* joint) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    return m_joint->GetDampingRatio();
+extern "C" __declspec(dllexport) float32 GetDistanceJointDampingRatio(b2DistanceJoint* pJoint)
+{
+    return pJoint->GetDampingRatio();
 }
-extern "C" __declspec(dllexport) void SetDistanceJointLength(void* joint, float length) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    m_joint->SetLength(length);
+extern "C" __declspec(dllexport) void SetDistanceJointLength(b2DistanceJoint* pJoint, float32 length)
+{
+	pJoint->SetLength(length);
 }
-extern "C" __declspec(dllexport) float GetDistanceJointLength(void* joint) {
-    b2DistanceJoint* m_joint = static_cast<b2DistanceJoint*>(joint);
-    return m_joint->GetLength();
+extern "C" __declspec(dllexport) float32 GetDistanceJointLength(b2DistanceJoint* pJoint)
+{
+    return pJoint->GetLength();
 }
 #pragma endregion
 
 #pragma region RevoluteJoints
-extern "C" __declspec(dllexport) void* CreateRevoluteJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, bool collideConnected) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
+extern "C" __declspec(dllexport) void* CreateRevoluteJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnected)
+{
     b2RevoluteJoint* rj;
     b2RevoluteJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnected;
-    rj = (b2RevoluteJoint*)world->CreateJoint(&jd);
+    rj = (b2RevoluteJoint*)pWorld->CreateJoint(&jd);
     return static_cast<void*>(rj);
 }
-extern "C" __declspec(dllexport) void SetRevoluteJointLimits(void* joint, float lower, float upper) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    m_joint->SetLimits(lower, upper);
+extern "C" __declspec(dllexport) void SetRevoluteJointLimits(b2RevoluteJoint* pJoint, float32 lower, float32 upper)
+{
+	pJoint->SetLimits(lower, upper);
 }
-extern "C" __declspec(dllexport) void SetRevoluteJointMotorSpeed(void* joint, float speed) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    m_joint->SetMotorSpeed(speed);
+extern "C" __declspec(dllexport) void SetRevoluteJointMotorSpeed(b2RevoluteJoint* pJoint, float32 speed)
+{
+	pJoint->SetMotorSpeed(speed);
 }
-extern "C" __declspec(dllexport) void SetRevoluteJointMaxMotorTorque(void* joint, float torque) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    m_joint->SetMaxMotorTorque(torque);
+extern "C" __declspec(dllexport) void SetRevoluteJointMaxMotorTorque(b2RevoluteJoint* pJoint, float32 torque)
+{
+	pJoint->SetMaxMotorTorque(torque);
 }
-extern "C" __declspec(dllexport) void EnableRevoluteJointMotor(void* joint, bool motor) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    m_joint->EnableMotor(motor);
+extern "C" __declspec(dllexport) void EnableRevoluteJointMotor(b2RevoluteJoint* pJoint, bool motor)
+{
+	pJoint->EnableMotor(motor);
 }
-extern "C" __declspec(dllexport) void EnableRevoluteJointLimits(void* joint, bool limit) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    m_joint->EnableLimit(limit);
+extern "C" __declspec(dllexport) void EnableRevoluteJointLimits(b2RevoluteJoint* pJoint, bool limit)
+{
+	pJoint->EnableLimit(limit);
 }
-extern "C" __declspec(dllexport) float GetRevoluteJointUpperLimit(void* joint) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->GetUpperLimit();
+extern "C" __declspec(dllexport) float32 GetRevoluteJointUpperLimit(b2RevoluteJoint* pJoint)
+{
+    return pJoint->GetUpperLimit();
 }
-extern "C" __declspec(dllexport) float GetRevoluteJointLowerLimit(void* joint) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->GetLowerLimit();
+extern "C" __declspec(dllexport) float32 GetRevoluteJointLowerLimit(b2RevoluteJoint* pJoint)
+{
+    return pJoint->GetLowerLimit();
 }
-extern "C" __declspec(dllexport) bool IsRevoluteJointMotorEnabled(void* joint) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->IsMotorEnabled();
+extern "C" __declspec(dllexport) bool IsRevoluteJointMotorEnabled(b2RevoluteJoint* pJoint)
+{
+    return pJoint->IsMotorEnabled();
 }
-extern "C" __declspec(dllexport) float GetRevoluteJointMotorSpeed(void* joint) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->GetMotorSpeed();
+extern "C" __declspec(dllexport) float32 GetRevoluteJointMotorSpeed(b2RevoluteJoint* pJoint)
+{
+    return pJoint->GetMotorSpeed();
 }
-extern "C" __declspec(dllexport) float GetRevoluteJointMotorTorque(void* joint, float invDt) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->GetMotorTorque(invDt);
+extern "C" __declspec(dllexport) float32 GetRevoluteJointMotorTorque(b2RevoluteJoint* pJoint, float32 invDt)
+{
+    return pJoint->GetMotorTorque(invDt);
 }
-extern "C" __declspec(dllexport) float GetRevoluteJointMaxMotorTorque(void* joint) {
-    b2RevoluteJoint* m_joint = static_cast<b2RevoluteJoint*>(joint);
-    return m_joint->GetMaxMotorTorque();
+extern "C" __declspec(dllexport) float32 GetRevoluteJointMaxMotorTorque(b2RevoluteJoint* pJoint)
+{
+    return pJoint->GetMaxMotorTorque();
 }
 #pragma endregion
 
 #pragma region PrismaticJoints
-extern "C" __declspec(dllexport) void* CreatePrismaticJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, float axisX, float axisY, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
+extern "C" __declspec(dllexport) void* CreatePrismaticJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 axisX, float32 axisY, bool collideConnect)
+{
     b2PrismaticJoint* pj;
     b2PrismaticJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.localAxisA.Set(axisX, axisY);
     jd.collideConnected = collideConnect;
-    pj = (b2PrismaticJoint*)world->CreateJoint(&jd);
+    pj = (b2PrismaticJoint*)pWorld->CreateJoint(&jd);
     return static_cast<void*>(pj);
 }
-extern "C" __declspec(dllexport) void SetPrismaticJointLimits(void* joint, float lower, float upper) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    m_joint->SetLimits(lower, upper);
+extern "C" __declspec(dllexport) void SetPrismaticJointLimits(b2PrismaticJoint* pJoint, float32 lower, float32 upper)
+{
+	pJoint->SetLimits(lower, upper);
 }
-extern "C" __declspec(dllexport) void SetPrismaticJointMotorSpeed(void* joint, float speed) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    m_joint->SetMotorSpeed(speed);
+extern "C" __declspec(dllexport) void SetPrismaticJointMotorSpeed(b2PrismaticJoint* pJoint, float32 speed)
+{
+	pJoint->SetMotorSpeed(speed);
 }
-extern "C" __declspec(dllexport) void SetPrismaticJointMaxMotorForce(void* joint, float force) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    m_joint->SetMaxMotorForce(force);
+extern "C" __declspec(dllexport) void SetPrismaticJointMaxMotorForce(b2PrismaticJoint* pJoint, float32 force)
+{
+	pJoint->SetMaxMotorForce(force);
 }
-extern "C" __declspec(dllexport) void EnablePrismaticJointMotor(void* joint, bool motor) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    m_joint->EnableMotor(motor);
+extern "C" __declspec(dllexport) void EnablePrismaticJointMotor(b2PrismaticJoint* pJoint, bool motor)
+{
+	pJoint->EnableMotor(motor);
 }
-extern "C" __declspec(dllexport) void EnablePrismaticJointLimits(void* joint, bool limit) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    m_joint->EnableLimit(limit);
+extern "C" __declspec(dllexport) void EnablePrismaticJointLimits(b2PrismaticJoint* pJoint, bool limit)
+{
+	pJoint->EnableLimit(limit);
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointUpperLimit(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetUpperLimit();
+extern "C" __declspec(dllexport) float32 GetPrismaticJointUpperLimit(b2PrismaticJoint* pJoint)
+{
+    return pJoint->GetUpperLimit();
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointLowerLimit(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetLowerLimit();
+extern "C" __declspec(dllexport) float32 GetPrismaticJointLowerLimit(b2PrismaticJoint* pJoint)
+{
+    return pJoint->GetLowerLimit();
 }
-extern "C" __declspec(dllexport) bool IsPrismaticJointMotorEnabled(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->IsMotorEnabled();
+extern "C" __declspec(dllexport) bool IsPrismaticJointMotorEnabled(b2PrismaticJoint* pJoint)
+{
+    return pJoint->IsMotorEnabled();
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointMotorSpeed(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetMotorSpeed();
+extern "C" __declspec(dllexport) float32 GetPrismaticJointMotorSpeed(b2PrismaticJoint* pJoint)
+{
+    return pJoint->GetMotorSpeed();
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointMotorTorque(void* joint, float invDt) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetMotorForce(invDt);
+extern "C" __declspec(dllexport) float32 GetPrismaticJointMotorTorque(b2PrismaticJoint* pJoint, float32 invDt)
+{
+    return pJoint->GetMotorForce(invDt);
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointMaxMotorForce(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetMaxMotorForce();
+extern "C" __declspec(dllexport) float32 GetPrismaticJointMaxMotorForce(b2PrismaticJoint* pJoint)
+{
+    return pJoint->GetMaxMotorForce();
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointMotorForce(void* joint,float its) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetMotorForce(its);
+extern "C" __declspec(dllexport) float32 GetPrismaticJointMotorForce(b2PrismaticJoint* pJoint,float32 its)
+{
+    return pJoint->GetMotorForce(its);
 }
-extern "C" __declspec(dllexport) float GetPrismaticJointSpeed(void* joint) {
-    b2PrismaticJoint* m_joint = static_cast<b2PrismaticJoint*>(joint);
-    return m_joint->GetJointSpeed();
+extern "C" __declspec(dllexport) float32 GetPrismaticJointSpeed(b2PrismaticJoint* pJoint)
+{
+    return pJoint->GetJointSpeed();
 }
 #pragma endregion
 
 #pragma region PulleyJoints
-extern "C" __declspec(dllexport) void* CreatePulleyJoint(void* worldPointer, void* bodyA, void* bodyB, float groundAnchorAX, float groundAanchorAY, float groundAnchorBX, float groundAanchorBY, float anchorAX, float anchorAY, float anchorBX, float anchorBY, float ratio, float lengthA, float lengthB, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
+extern "C" __declspec(dllexport) void* CreatePulleyJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 groundAnchorAX,
+	float32 groundAanchorAY, float32 groundAnchorBX, float32 groundAanchorBY, float32 anchorAX, float32 anchorAY, float32 anchorBX,
+	float32 anchorBY, float32 ratio, float32 lengthA, float32 lengthB, bool collideConnect)
+{
+
+
     b2PulleyJoint* pj;
     b2PulleyJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.groundAnchorA.Set(groundAnchorAX, groundAanchorAY);
     jd.groundAnchorB.Set(groundAnchorBX, groundAanchorBY);
     jd.localAnchorA.Set(anchorAX, anchorAY);
@@ -1227,334 +1021,264 @@ extern "C" __declspec(dllexport) void* CreatePulleyJoint(void* worldPointer, voi
     jd.collideConnected = collideConnect;
     jd.lengthA = lengthA;
     jd.lengthB = lengthB;
-    pj = (b2PulleyJoint*)world->CreateJoint(&jd);
+    pj = (b2PulleyJoint*)pWorld->CreateJoint(&jd);
     return static_cast<void*>(pj);
 }
-extern "C" __declspec(dllexport) float GetPulleyJointLengthA(void* joint) {
-    b2PulleyJoint* m_joint = static_cast<b2PulleyJoint*>(joint);
-    return m_joint->GetLengthA();
+extern "C" __declspec(dllexport) float32 GetPulleyJointLengthA(b2PulleyJoint* pJoint)
+{
+    return pJoint->GetLengthA();
 }
-extern "C" __declspec(dllexport) float GetPulleyJointLengthB(void* joint) {
-    b2PulleyJoint* m_joint = static_cast<b2PulleyJoint*>(joint);
-    return m_joint->GetLengthB();
+extern "C" __declspec(dllexport) float32 GetPulleyJointLengthB(b2PulleyJoint* pJoint)
+{
+    return pJoint->GetLengthB();
 }
 #pragma endregion
 
 #pragma region GearJoints
-extern "C" __declspec(dllexport) void* CreateGearJoint(void* worldPointer, void* bodyA, void* bodyB, void* jointA, bool isARevolute, void* jointB, bool isBRevolute, float ratio, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
-    if (isARevolute && isBRevolute) {
-        b2RevoluteJoint* m_jointA = static_cast<b2RevoluteJoint*>(jointA);
-        b2RevoluteJoint* m_jointB = static_cast<b2RevoluteJoint*>(jointB);
-        b2GearJoint* gj;
-        b2GearJointDef jd;
-        jd.bodyA = m_bodyA;
-        jd.bodyB = m_bodyB;
-        jd.joint1 = m_jointA;
-        jd.joint2 = m_jointB;
-        jd.ratio = ratio;
-        jd.collideConnected = collideConnect;
-        gj = (b2GearJoint*)world->CreateJoint(&jd);
-        return static_cast<void*>(gj);
-    }
-    else if (!isARevolute && !isBRevolute) {
-        b2PrismaticJoint* m_jointA = static_cast<b2PrismaticJoint*>(jointA);
-        b2PrismaticJoint* m_jointB = static_cast<b2PrismaticJoint*>(jointB);
-        b2GearJoint* gj;
-        b2GearJointDef jd;
-        jd.bodyA = m_bodyA;
-        jd.bodyB = m_bodyB;
-        jd.joint1 = m_jointA;
-        jd.joint2 = m_jointB;
-        jd.ratio = ratio;
-        jd.collideConnected = collideConnect;
-        gj = (b2GearJoint*)world->CreateJoint(&jd);
-        return static_cast<void*>(gj);
-    }
-    else {
-        if (isARevolute && !isBRevolute) {
-            b2RevoluteJoint* m_jointA = static_cast<b2RevoluteJoint*>(jointA);
-            b2PrismaticJoint* m_jointB = static_cast<b2PrismaticJoint*>(jointB);
-            b2GearJoint* gj;
-            b2GearJointDef jd;
-            jd.bodyA = m_bodyA;
-            jd.bodyB = m_bodyB;
-            jd.joint1 = m_jointA;
-            jd.joint2 = m_jointB;
-            jd.ratio = ratio;
-            jd.collideConnected = collideConnect;
-            gj = (b2GearJoint*)world->CreateJoint(&jd);
-            return static_cast<void*>(gj);
-        }
-        else {
-            b2PrismaticJoint* m_jointA = static_cast<b2PrismaticJoint*>(jointA);
-            b2RevoluteJoint* m_jointB = static_cast<b2RevoluteJoint*>(jointB);
-            b2GearJoint* gj;
-            b2GearJointDef jd;
-            jd.bodyA = m_bodyA;
-            jd.bodyB = m_bodyB;
-            jd.joint1 = m_jointA;
-            jd.joint2 = m_jointB;
-            jd.ratio = ratio;
-            jd.collideConnected = collideConnect;
-            gj = (b2GearJoint*)world->CreateJoint(&jd);
-            return static_cast<void*>(gj);
-        }
-    }
+extern "C" __declspec(dllexport) b2Joint* CreateGearJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB,
+	b2Joint* pJointA, bool isARevolute, b2Joint* pJointB, bool isBRevolute, float32 ratio, bool collideConnect)
+{
+    b2GearJointDef jd;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
+    jd.joint1 = pJointA;
+    jd.joint2 = pJointB;
+    jd.ratio = ratio;
+    jd.collideConnected = collideConnect;
+	return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) void SetGearJointRatio(void* joint, float ratio) {
-    b2GearJoint* m_joint = static_cast<b2GearJoint*>(joint);
-    m_joint->SetRatio(ratio);
+extern "C" __declspec(dllexport) void SetGearJointRatio(b2GearJoint* pJoint, float32 ratio)
+{
+	pJoint->SetRatio(ratio);
 }
-extern "C" __declspec(dllexport) float GetGearJointRatio(void* joint) {
-    b2GearJoint* m_joint = static_cast<b2GearJoint*>(joint);
-    return m_joint->GetRatio();
+extern "C" __declspec(dllexport) float32 GetGearJointRatio(b2GearJoint* pJoint)
+{
+    return pJoint->GetRatio();
 }
 #pragma endregion
 
 #pragma region WheelJoints
-extern "C" __declspec(dllexport) void* CreateWheelJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, float axisA, float axisB, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
-    b2WheelJoint* wj;
+extern "C" __declspec(dllexport) b2Joint* CreateWheelJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB,
+	float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 axisA, float32 axisB, bool collideConnect)
+{
     b2WheelJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.localAxisA.Set(axisA, axisB);
     jd.collideConnected = collideConnect;
-    wj = (b2WheelJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(wj);
+    return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) void SetWheelJointSpringDampingRatio(void* joint, float ratio) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    m_joint->SetSpringDampingRatio(ratio);
+extern "C" __declspec(dllexport) void SetWheelJointSpringDampingRatio(b2WheelJoint* pJoint, float32 ratio)
+{
+    pJoint->SetSpringDampingRatio(ratio);
 }
-extern "C" __declspec(dllexport) float GetWheelJointSpringDampingRatio(void* joint) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->GetSpringDampingRatio();
+extern "C" __declspec(dllexport) float32 GetWheelJointSpringDampingRatio(b2WheelJoint* pJoint)
+{
+    return pJoint->GetSpringDampingRatio();
 }
-extern "C" __declspec(dllexport) void SetWheelJointSpringFrequency(void* joint, float frequency) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    m_joint->SetSpringFrequencyHz(frequency);
+extern "C" __declspec(dllexport) void SetWheelJointSpringFrequency(b2WheelJoint* pJoint, float32 frequency)
+{
+    pJoint->SetSpringFrequencyHz(frequency);
 }
-extern "C" __declspec(dllexport) float GetWheelJointSpringFrequency(void* joint) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->GetSpringFrequencyHz();
+extern "C" __declspec(dllexport) float32 GetWheelJointSpringFrequency(b2WheelJoint* pJoint)
+{
+    return pJoint->GetSpringFrequencyHz();
 }
-extern "C" __declspec(dllexport) void SetWheelJointMotorSpeed(void* joint, float speed) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    m_joint->SetMotorSpeed(speed);
+extern "C" __declspec(dllexport) void SetWheelJointMotorSpeed(b2WheelJoint* pJoint, float32 speed)
+{
+    pJoint->SetMotorSpeed(speed);
 }
-extern "C" __declspec(dllexport) void SetWheelJointMaxMotorTorque(void* joint, float torque) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    m_joint->SetMaxMotorTorque(torque);
+extern "C" __declspec(dllexport) void SetWheelJointMaxMotorTorque(b2WheelJoint* pJoint, float32 torque)
+{
+    pJoint->SetMaxMotorTorque(torque);
 }
-extern "C" __declspec(dllexport) void EnableWheelJointMotor(void* joint, bool motor) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    m_joint->EnableMotor(motor);
+extern "C" __declspec(dllexport) void EnableWheelJointMotor(b2WheelJoint* pJoint, bool motor)
+{
+    pJoint->EnableMotor(motor);
 }
-extern "C" __declspec(dllexport) bool IsWheelJointMotorEnabled(void* joint) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->IsMotorEnabled();
+extern "C" __declspec(dllexport) bool IsWheelJointMotorEnabled(b2WheelJoint* pJoint)
+{
+    return pJoint->IsMotorEnabled();
 }
-extern "C" __declspec(dllexport) float GetWheelJointMotorSpeed(void* joint) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->GetMotorSpeed();
+extern "C" __declspec(dllexport) float32 GetWheelJointMotorSpeed(b2WheelJoint* pJoint)
+{
+    return pJoint->GetMotorSpeed();
 }
-extern "C" __declspec(dllexport) float GetWheelJointMotorTorque(void* joint, float invDt) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->GetMotorTorque(invDt);
+extern "C" __declspec(dllexport) float32 GetWheelJointMotorTorque(b2WheelJoint* pJoint, float32 invDt)
+{
+    return pJoint->GetMotorTorque(invDt);
 }
-extern "C" __declspec(dllexport) float GetWheelJointMaxMotorTorque(void* joint) {
-    b2WheelJoint* m_joint = static_cast<b2WheelJoint*>(joint);
-    return m_joint->GetMaxMotorTorque();
+extern "C" __declspec(dllexport) float32 GetWheelJointMaxMotorTorque(b2WheelJoint* pJoint)
+{
+    return pJoint->GetMaxMotorTorque();
 }
 #pragma endregion
 
 #pragma region WeldJoints
-extern "C" __declspec(dllexport) void* CreateWeldJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
-    b2WeldJoint* wj;
+extern "C" __declspec(dllexport) b2Joint* CreateWeldJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY)
+{
     b2WeldJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
-    wj = (b2WeldJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(wj);
+    return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) float GetWeldJointFrequency(void* joint) {
-    b2WeldJoint* m_joint = static_cast<b2WeldJoint*>(joint);
-    return m_joint->GetFrequency();
+extern "C" __declspec(dllexport) float32 GetWeldJointFrequency(b2WeldJoint* pJoint)
+{
+    return pJoint->GetFrequency();
 }
-extern "C" __declspec(dllexport) float GetWeldJointDampingRatio(void* joint) {
-    b2WeldJoint* m_joint = static_cast<b2WeldJoint*>(joint);
-    return m_joint->GetDampingRatio();
+extern "C" __declspec(dllexport) float32 GetWeldJointDampingRatio(b2WeldJoint* pJoint)
+{
+    return pJoint->GetDampingRatio();
 }
-extern "C" __declspec(dllexport) void SetWeldJointFrequency(void* joint, float frequency) {
-    b2WeldJoint* m_joint = static_cast<b2WeldJoint*>(joint);
-    m_joint->SetFrequency(frequency);
+extern "C" __declspec(dllexport) void SetWeldJointFrequency(b2WeldJoint* pJoint, float32 frequency)
+{
+    pJoint->SetFrequency(frequency);
 }
-extern "C" __declspec(dllexport) void SetWeldJointDampingRatio(void* joint, float ratio) {
-    b2WeldJoint* m_joint = static_cast<b2WeldJoint*>(joint);
-    m_joint->SetDampingRatio(ratio);
+extern "C" __declspec(dllexport) void SetWeldJointDampingRatio(b2WeldJoint* pJoint, float32 ratio)
+{
+    pJoint->SetDampingRatio(ratio);
 }
 #pragma endregion
 
 #pragma region FrictionJoints
-extern "C" __declspec(dllexport) void* CreateFrictionJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
-    b2FrictionJoint* fj;
+extern "C" __declspec(dllexport) b2Joint* CreateFrictionJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnect)
+{
     b2FrictionJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnect;
-    fj = (b2FrictionJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(fj);
+	return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) float GetFrictionJointMaxForce(void* joint) {
-    b2FrictionJoint* m_joint = static_cast<b2FrictionJoint*>(joint);
-    return m_joint->GetMaxForce();
+extern "C" __declspec(dllexport) float32 GetFrictionJointMaxForce(b2FrictionJoint* pJoint)
+{
+    return pJoint->GetMaxForce();
 }
-extern "C" __declspec(dllexport) float GetFrictionJointMaxTorque(void* joint) {
-    b2FrictionJoint* m_joint = static_cast<b2FrictionJoint*>(joint);
-    return m_joint->GetMaxTorque();
+extern "C" __declspec(dllexport) float32 GetFrictionJointMaxTorque(b2FrictionJoint* pJoint)
+{
+    return pJoint->GetMaxTorque();
 }
-extern "C" __declspec(dllexport) void SetFrictionJointMaxForce(void* joint, float force) {
-    b2FrictionJoint* m_joint = static_cast<b2FrictionJoint*>(joint);
-    m_joint->SetMaxForce(force);
+extern "C" __declspec(dllexport) void SetFrictionJointMaxForce(b2FrictionJoint* pJoint, float32 force)
+{
+    pJoint->SetMaxForce(force);
 }
-extern "C" __declspec(dllexport) void SetFrictionJointMaxTorque(void* joint, float torque) {
-    b2FrictionJoint* m_joint = static_cast<b2FrictionJoint*>(joint);
-    m_joint->SetMaxTorque(torque);
+extern "C" __declspec(dllexport) void SetFrictionJointMaxTorque(b2FrictionJoint* pJoint, float32 torque)
+{
+    pJoint->SetMaxTorque(torque);
 }
 #pragma endregion
 
 #pragma region RopeJoints
-extern "C" __declspec(dllexport) void* CreateRopeJoint(void* worldPointer, void* bodyA, void* bodyB, float anchorAX, float anchorAY, float anchorBX, float anchorBY, float maxLength, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
-    b2RopeJoint* rj;
+extern "C" __declspec(dllexport) b2Joint* CreateRopeJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX,
+	float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 maxLength, bool collideConnect)
+{
     b2RopeJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.maxLength = maxLength;
     jd.collideConnected = collideConnect;
-    rj = (b2RopeJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(rj);
+    return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) float GetRopeJointMaxLength(void* joint) {
-    b2RopeJoint* m_joint = static_cast<b2RopeJoint*>(joint);
-    return m_joint->GetMaxLength();
+extern "C" __declspec(dllexport) float32 GetRopeJointMaxLength(b2RopeJoint* pJoint)
+{
+    return pJoint->GetMaxLength();
 }
-extern "C" __declspec(dllexport) void SetRopeJointMaxLength(void* joint, float length) {
-    b2RopeJoint* m_joint = static_cast<b2RopeJoint*>(joint);
-    m_joint->SetMaxLength(length);
+extern "C" __declspec(dllexport) void SetRopeJointMaxLength(b2RopeJoint* pJoint, float32 length)
+{
+	pJoint->SetMaxLength(length);
 }
 #pragma endregion
 
 #pragma region MouseJoints
-extern "C" __declspec(dllexport) void* CreateMouseJoint(void* worldPointer, void* bodyA, void* bodyB, float targetX, float targetY, bool collideConnect) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Body* m_bodyA = static_cast<b2Body*>(bodyA);
-    b2Body* m_bodyB = static_cast<b2Body*>(bodyB);
+extern "C" __declspec(dllexport) b2Joint* CreateMouseJoint(b2World* pWorld, Body* pBodyA,
+	Body* pBodyB, float32 targetX, float32 targetY, bool collideConnect)
+{
     b2Vec2 target = b2Vec2(targetX, targetY);
-    b2MouseJoint* rj;
     b2MouseJointDef jd;
-    jd.bodyA = m_bodyA;
-    jd.bodyB = m_bodyB;
+    jd.bodyA = pBodyA;
+    jd.bodyB = pBodyB;
     jd.target = target;
     jd.collideConnected = collideConnect;
-    rj = (b2MouseJoint*)world->CreateJoint(&jd);
-    return static_cast<void*>(rj);
+	return pWorld->CreateJoint(&jd);
 }
-extern "C" __declspec(dllexport) float GetMouseJointFrequency(void* joint) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    return m_joint->GetFrequency();
+extern "C" __declspec(dllexport) float32 GetMouseJointFrequency(b2MouseJoint* pJoint)
+{
+    return pJoint->GetFrequency();
 }
-extern "C" __declspec(dllexport) float GetMouseJointMaxForce(void* joint) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    return m_joint->GetMaxForce();
+extern "C" __declspec(dllexport) float32 GetMouseJointMaxForce(b2MouseJoint* pJoint)
+{
+    return pJoint->GetMaxForce();
 }
-extern "C" __declspec(dllexport) float GetMouseJointDampingRatio(void* joint) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    return m_joint->GetDampingRatio();
+extern "C" __declspec(dllexport) float32 GetMouseJointDampingRatio(b2MouseJoint* pJoint)
+{
+    return pJoint->GetDampingRatio();
 }
-extern "C" __declspec(dllexport) void SetMouseJointFrequency(void* joint, float frequency) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    m_joint->SetFrequency(frequency);
+extern "C" __declspec(dllexport) void SetMouseJointFrequency(b2MouseJoint* pJoint, float32 frequency)
+{
+	pJoint->SetFrequency(frequency);
 }
-extern "C" __declspec(dllexport) void SetMouseJointMaxForce(void* joint, float maxForce) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    m_joint->SetMaxForce(maxForce);
+extern "C" __declspec(dllexport) void SetMouseJointMaxForce(b2MouseJoint* pJoint, float32 maxForce)
+{
+	pJoint->SetMaxForce(maxForce);
 }
-extern "C" __declspec(dllexport) void SetMouseJointDampingRatio(void* joint, float dampingRatio) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
-    m_joint->SetDampingRatio(dampingRatio);
+extern "C" __declspec(dllexport) void SetMouseJointDampingRatio(b2MouseJoint* pJoint, float32 dampingRatio)
+{
+	pJoint->SetDampingRatio(dampingRatio);
 }
-extern "C" __declspec(dllexport) void SetMouseJointTarget(void* joint, float targetX, float targetY) {
-    b2MouseJoint* m_joint = static_cast<b2MouseJoint*>(joint);
+extern "C" __declspec(dllexport) void SetMouseJointTarget(b2MouseJoint* pJoint, float32 targetX, float32 targetY)
+{
     b2Vec2 target = b2Vec2(targetX, targetY);
-    m_joint->SetTarget(target);
+	pJoint->SetTarget(target);
 }
 #pragma endregion
 
 #pragma region GenericFunctions
-extern "C" __declspec(dllexport) void DeleteJoint(void* worldPointer, void* jointPointer) {
-    b2World* world = static_cast<b2World*>(worldPointer);
-    b2Joint* joint = static_cast<b2Joint*>(jointPointer);
-    world->DestroyJoint(joint);
+extern "C" __declspec(dllexport) void DeleteJoint(b2World* pWorld, b2Joint* pJoint)
+{
+    pWorld->DestroyJoint(pJoint);
 }
-extern "C" __declspec(dllexport) bool GetJointCollideConnected(void* jointPointer) {
-    b2Joint* joint = static_cast<b2Joint*>(jointPointer);
-    return joint->GetCollideConnected();
+extern "C" __declspec(dllexport) bool GetJointCollideConnected(b2Joint* pJoint)
+{
+    return pJoint->GetCollideConnected();
 }
-extern "C" __declspec(dllexport) void ShiftJointOrigin(void* joint, float x, float y) {
-    b2Joint* m_joint = static_cast<b2Joint*>(joint);
-    b2Vec2 origin = b2Vec2(x, y);
-    m_joint->ShiftOrigin(origin);
+extern "C" __declspec(dllexport) void ShiftJointOrigin(b2Joint* pJoint, float32 x, float32 y)
+{
+	pJoint->ShiftOrigin(b2Vec2(x, y));
 }
 #pragma endregion
 
 #pragma endregion
 
 #pragma region Raycasting
-extern "C" __declspec(dllexport) float* RaycastWorld(void* world, float x1, float y1, float x2, float y2, int mode, bool shouldQuery) {
-    b2World* m_world = static_cast<b2World*>(world);
+extern "C" __declspec(dllexport) float32* RaycastWorld(b2World* pWorld, float32 x1, float32 y1, float32 x2, float32 y2, int32 mode, bool shouldQuery)
+{
     newRC = new b2NewRaycastCallback(mode, shouldQuery);
     b2Vec2 pos1 = b2Vec2(x1, y1);
     b2Vec2 pos2 = b2Vec2(x2, y2);
-    m_world->RayCast(newRC, pos1, pos2);
+    pWorld->RayCast(*newRC, pos1, pos2);
     return newRC->GetData();
 }
 #pragma endregion
 
 #pragma region MemoryReleasing
-extern "C" __declspec(dllexport) int ReleaseFloatArray(float* floatArray)
+extern "C" __declspec(dllexport) int32 ReleaseFloatArray(float32* floatArray)
 {
     delete[] floatArray;
     return 0;
 }
-extern "C" __declspec(dllexport) int ReleaseIntArray(int* intArray)
+extern "C" __declspec(dllexport) int32 ReleaseIntArray(int* intArray)
 {
     delete[] intArray;
     return 0;
 }
-extern "C" __declspec(dllexport) int ReleaseShape(b2Shape* shape)
+extern "C" __declspec(dllexport) int32 ReleaseShape(b2Shape* shape)
 {
     delete shape;
     return 0;
@@ -1562,7 +1286,7 @@ extern "C" __declspec(dllexport) int ReleaseShape(b2Shape* shape)
 #pragma endregion
 
 #pragma region test
-extern "C" __declspec(dllexport) int TestInt()
+extern "C" __declspec(dllexport) int32 TestInt()
 {
     return 114;
 }

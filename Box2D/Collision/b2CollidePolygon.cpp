@@ -21,14 +21,14 @@
 
 // Find the max separation between poly1 and poly2 using edge normals from poly1.
 static float32 b2FindMaxSeparation(int32* edgeIndex,
-								 const b2PolygonShape* poly1, const b2Transform& xf1,
-								 const b2PolygonShape* poly2, const b2Transform& xf2)
+								 const b2PolygonShape& poly1, const b2Transform& xf1,
+								 const b2PolygonShape& poly2, const b2Transform& xf2)
 {
-	int32 count1 = poly1->m_count;
-	int32 count2 = poly2->m_count;
-	const b2Vec2* n1s = poly1->m_normals;
-	const b2Vec2* v1s = poly1->m_vertices;
-	const b2Vec2* v2s = poly2->m_vertices;
+	int32 count1 = poly1.m_count;
+	int32 count2 = poly2.m_count;
+	const b2Vec2* n1s = poly1.m_normals;
+	const b2Vec2* v1s = poly1.m_vertices;
+	const b2Vec2* v2s = poly2.m_vertices;
 	b2Transform xf = b2MulT(xf2, xf1);
 
 	int32 bestIndex = 0;
@@ -113,12 +113,12 @@ static void b2FindIncidentEdge(b2ClipVertex c[2],
 // Clip
 
 // The normal points from 1 to 2
-void b2CollidePolygons(b2Manifold* manifold,
-					  const b2PolygonShape* polyA, const b2Transform& xfA,
-					  const b2PolygonShape* polyB, const b2Transform& xfB)
+void b2CollidePolygons(b2Manifold& manifold,
+					  const b2PolygonShape& polyA, const b2Transform& xfA,
+					  const b2PolygonShape& polyB, const b2Transform& xfB)
 {
-	manifold->pointCount = 0;
-	float32 totalRadius = polyA->m_radius + polyB->m_radius;
+	manifold.pointCount = 0;
+	float32 totalRadius = polyA.m_radius + polyB.m_radius;
 
 	int32 edgeA = 0;
 	float32 separationA = b2FindMaxSeparation(&edgeA, polyA, xfA, polyB, xfB);
@@ -139,22 +139,22 @@ void b2CollidePolygons(b2Manifold* manifold,
 
 	if (separationB > separationA + k_tol)
 	{
-		poly1 = polyB;
-		poly2 = polyA;
+		poly1 = &polyB;
+		poly2 = &polyA;
 		xf1 = xfB;
 		xf2 = xfA;
 		edge1 = edgeB;
-		manifold->type = b2Manifold::e_faceB;
+		manifold.type = b2Manifold::e_faceB;
 		flip = 1;
 	}
 	else
 	{
-		poly1 = polyA;
-		poly2 = polyB;
+		poly1 = &polyA;
+		poly2 = &polyB;
 		xf1 = xfA;
 		xf2 = xfB;
 		edge1 = edgeA;
-		manifold->type = b2Manifold::e_faceA;
+		manifold.type = b2Manifold::e_faceA;
 		flip = 0;
 	}
 
@@ -204,13 +204,11 @@ void b2CollidePolygons(b2Manifold* manifold,
 	np = b2ClipSegmentToLine(clipPoints2, clipPoints1,  tangent, sideOffset2, iv2);
 
 	if (np < 2)
-	{
 		return;
-	}
 
 	// Now clipPoints2 contains the clipped points.
-	manifold->localNormal = localNormal;
-	manifold->localPoint = planePoint;
+	manifold.localNormal = localNormal;
+	manifold.localPoint = planePoint;
 
 	int32 pointCount = 0;
 	for (int32 i = 0; i < b2_maxManifoldPoints; ++i)
@@ -219,7 +217,7 @@ void b2CollidePolygons(b2Manifold* manifold,
 
 		if (separation <= totalRadius)
 		{
-			b2ManifoldPoint* cp = manifold->points + pointCount;
+			b2ManifoldPoint* cp = manifold.points + pointCount;
 			cp->localPoint = b2MulT(xf2, clipPoints2[i].v);
 			cp->id = clipPoints2[i].id;
 			if (flip)
@@ -235,5 +233,5 @@ void b2CollidePolygons(b2Manifold* manifold,
 		}
 	}
 
-	manifold->pointCount = pointCount;
+	manifold.pointCount = pointCount;
 }

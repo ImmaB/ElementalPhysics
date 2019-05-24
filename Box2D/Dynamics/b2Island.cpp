@@ -150,7 +150,8 @@ b2Island::b2Island(
 	int32 contactCapacity,
 	int32 jointCapacity,
 	b2StackAllocator* allocator,
-	b2ContactListener* listener)
+	b2ContactListener* listener,
+	b2World& world) : m_world(world)
 {
 	m_bodyCapacity = bodyCapacity;
 	m_contactCapacity = contactCapacity;
@@ -162,7 +163,7 @@ b2Island::b2Island(
 	m_allocator = allocator;
 	m_listener = listener;
 
-	m_bodies = (b2Body**)m_allocator->Allocate(bodyCapacity * sizeof(b2Body*));
+	m_bodies = (Body**)m_allocator->Allocate(bodyCapacity * sizeof(Body*));
 	m_contacts = (b2Contact**)m_allocator->Allocate(contactCapacity	 * sizeof(b2Contact*));
 	m_joints = (b2Joint**)m_allocator->Allocate(jointCapacity * sizeof(b2Joint*));
 
@@ -180,7 +181,7 @@ b2Island::~b2Island()
 	m_allocator->Free(m_bodies);
 }
 
-void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep)
+void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep)
 {
 	b2Timer timer;
 
@@ -189,7 +190,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 	// Integrate velocities and apply damping. Initialize the body state.
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		b2Body* b = m_bodies[i];
+		Body* b = m_bodies[i];
 
 		b2Vec2 c = b->m_sweep.c;
 		float32 a = b->m_sweep.a;
@@ -246,7 +247,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 	contactSolverDef.velocities = m_velocities;
 	contactSolverDef.allocator = m_allocator;
 
-	b2ContactSolver contactSolver(&contactSolverDef);
+	b2ContactSolver contactSolver(contactSolverDef, m_world);
 	contactSolver.InitializeVelocityConstraints();
 
 	if (step.warmStarting)
@@ -259,7 +260,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 		m_joints[i]->InitVelocityConstraints(solverData);
 	}
 
-	profile->solveInit = timer.GetMilliseconds();
+	profile.solveInit = timer.GetMilliseconds();
 
 	// Solve velocity constraints
 	timer.Reset();
@@ -275,7 +276,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 
 	// Store impulses for warm starting
 	contactSolver.StoreImpulses();
-	profile->solveVelocity = timer.GetMilliseconds();
+	profile.solveVelocity = timer.GetMilliseconds();
 
 	// Integrate positions
 	for (int32 i = 0; i < m_bodyCount; ++i)
@@ -335,7 +336,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 	// Copy state buffers back to the bodies
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		b2Body* body = m_bodies[i];
+		Body* body = m_bodies[i];
 		body->m_sweep.c = m_positions[i].c;
 		body->m_sweep.a = m_positions[i].a;
 		body->m_linearVelocity = m_velocities[i].v;
@@ -343,7 +344,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 		body->SynchronizeTransform();
 	}
 
-	profile->solvePosition = timer.GetMilliseconds();
+	profile.solvePosition = timer.GetMilliseconds();
 
 	Report(contactSolver.m_velocityConstraints);
 
@@ -356,11 +357,9 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 
 		for (int32 i = 0; i < m_bodyCount; ++i)
 		{
-			b2Body* b = m_bodies[i];
-			if (b->GetType() == b2_staticBody)
-			{
+			Body* b = m_bodies[i];
+			if (b->m_type == b2_staticBody)
 				continue;
-			}
 
 			if ((b->m_flags & b2_autoSleepBody) == 0 ||
 				b->m_angularVelocity * b->m_angularVelocity > angTolSqr ||
@@ -380,7 +379,7 @@ void b2Island::Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& g
 		{
 			for (int32 i = 0; i < m_bodyCount; ++i)
 			{
-				b2Body* b = m_bodies[i];
+				Body* b = m_bodies[i];
 				b->SetAwake(false);
 			}
 		}
@@ -395,7 +394,7 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 	// Initialize the body state.
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		b2Body* b = m_bodies[i];
+		Body* b = m_bodies[i];
 		m_positions[i].c = b->m_sweep.c;
 		m_positions[i].a = b->m_sweep.a;
 		m_velocities[i].v = b->m_linearVelocity;
@@ -409,7 +408,7 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 	contactSolverDef.step = subStep;
 	contactSolverDef.positions = m_positions;
 	contactSolverDef.velocities = m_velocities;
-	b2ContactSolver contactSolver(&contactSolverDef);
+	b2ContactSolver contactSolver(contactSolverDef, m_world);
 
 	// Solve position constraints.
 	for (int32 i = 0; i < subStep.positionIterations; ++i)
@@ -508,7 +507,7 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 		m_velocities[i].w = w;
 
 		// Sync bodies
-		b2Body* body = m_bodies[i];
+		Body* body = m_bodies[i];
 		body->m_sweep.c = c;
 		body->m_sweep.a = a;
 		body->m_linearVelocity = v;

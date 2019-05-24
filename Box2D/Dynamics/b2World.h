@@ -33,9 +33,11 @@ struct b2AABB;
 struct b2BodyDef;
 struct b2Color;
 struct b2JointDef;
+struct b2Filter;
 class b2Body;
 class b2Draw;
 class b2Fixture;
+class b2FixtureDef;
 class b2FixtureProxy;
 class b2Joint;
 class b2ParticleGroup;
@@ -337,30 +339,8 @@ private:
 
 	b2ContactManager m_contactManager;
 
-	vector<Body>			m_bodyBuffer;
-	vector<Fixture>			m_fixtureBuffer;
-	vector<b2FixtureProxy*> m_fixtureProxiesBuffer;
-
 	b2Joint* m_jointList;
 	b2ParticleSystem* m_particleSystemList;
-
-	vector<Shape>			m_shapeBuffer;
-	vector<b2ChainShape>	m_chainShapeBuffer;
-	vector<b2CircleShape>	m_circleShapeBuffer;
-	vector<b2EdgeShape>		m_edgeShapeBuffer;
-	vector<b2PolygonShape>	m_polygonShapeBuffer;
-	vector<b2Vec2>			m_shapePositionBuffer;
-	vector<b2Vec2>			m_shapeNormalBuffer;
-
-	set<int32> m_freeBodyIdxs;
-	set<int32> m_freeFixtureIdxs;
-	set<int32> m_freeShapeIdxs;
-	set<int32> m_freeChainShapeIdxs;
-	set<int32> m_freeCircleShapeIdxs;
-	set<int32> m_freeEdgeShapeIdxs;
-	set<int32> m_freeShapePositionIdxs;
-	set<int32> m_freeShapeNormalIdxs;
-	set<int32> m_freeFixtureIdxs;
 
 	int32 m_jointCount;
 
@@ -393,16 +373,95 @@ private:
 
 	void SynchronizeFixtures(const Body& b);
 
+	/// This resets the mass properties to the sum of the mass properties of the fixtures.
+	/// This normally does not need to be called unless you called SetMassData to override
+	/// the mass and you later want to reset the mass.
 	void ResetMassData(Body& b);
 
 	template<typename T>
-	int32 getBufferInsertIdx(const vector<T> buf, const set<int32> freeIdxs) const;
+	int32 GetBufferInsertIdx(const vector<T> buf, const set<int32> freeIdxs) const;
 
-	b2Shape& GetSubShape(const Shape& s);
 
 public:
+	b2Shape& GetSubShape(const Shape& s);
 
-	//Fixture
+	vector<Body>			m_bodyBuffer;
+	vector<Fixture>			m_fixtureBuffer;
+	vector<vector<b2FixtureProxy>> m_fixtureProxiesBuffer;
+
+	vector<Shape>			m_shapeBuffer;
+	vector<b2ChainShape>	m_chainShapeBuffer;
+	vector<b2CircleShape>	m_circleShapeBuffer;
+	vector<b2EdgeShape>		m_edgeShapeBuffer;
+	vector<b2PolygonShape>	m_polygonShapeBuffer;
+	vector<b2Vec2>			m_shapePositionBuffer;
+	vector<b2Vec2>			m_shapeNormalBuffer;
+
+	set<int32> m_freeBodyIdxs;
+	set<int32> m_freeFixtureIdxs;
+	set<int32> m_freeShapeIdxs;
+	set<int32> m_freeChainShapeIdxs;
+	set<int32> m_freeCircleShapeIdxs;
+	set<int32> m_freeEdgeShapeIdxs;
+	set<int32> m_freeShapePositionIdxs;
+	set<int32> m_freeShapeNormalIdxs;
+
+	// Body
+
+	/// Creates a fixture and attach it to this body. Use this function if you need
+	/// to set some fixture parameters, like friction. Otherwise you can create the
+	/// fixture directly from a shape.
+	/// If the density is non-zero, this function automatically updates the mass of the body.
+	/// Contacts are not created until the next time step.
+	/// @param def the fixture definition.
+	/// @warning This function is locked during callbacks.
+	int32 CreateFixture(Body& b, b2FixtureDef& def);
+
+	/// Creates a fixture from a shape and attach it to this body.
+	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
+	/// like friction, restitution, user data, or filtering.
+	/// If the density is non-zero, this function automatically updates the mass of the body.
+	/// @param shape the shape to be cloned.
+	/// @param density the shape density (set to zero for static bodies).
+	/// @warning This function is locked during callbacks.
+	int32 CreateFixture(Body& b, const int32 shape, float32 density);
+
+	/// Destroy a fixture. This removes the fixture from the broad-phase and
+	/// destroys all contacts associated with this fixture. This will
+	/// automatically adjust the mass of the body if the body is dynamic and the
+	/// fixture has positive density.
+	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
+	/// @param fixture the fixture to be removed.
+	/// @warning This function is locked during callbacks.
+	void DestroyFixture(Body& b, int32 idx);
+
+	/// Set the position of the body's origin and rotation.
+	/// Manipulating a body's transform may cause non-physical behavior.
+	/// Note: contacts are updated on the next call to b2World::Step.
+	/// @param position the world position of the body's local origin.
+	/// @param angle the world rotation in radians.
+	void SetTransform(Body& b, const b2Vec2& position, float32 angle);
+
+	/// Set the active state of the body. An inactive body is not
+	/// simulated and cannot be collided with or woken up.
+	/// If you pass a flag of true, all fixtures will be added to the
+	/// broad-phase.
+	/// If you pass a flag of false, all fixtures will be removed from
+	/// the broad-phase and all contacts will be destroyed.
+	/// Fixtures and joints are otherwise unaffected. You may continue
+	/// to create/destroy fixtures and joints on inactive bodies.
+	/// Fixtures on an inactive body are implicitly inactive and will
+	/// not participate in collisions, ray-casts, or queries.
+	/// Joints connected to an inactive body are implicitly inactive.
+	/// An inactive body is still owned by a b2World object and remains
+	/// in the body list.
+	void SetActive(Body& b, bool flag);
+
+	/// Set this body to have fixed rotation. This causes the mass
+	/// to be reset.
+	void SetFixedRotation(Body& b, bool flag);
+
+	// Fixture
 	Shape::Type GetType(const Fixture& f) const;
 
 	/// Test a point for containment in this fixture.
@@ -431,11 +490,18 @@ public:
 	/// Set if this fixture is a sensor.
 	void SetSensor(Fixture& f, bool sensor);
 
+	/// Set the contact filtering data. This will not update contacts until the next time
+	/// step when either parent body is active and awake.
+	/// This automatically calls Refilter.
+	void SetFilterData(Fixture& f, const b2Filter& filter);
+
 	/// Call this if you want to establish collision that was previously disabled by b2ContactFilter::ShouldCollide.
 	void Refilter(Fixture& f);
 
+	void Synchronize(Fixture& f, b2BroadPhase& broadPhase, const b2Transform& xf1, const b2Transform& xf2);
+
 	/// These support body activation/deactivation.
-	void CreateProxies(Fixture& f, b2BroadPhase* broadPhase, const b2Transform& xf);
+	void CreateProxies(Fixture& f, b2BroadPhase& broadPhase, const b2Transform& xf);
 	void DestroyProxies(Fixture& f);
 
 	void Destroy(Fixture& f);
@@ -446,7 +512,12 @@ public:
 	/// Get the world manifold.
 	void GetWorldManifold(b2Contact& c, b2WorldManifold* worldManifold) const;
 	b2Contact* CreateContact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator);
-	void Destroy(b2Contact& contact, b2BlockAllocator* allocator);
+	void Destroy(b2Contact& c, b2BlockAllocator* allocator);
+
+	/// Evaluate this contact with your own manifold and transforms.
+	void Evaluate(b2Contact& c, b2Manifold& manifold, const b2Transform& xfA, const b2Transform& xfB);
+
+	void Update(b2Contact& c);
 
 	// Collision
 

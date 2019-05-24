@@ -23,6 +23,7 @@
 #include <Box2D/Collision/b2Collision.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
 
+class b2World;
 class b2Contact;
 class b2Body;
 class b2StackAllocator;
@@ -68,8 +69,10 @@ struct b2ContactSolverDef
 
 class b2ContactSolver
 {
+private:
+	b2World& m_world;
 public:
-	b2ContactSolver(b2ContactSolverDef* def);
+	b2ContactSolver(b2ContactSolverDef& def, b2World& world);
 	~b2ContactSolver();
 
 	void InitializeVelocityConstraints();

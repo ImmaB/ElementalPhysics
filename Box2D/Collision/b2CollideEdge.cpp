@@ -24,23 +24,23 @@
 
 // Compute contact points for edge versus circle.
 // This accounts for edge connectivity.
-void b2CollideEdgeAndCircle(b2Manifold* manifold,
-							const b2EdgeShape* edgeA, const b2Transform& xfA,
-							const b2CircleShape* circleB, const b2Transform& xfB)
+void b2CollideEdgeAndCircle(b2Manifold& manifold,
+							const b2EdgeShape& edgeA, const b2Transform& xfA,
+							const b2CircleShape& circleB, const b2Transform& xfB)
 {
-	manifold->pointCount = 0;
+	manifold.pointCount = 0;
 	
 	// Compute circle in frame of edge
-	b2Vec2 Q = b2MulT(xfA, b2Mul(xfB, circleB->m_p));
+	b2Vec2 Q = b2MulT(xfA, b2Mul(xfB, circleB.m_p));
 	
-	b2Vec2 A = edgeA->m_vertex1, B = edgeA->m_vertex2;
+	b2Vec2 A = edgeA.m_vertex1, B = edgeA.m_vertex2;
 	b2Vec2 e = B - A;
 	
 	// Barycentric coordinates
 	float32 u = b2Dot(e, B - Q);
 	float32 v = b2Dot(e, Q - A);
 	
-	float32 radius = edgeA->m_radius + circleB->m_radius;
+	float32 radius = edgeA.m_radius + circleB.m_radius;
 	
 	b2ContactFeature cf;
 	cf.indexB = 0;
@@ -58,9 +58,9 @@ void b2CollideEdgeAndCircle(b2Manifold* manifold,
 		}
 		
 		// Is there an edge connected to A?
-		if (edgeA->m_hasVertex0)
+		if (edgeA.m_hasVertex0)
 		{
-			b2Vec2 A1 = edgeA->m_vertex0;
+			b2Vec2 A1 = edgeA.m_vertex0;
 			b2Vec2 B1 = A;
 			b2Vec2 e1 = B1 - A1;
 			float32 u1 = b2Dot(e1, B1 - Q);
@@ -74,13 +74,13 @@ void b2CollideEdgeAndCircle(b2Manifold* manifold,
 		
 		cf.indexA = 0;
 		cf.typeA = b2ContactFeature::e_vertex;
-		manifold->pointCount = 1;
-		manifold->type = b2Manifold::e_circles;
-		manifold->localNormal.SetZero();
-		manifold->localPoint = P;
-		manifold->points[0].id.key = 0;
-		manifold->points[0].id.cf = cf;
-		manifold->points[0].localPoint = circleB->m_p;
+		manifold.pointCount = 1;
+		manifold.type = b2Manifold::e_circles;
+		manifold.localNormal.SetZero();
+		manifold.localPoint = P;
+		manifold.points[0].id.key = 0;
+		manifold.points[0].id.cf = cf;
+		manifold.points[0].localPoint = circleB.m_p;
 		return;
 	}
 	
@@ -96,9 +96,9 @@ void b2CollideEdgeAndCircle(b2Manifold* manifold,
 		}
 		
 		// Is there an edge connected to B?
-		if (edgeA->m_hasVertex3)
+		if (edgeA.m_hasVertex3)
 		{
-			b2Vec2 B2 = edgeA->m_vertex3;
+			b2Vec2 B2 = edgeA.m_vertex3;
 			b2Vec2 A2 = B;
 			b2Vec2 e2 = B2 - A2;
 			float32 v2 = b2Dot(e2, Q - A2);
@@ -112,13 +112,13 @@ void b2CollideEdgeAndCircle(b2Manifold* manifold,
 		
 		cf.indexA = 1;
 		cf.typeA = b2ContactFeature::e_vertex;
-		manifold->pointCount = 1;
-		manifold->type = b2Manifold::e_circles;
-		manifold->localNormal.SetZero();
-		manifold->localPoint = P;
-		manifold->points[0].id.key = 0;
-		manifold->points[0].id.cf = cf;
-		manifold->points[0].localPoint = circleB->m_p;
+		manifold.pointCount = 1;
+		manifold.type = b2Manifold::e_circles;
+		manifold.localNormal.SetZero();
+		manifold.localPoint = P;
+		manifold.points[0].id.key = 0;
+		manifold.points[0].id.cf = cf;
+		manifold.points[0].localPoint = circleB.m_p;
 		return;
 	}
 	
@@ -142,13 +142,13 @@ void b2CollideEdgeAndCircle(b2Manifold* manifold,
 	
 	cf.indexA = 0;
 	cf.typeA = b2ContactFeature::e_face;
-	manifold->pointCount = 1;
-	manifold->type = b2Manifold::e_faceA;
-	manifold->localNormal = n;
-	manifold->localPoint = A;
-	manifold->points[0].id.key = 0;
-	manifold->points[0].id.cf = cf;
-	manifold->points[0].localPoint = circleB->m_p;
+	manifold.pointCount = 1;
+	manifold.type = b2Manifold::e_faceA;
+	manifold.localNormal = n;
+	manifold.localPoint = A;
+	manifold.points[0].id.key = 0;
+	manifold.points[0].id.cf = cf;
+	manifold.points[0].localPoint = circleB.m_p;
 }
 
 // This structure is used to keep track of the best separating axis.
@@ -193,8 +193,8 @@ struct b2ReferenceFace
 // This class collides and edge and a polygon, taking into account edge adjacency.
 struct b2EPCollider
 {
-	void Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const b2Transform& xfA,
-				 const b2PolygonShape* polygonB, const b2Transform& xfB);
+	void Collide(b2Manifold& manifold, const b2EdgeShape& edgeA, const b2Transform& xfA,
+				 const b2PolygonShape& polygonB, const b2Transform& xfB);
 	b2EPAxis ComputeEdgeSeparation();
 	b2EPAxis ComputePolygonSeparation();
 	
@@ -227,20 +227,20 @@ struct b2EPCollider
 // 6. Visit each separating axes, only accept axes within the range
 // 7. Return if _any_ axis indicates separation
 // 8. Clip
-void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const b2Transform& xfA,
-						   const b2PolygonShape* polygonB, const b2Transform& xfB)
+void b2EPCollider::Collide(b2Manifold& manifold, const b2EdgeShape& edgeA, const b2Transform& xfA,
+						   const b2PolygonShape& polygonB, const b2Transform& xfB)
 {
 	m_xf = b2MulT(xfA, xfB);
 	
-	m_centroidB = b2Mul(m_xf, polygonB->m_centroid);
+	m_centroidB = b2Mul(m_xf, polygonB.m_centroid);
 	
-	m_v0 = edgeA->m_vertex0;
-	m_v1 = edgeA->m_vertex1;
-	m_v2 = edgeA->m_vertex2;
-	m_v3 = edgeA->m_vertex3;
+	m_v0 = edgeA.m_vertex0;
+	m_v1 = edgeA.m_vertex1;
+	m_v2 = edgeA.m_vertex2;
+	m_v3 = edgeA.m_vertex3;
 	
-	bool hasVertex0 = edgeA->m_hasVertex0;
-	bool hasVertex3 = edgeA->m_hasVertex3;
+	bool hasVertex0 = edgeA.m_hasVertex0;
+	bool hasVertex3 = edgeA.m_hasVertex3;
 	
 	b2Vec2 edge1 = m_v2 - m_v1;
 	edge1.Normalize();
@@ -425,16 +425,16 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 	}
 	
 	// Get polygonB in frameA
-	m_polygonB.count = polygonB->m_count;
-	for (int32 i = 0; i < polygonB->m_count; ++i)
+	m_polygonB.count = polygonB.m_count;
+	for (int32 i = 0; i < polygonB.m_count; ++i)
 	{
-		m_polygonB.vertices[i] = b2Mul(m_xf, polygonB->m_vertices[i]);
-		m_polygonB.normals[i] = b2Mul(m_xf.q, polygonB->m_normals[i]);
+		m_polygonB.vertices[i] = b2Mul(m_xf, polygonB.m_vertices[i]);
+		m_polygonB.normals[i] = b2Mul(m_xf.q, polygonB.m_normals[i]);
 	}
 	
 	m_radius = 2.0f * b2_polygonRadius;
 	
-	manifold->pointCount = 0;
+	manifold.pointCount = 0;
 	
 	b2EPAxis edgeAxis = ComputeEdgeSeparation();
 	
@@ -477,7 +477,7 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 	b2ReferenceFace rf;
 	if (primaryAxis.type == b2EPAxis::e_edgeA)
 	{
-		manifold->type = b2Manifold::e_faceA;
+		manifold.type = b2Manifold::e_faceA;
 		
 		// Search for the polygon normal that is most anti-parallel to the edge normal.
 		int32 bestIndex = 0;
@@ -526,7 +526,7 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 	}
 	else
 	{
-		manifold->type = b2Manifold::e_faceB;
+		manifold.type = b2Manifold::e_faceB;
 		
 		ie[0].v = m_v1;
 		ie[0].id.cf.indexA = 0;
@@ -576,13 +576,13 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 	// Now clipPoints2 contains the clipped points.
 	if (primaryAxis.type == b2EPAxis::e_edgeA)
 	{
-		manifold->localNormal = rf.normal;
-		manifold->localPoint = rf.v1;
+		manifold.localNormal = rf.normal;
+		manifold.localPoint = rf.v1;
 	}
 	else
 	{
-		manifold->localNormal = polygonB->m_normals[rf.i1];
-		manifold->localPoint = polygonB->m_vertices[rf.i1];
+		manifold.localNormal = polygonB.m_normals[rf.i1];
+		manifold.localPoint = polygonB.m_vertices[rf.i1];
 	}
 	
 	int32 pointCount = 0;
@@ -594,7 +594,7 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 		
 		if (separation <= m_radius)
 		{
-			b2ManifoldPoint* cp = manifold->points + pointCount;
+			b2ManifoldPoint* cp = manifold.points + pointCount;
 			
 			if (primaryAxis.type == b2EPAxis::e_edgeA)
 			{
@@ -614,7 +614,7 @@ void b2EPCollider::Collide(b2Manifold* manifold, const b2EdgeShape* edgeA, const
 		}
 	}
 	
-	manifold->pointCount = pointCount;
+	manifold.pointCount = pointCount;
 }
 
 b2EPAxis b2EPCollider::ComputeEdgeSeparation()
@@ -689,9 +689,9 @@ b2EPAxis b2EPCollider::ComputePolygonSeparation()
 	return axis;
 }
 
-void b2CollideEdgeAndPolygon(	b2Manifold* manifold,
-							 const b2EdgeShape* edgeA, const b2Transform& xfA,
-							 const b2PolygonShape* polygonB, const b2Transform& xfB)
+void b2CollideEdgeAndPolygon(	b2Manifold& manifold,
+							 const b2EdgeShape& edgeA, const b2Transform& xfA,
+							 const b2PolygonShape& polygonB, const b2Transform& xfB)
 {
 	b2EPCollider collider;
 	collider.Collide(manifold, edgeA, xfA, polygonB, xfB);

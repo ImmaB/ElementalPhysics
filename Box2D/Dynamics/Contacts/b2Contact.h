@@ -49,7 +49,7 @@ inline float32 b2MixRestitution(float32 restitution1, float32 restitution2)
 typedef b2Contact* b2ContactCreateFcn(	Fixture& fixtureA, int32 indexA,
 										Fixture& fixtureB, int32 indexB,
 										b2BlockAllocator* allocator);
-typedef void b2ContactDestroyFcn(b2Contact* contact, b2BlockAllocator* allocator);
+typedef void b2ContactDestroyFcn(b2Contact& contact, b2BlockAllocator* allocator);
 
 struct b2ContactRegister
 {
@@ -144,8 +144,6 @@ public:
 	/// Get the desired tangent speed. In meters per second.
 	float32 GetTangentSpeed() const;
 
-	/// Evaluate this contact with your own manifold and transforms.
-	virtual void Evaluate(b2Manifold* manifold, const b2Transform& xfA, const b2Transform& xfB) = 0;
 
 protected:
 	friend class b2ContactManager;
@@ -187,7 +185,6 @@ protected:
 	b2Contact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB);
 	virtual ~b2Contact() {}
 
-	void Update(b2ContactListener* listener);
 
 	static b2ContactRegister s_registers[Shape::e_typeCount][Shape::e_typeCount];
 	static bool s_initialized;

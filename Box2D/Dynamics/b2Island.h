@@ -23,6 +23,7 @@
 #include <Box2D/Dynamics/b2Body.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
 
+class b2World;
 class b2Contact;
 class b2Joint;
 class b2StackAllocator;
@@ -35,7 +36,7 @@ class b2Island
 {
 public:
 	b2Island(int32 bodyCapacity, int32 contactCapacity, int32 jointCapacity,
-			b2StackAllocator* allocator, b2ContactListener* listener);
+			b2StackAllocator* allocator, b2ContactListener* listener, b2World& world);
 	~b2Island();
 
 	void Clear()
@@ -45,7 +46,7 @@ public:
 		m_jointCount = 0;
 	}
 
-	void Solve(b2Profile* profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep);
+	void Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep);
 
 	void SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiIndexB);
 
@@ -88,6 +89,8 @@ public:
 	int32 m_bodyCapacity;
 	int32 m_contactCapacity;
 	int32 m_jointCapacity;
+
+	b2World& m_world;
 };
 
 #endif

@@ -63,7 +63,7 @@ public:
 	int32 GetChildCount() const;
 
 	/// Get a child edge.
-	void GetChildEdge(b2EdgeShape* edge, int32 index) const;
+	void GetChildEdge(b2EdgeShape& edge, int32 index) const;
 
 	/// This always return false.
 	/// @see b2Shape::TestPoint
