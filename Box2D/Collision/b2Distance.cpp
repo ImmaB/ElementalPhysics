@@ -28,39 +28,36 @@
 // GJK using Voronoi regions (Christer Ericson) and Barycentric coordinates.
 int32 b2_gjkCalls, b2_gjkIters, b2_gjkMaxIters;
 
-void b2DistanceProxy::Set(const b2CircleShape& circle, int32 index)
+void b2DistanceProxy::Set(const b2Shape& subShape, int32 index)
 {
-	m_vertices = &circle.m_p;
-	m_count = 1;
-	m_radius = circle.m_radius;
-}
-void b2DistanceProxy::Set(const b2PolygonShape& poly, int32 index)
-{
-	m_vertices = poly.m_vertices;
-	m_count = poly.m_count;
-	m_radius = poly.m_radius;
-}
-void b2DistanceProxy::Set(const b2ChainShape& chain, int32 index)
-{
-	b2Assert(0 <= index && index < chain->m_count);
+	switch (subShape.m_type)
+	{
+	case Shape::e_circle:
+		m_vertices = &((const b2CircleShape&)subShape).m_p;
+		m_count = 1;
+		break;
+	case Shape::e_polygon:
+		m_vertices = ((const b2PolygonShape&)subShape).m_vertices.data();
+		m_count = ((const b2PolygonShape&)subShape).m_count;
+		break;
+	case Shape::e_chain:
+		b2Assert(0 <= index && index < chain->m_count);
 
-	m_buffer[0] = chain.m_vertices[index];
-	if (index + 1 < chain.m_count)
-		m_buffer[1] = chain.m_vertices[index + 1];
-	else
-		m_buffer[1] = chain.m_vertices[0];
-
-	m_vertices = m_buffer;
-	m_count = 2;
-	m_radius = chain.m_radius;
+		m_buffer[0] = ((const b2ChainShape&)subShape).m_vertices[index];
+		if (index + 1 < ((const b2ChainShape&)subShape).m_count)
+			m_buffer[1] = ((const b2ChainShape&)subShape).m_vertices[index + 1];
+		else
+			m_buffer[1] = ((const b2ChainShape&)subShape).m_vertices[0];
+		m_vertices = m_buffer;
+		m_count = 2;
+		break;
+	case Shape::e_edge:
+		m_vertices = &((const b2EdgeShape&)subShape).m_vertex1;
+		m_count = 2;
+		break;
+	}
+	m_radius = subShape.m_radius;
 }
-void b2DistanceProxy::Set(const b2EdgeShape& edge, int32 index)
-{
-	m_vertices = &edge.m_vertex1;
-	m_count = 2;
-	m_radius = edge.m_radius;
-}
-
 
 struct b2SimplexVertex
 {

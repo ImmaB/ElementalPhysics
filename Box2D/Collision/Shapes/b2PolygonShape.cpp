@@ -28,47 +28,31 @@ b2Shape* b2PolygonShape::Clone(b2BlockAllocator* allocator) const
 	return clone;
 }
 
-void b2PolygonShape::SetAsBox(float32 hx, float32 hy)
+void b2PolygonShape::SetAsBox(const b2Vec2& size)
 {
 	m_count = 4;
-	m_vertices[0].Set(-hx, -hy);
-	m_vertices[1].Set( hx, -hy);
-	m_vertices[2].Set( hx,  hy);
-	m_vertices[3].Set(-hx,  hy);
+	m_vertices[0] = -size;
+	m_vertices[1].Set( size.x, -size.y);
+	m_vertices[2] = size;
+	m_vertices[3].Set(-size.x,  size.y);
 	m_normals[0].Set(0.0f, -1.0f);
 	m_normals[1].Set(1.0f, 0.0f);
 	m_normals[2].Set(0.0f, 1.0f);
 	m_normals[3].Set(-1.0f, 0.0f);
-	m_normalsX[0] = 0.0f;
-	m_normalsX[1] = 1.0f;
-	m_normalsX[2] = 0.0f;
-	m_normalsX[3] = -1.0f;
-	m_normalsY[0] = -1.0f;
-	m_normalsY[1] = 0.0f;
-	m_normalsY[2] = 1.0f;
-	m_normalsY[3] = 0.0f;
 	m_centroid.SetZero();
 }
 
-void b2PolygonShape::SetAsBox(float32 hx, float32 hy, const b2Vec2& center, float32 angle)
+void b2PolygonShape::SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle)
 {
 	m_count = 4;
-	m_vertices[0].Set(-hx, -hy);
-	m_vertices[1].Set( hx, -hy);
-	m_vertices[2].Set( hx,  hy);
-	m_vertices[3].Set(-hx,  hy);
+	m_vertices[0] = -size;
+	m_vertices[1].Set( size.x, -size.y);
+	m_vertices[2] = size;
+	m_vertices[3].Set(-size.x,  size.y);
 	m_normals[0].Set(0.0f, -1.0f);
 	m_normals[1].Set(1.0f, 0.0f);
 	m_normals[2].Set(0.0f, 1.0f);
 	m_normals[3].Set(-1.0f, 0.0f);
-	m_normalsX[0] = 0.0f;
-	m_normalsX[1] = 1.0f;
-	m_normalsX[2] = 0.0f;
-	m_normalsX[3] = -1.0f;
-	m_normalsY[0] = -1.0f;
-	m_normalsY[1] = 0.0f;
-	m_normalsY[2] = 1.0f;
-	m_normalsY[3] = 0.0f;
 	m_centroid = center;
 
 	b2Transform xf;
@@ -80,8 +64,31 @@ void b2PolygonShape::SetAsBox(float32 hx, float32 hy, const b2Vec2& center, floa
 	{
 		m_vertices[i] = b2Mul(xf, m_vertices[i]);
 		m_normals[i] = b2Mul(xf.q, m_normals[i]);
-		m_normalsX[i] = m_normals[i].x;
-		m_normalsY[i] = m_normals[i].y;
+	}
+}
+
+void b2PolygonShapeDef::SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle)
+{
+	count = 4;
+	vertices[0] = -size;
+	vertices[1].Set(size.x, -size.y);
+	vertices[2] = size;
+	vertices[3].Set(-size.x, size.y);
+	normals[0].Set(0.0f, -1.0f);
+	normals[1].Set(1.0f, 0.0f);
+	normals[2].Set(0.0f, 1.0f);
+	normals[3].Set(-1.0f, 0.0f);
+	centroid = center;
+
+	b2Transform xf;
+	xf.p = center;
+	xf.q.Set(angle);
+
+	// Transform vertices and normals.
+	for (int32 i = 0; i < count; ++i)
+	{
+		vertices[i] = b2Mul(xf, vertices[i]);
+		normals[i] = b2Mul(xf.q, normals[i]);
 	}
 }
 
@@ -90,7 +97,7 @@ int32 b2PolygonShape::GetChildCount() const
 	return 1;
 }
 
-static b2Vec2 ComputeCentroid(const b2Vec2* vs, int32 count)
+static b2Vec2 ComputeCentroid(const polyVec2s& vs, int32 count)
 {
 	b2Assert(count >= 3);
 
@@ -141,7 +148,7 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 	b2Assert(3 <= count && count <= b2_maxPolygonVertices);
 	if (count < 3)
 	{
-		SetAsBox(1.0f, 1.0f);
+		SetAsBox(b2Vec2(1.0f, 1.0f));
 		return;
 	}
 	
@@ -175,7 +182,7 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 	{
 		// Polygon is degenerate.
 		b2Assert(false);
-		SetAsBox(1.0f, 1.0f);
+		SetAsBox(b2Vec2(1.0f, 1.0f));
 		return;
 	}
 
@@ -253,12 +260,18 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 		b2Assert(edge.LengthSquared() > b2_epsilon * b2_epsilon);
 		m_normals[i] = b2Cross(edge, 1.0f);
 		m_normals[i].Normalize();
-		m_normalsX[i] = m_normals[i].x;
-		m_normalsY[i] = m_normals[i].y;
 	}
 
 	// Compute the polygon centroid.
 	m_centroid = ComputeCentroid(m_vertices, m);
+}
+void b2PolygonShape::Set(const b2ShapeDef& shapeDef)
+{
+	b2PolygonShapeDef& polyDef = (b2PolygonShapeDef&)shapeDef;
+	m_centroid = polyDef.centroid;
+	m_vertices = polyDef.vertices;
+	m_normals = polyDef.normals;
+	m_count = polyDef.count;
 }
 
 bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
@@ -269,15 +282,13 @@ bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
 	{
 		float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
 		if (dot > 0.0f)
-		{
 			return false;
-		}
 	}
 
 	return true;
 }
 
-void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const
+void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
 
@@ -310,14 +321,14 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 			}
 		}
 
-		*distance = b2Sqrt(minDistance2);
-		*normal = b2Mul(xf.q, minDistance);
-		normal->Normalize();
+		distance = b2Sqrt(minDistance2);
+		normal = b2Mul(xf.q, minDistance);
+		normal.Normalize();
 	}
 	else
 	{
-		*distance = maxDistance;
-		*normal = b2Mul(xf.q, normalForMaxDistance);
+		distance = maxDistance;
+		normal = b2Mul(xf.q, normalForMaxDistance);
 	}
 }
 

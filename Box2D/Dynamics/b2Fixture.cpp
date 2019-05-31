@@ -28,12 +28,13 @@
 #include <Box2D/Common/b2BlockAllocator.h>
 
 
-void Fixture::Set(const b2FixtureDef& def, const int32 bodyIdx)
+void Fixture::Set(const b2FixtureDef& def, const int32 bodyIdx, const int32 idxInBody)
 {
 	m_friction = def.friction;
 	m_restitution = def.restitution;
 
 	m_bodyIdx = bodyIdx;
+	m_idxInBody = idxInBody;
 
 	m_filter = def.filter;
 

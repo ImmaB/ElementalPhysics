@@ -42,8 +42,8 @@ struct b2ContactEdge;
 enum b2BodyType
 {
 	b2_staticBody = 0,
-	b2_kinematicBody,
-	b2_dynamicBody
+	b2_kinematicBody = 1,
+	b2_dynamicBody = 2
 
 	// TODO_ERIN
 	//b2_bulletBody,
@@ -73,7 +73,7 @@ struct b2BodyDef
 	/// This constructor sets the body definition default values.
 	b2BodyDef()
 	{
-		position.Set(0.0f, 0.0f);
+		position.Set(0.0f, 0.0f, 0.0f);
 		angle = 0.0f;
 		linearVelocity.Set(0.0f, 0.0f);
 		angularVelocity = 0.0f;
@@ -83,10 +83,10 @@ struct b2BodyDef
 		heat = 15.f;
 		health = 1.0f;
 		flags = 0;
-		//allowSleep = true;
+		allowSleep = true;
 		awake = true;
-		//fixedRotation = false;
-		//bullet = false;
+		fixedRotation = false;
+		bullet = false;
 		type = b2_staticBody;
 		active = true;
 		gravityScale = 1.0f;
@@ -105,7 +105,7 @@ struct b2BodyDef
 
 	/// The world position of the body. Avoid creating bodies at the origin
 	/// since this can lead to many overlapping shapes.
-	b2Vec2 position;
+	b2Vec3 position;
 
 	/// The world angle of the body in radians.
 	float32 angle;
@@ -161,7 +161,7 @@ struct Body
 
 	b2BodyType m_type;
 
-	uint16 m_flags;
+	uint32 m_flags;
 
 	int32 m_islandIndex;
 
@@ -175,9 +175,8 @@ struct Body
 	b2Vec2 m_force;
 	float32 m_torque;
 
-	std::vector<b2Fixture>& m_fixtureBuffer;
 	std::vector<int32> m_fixtureIdxBuffer;
-	std::vector<int32> m_fixtureIdxFreeSlots;
+	std::set<int32> m_freeFixtureIdxs;
 
 	b2JointEdge* m_jointList;
 	b2ContactEdge* m_contactList;

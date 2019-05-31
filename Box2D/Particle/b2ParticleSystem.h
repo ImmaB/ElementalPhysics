@@ -24,6 +24,8 @@
 #include <Box2D/Particle/b2ParticleGroup.h>
 #include <Box2D/Amp/ampAlgorithms.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <Box2D/Dynamics/b2Body.h>
+#include <Box2D/Dynamics/b2Fixture.h>
 #include <Box2D/Collision/Shapes/b2CircleShape.h>
 #include <Box2D/Collision/Shapes/b2EdgeShape.h>
 #include <Box2D/Collision/Shapes/b2PolygonShape.h>
@@ -57,14 +59,12 @@ typedef std::chrono::time_point<std::chrono::steady_clock> Time;
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 class b2World;
-struct Body;
 class b2Shape;
 class b2ParticleGroup;
 class b2BlockAllocator;
 class b2StackAllocator;
 class b2QueryCallback;
 class b2RayCastCallback;
-struct Fixture;
 class b2ContactFilter;
 class b2ContactListener;
 class b2ParticlePairSet;
@@ -311,9 +311,6 @@ public:
 	float32 GetTimeDif(Time start);
 
 public:
-
-	const int32 GetLayerFromZ(float32 z);
-
 	/// Retrieve a handle to the particle at the specified index.
 	/// Please see #b2ParticleHandle for why you might want a handle.
 	const b2ParticleHandle* GetParticleHandleFromIndex(const int32 index);
@@ -334,7 +331,8 @@ public:
 	/// particle is destroyed.
 	void DestroyOldestParticle(const int32 index,
 							   const bool callDestructionListener);
-	
+
+	void DestroyParticlesInGroup(const int32 groupIdx);
 	void DestroyParticlesInGroup(const b2ParticleGroup& group);
 
 	/// Destroy particles inside a shape without enabling the destruction
@@ -375,6 +373,8 @@ public:
 	/// @warning This function is locked during callbacks.
 	int32 CreateGroup(b2ParticleGroupDef& def);
 	void CopyParticleRangeToGpu(const uint32 first, const uint32 last);
+
+	void DestroyGroup(int32 groupIdx, int32 timestamp = b2_invalidIndex, bool destroyParticles = false);
 
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
@@ -473,13 +473,6 @@ public:
 
 	void SetHeatLossRatio(float32 heatLossRatio);
 
-	void SetPointsPerLayer(float32 pointsPerLayer);
-
-	void SetLowestLayer(int32 l);
-	void SetHighestLayer(int32 l);
-
-	void CalcLayerValues();
-
 	void SetAccelerate(const bool acc);
 
 	/// Change the particle radius.
@@ -492,7 +485,6 @@ public:
 	float32 GetRadius() const;
 
 	void CopyAmpPositions(ID3D11Buffer* dstPtr);
-	void SetShaderBuffers();
 
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
@@ -539,12 +531,6 @@ public:
 	float32* GetHealthBuffer();
 	const float32* GetHealthBuffer() const;
 
-	/// Get the user-specified data of each particle.
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle user-data array.
-	int32* GetUserDataBuffer();
-	const int32* GetUserDataBuffer() const;
-
 	/// Get the flags for each particle. See the b2ParticleFlag enum.
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle-flags array.
@@ -576,7 +562,6 @@ public:
 	void SetPositionBuffer(b2Vec3* buffer, int32 capacity);
 	void SetVelocityBuffer(b2Vec3* buffer, int32 capacity);
 	void SetColorBuffer(int32* buffer, int32 capacity);
-	void SetUserDataBuffer(int32* buffer, int32 capacity);
 
 	/// Get contacts between particles
 	/// Contact data can be used for many reasons, for example to trigger
@@ -608,7 +593,6 @@ public:
 	/// are interacting. The array is sorted by b2ParticlePair's indexA,
 	/// and then indexB. There are no duplicate entries.
 	const b2ParticlePair* GetPairs() const;
-	int32 GetPairCount() const;
 
 	/// Get array of particle triads. The particles in a triad:
 	///   (1) are in the same particle group,
@@ -625,7 +609,6 @@ public:
 	/// interacting. The array is sorted by b2ParticleTriad's indexA,
 	/// then indexB, then indexC. There are no duplicate entries.
 	const b2ParticleTriad* GetTriads() const;
-	int32 GetTriadCount() const;
 
 	/// Set an optional threshold for the maximum number of
 	/// consecutive particle iterations that a particle may contact
@@ -962,25 +945,20 @@ private:
 	void ResizeBodyContactBuffers(uint32 size);
 	void ResizePairBuffers(uint32 size);
 	void ResizeTriadBuffers(uint32 size);
-	void ResizeCreationBuffers(uint32 size);
 	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const vector<b2Vec3>& positions);
 	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
 		const b2Transform& xf, const vector<b2Vec3>& poss, const vector<int32>& cols);
 	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
-		const b2Shape* shape,
+		const b2Shape& shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	pair<int32, int32> CreateParticlesFillShapeForGroup(
-		const b2Shape* shape,
+		const b2Shape& shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	pair<int32, int32> CreateParticlesWithShapeForGroup(
-		const b2Shape* shape,
-		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	pair<int32, int32> CreateParticlesWithShapesForGroup(
-		const b2Shape* const* shapes, int32 shapeCount,
+		const int32 shapeIdx,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	int32 CloneParticle(int32 index, int32 groupIdx);
-	void DestroyGroup(int32 groupIdx, bool destroyParticles = false);
 
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
@@ -1032,10 +1010,6 @@ private:
 	void UpdateProxies();
 	void AmpUpdateProxies();
 	void SortProxies();
-	void CalcIntermSums(uint32 bitoffset, ampArrayView<Proxy>& interm_arr,
-		ampArray<uint32>& interm_sums, ampArray<uint32>& interm_prefix_sums);
-	void RadixSortStep(uint32 bitoffset, ampArrayView<Proxy>& src, ampArrayView<Proxy>& dest,
-		ampArray<uint32>& interm_prefix_sums);
 	void AmpSortProxies();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
@@ -1255,11 +1229,6 @@ private:
 	float32 m_roomTemp;
 	float32 m_heatLossRatio;
 
-	float32 m_pointsPerLayer;
-	float32 m_invPointsPerLayer;
-	int32 m_lowestLayer;
-	int32 m_highestLayer;
-
 	uint32 m_tileCnt;
 	uint32 m_contactTileCnt;
 	ampExtent m_tilableExtent;
@@ -1302,7 +1271,6 @@ private:
 	ampArray<b2Vec3>	m_ampPositions,
 						m_ampVelocities,
 						m_ampForces;
-	vector<int32>		m_heightLayerBuffer;
 	vector<float32>		m_weightBuffer,
 						m_heatBuffer,
 						m_healthBuffer;
@@ -1353,7 +1321,6 @@ private:
 	//				m_groupLinVelYBuf;
 	//vector<float32> m_groupAngVelBuf;
 	//vector<b2Transform> m_groupTransformBuf;
-	//vector<int32>	m_groupUserDataBuf;
 	
 	vector<uint32>  m_partMatFlagsBuf;
 	vector<uint32>  m_partMatPartFlagsBuf;
@@ -1407,7 +1374,6 @@ private:
 	/// CreateParticle() calls.
 	vector<float32> m_depthBuffer;
 	ampArray<float32> m_ampDepths;
-	vector<int32> m_userDataBuffer;
 
 	/// Stuck particle detection parameters and record keeping
 	int32 m_stuckThreshold;
@@ -1536,6 +1502,10 @@ inline b2ParticleGroup* b2ParticleSystem::GetParticleGroups()
 {
 	return m_groupBuffer.data();
 }
+inline const b2ParticleGroup* b2ParticleSystem::GetParticleGroups() const
+{
+	return m_groupBuffer.data();
+}
 
 inline uint32 b2ParticleSystem::GetParticleGroupCount() const
 {
@@ -1641,25 +1611,6 @@ inline float32 b2ParticleSystem::GetRoomTemperature() const
 inline void b2ParticleSystem::SetHeatLossRatio(float32 heatLossRatio)
 {
 	m_heatLossRatio = heatLossRatio;
-}
-
-inline void b2ParticleSystem::SetPointsPerLayer(float32 pointsPerLayer)
-{
-	m_pointsPerLayer = pointsPerLayer;
-}
-
-inline void b2ParticleSystem::SetLowestLayer(int32 l)
-{
-	m_lowestLayer = l;
-}
-inline void b2ParticleSystem::SetHighestLayer(int32 l)
-{
-	m_highestLayer = l;
-}
-
-inline void b2ParticleSystem::CalcLayerValues()
-{
-	m_invPointsPerLayer = 1 / m_pointsPerLayer;
 }
 
 inline void b2ParticleSystem::SetAccelerate(bool accelerate)
@@ -1834,15 +1785,6 @@ inline const uint32* b2ParticleSystem::GetFlagsBuffer() const
 	return m_flagsBuffer.data();
 }
 
-inline const int32* b2ParticleSystem::GetHeightLayerBuffer() const
-{
-	return m_heightLayerBuffer.data();
-}
-inline int32* b2ParticleSystem::GetHeightLayerBuffer()
-{
-	return m_heightLayerBuffer.data();
-}
-
 inline const int32* b2ParticleSystem::GetColorBuffer() const
 {
 	return m_colorBuffer.data();
@@ -1869,11 +1811,6 @@ inline int32* b2ParticleSystem::GetPartMatIdxBuffer()
 inline const float32* b2ParticleSystem::GetWeightBuffer() const
 {
 	return m_weightBuffer.data();
-}
-
-inline const int32* b2ParticleSystem::GetUserDataBuffer() const
-{
-	return ((b2ParticleSystem*) this)->GetUserDataBuffer();
 }
 
 inline uint32 b2ParticleSystem::GetParticleFlags(int32 index)

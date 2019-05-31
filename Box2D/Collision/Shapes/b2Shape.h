@@ -51,7 +51,7 @@ struct Shape
 		e_typeCount = 4
 	};
 
-	int32 m_idx;	// points at circle-/edge-/... buffer
+	int32 m_subShapeIdx;
 	Type m_type;
 	float32 m_radius;
 	float32 m_zPos;
@@ -63,12 +63,22 @@ struct Shape
 	}
 };
 
+struct b2ShapeDef
+{
+	Shape::Type type;
+	float32 zPos;
+	float32 height;
+	float32 radius;
+};
+
 /// A shape is used for collision detection. You can create a shape however you like.
 /// Shapes used for simulation in b2World are created automatically when a b2Fixture
 /// is created. Shapes may encapsulate a one or more child shapes.
 class b2Shape
 {
 public:
+	virtual void Set(const b2ShapeDef& shapeDef) {};
+
 	virtual ~b2Shape() {}
 
 	/// Clone the concrete shape using the provided allocator.
@@ -88,7 +98,7 @@ public:
 	/// @param p a point in world coordinates.
 	/// @param distance returns the distance from the current shape.
 	/// @param normal returns the direction in which the distance increases.
-	virtual void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const= 0;
+	virtual void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const= 0;
 
 	/// Cast a ray against a child shape.
 	/// @param output the ray-cast results.

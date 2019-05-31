@@ -21,6 +21,19 @@
 #define B2_POLYGON_SHAPE_H
 
 #include <Box2D/Collision/Shapes/b2Shape.h>
+#include <array>
+
+using polyVec2s = std::array<b2Vec2, b2_maxPolygonVertices>;
+
+struct b2PolygonShapeDef : public b2ShapeDef
+{
+	b2Vec2 centroid;
+	polyVec2s vertices;
+	polyVec2s normals;
+	int32 count;
+
+	void SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle);
+};
 
 /// A convex polygon. It is assumed that the interior of the polygon is to
 /// the left of each edge.
@@ -29,6 +42,8 @@
 class b2PolygonShape : public b2Shape
 {
 public:
+	void Set(const b2ShapeDef& shapeDef);
+
 	b2PolygonShape();
 
 	/// Implement b2Shape.
@@ -47,20 +62,20 @@ public:
 	/// Build vertices to represent an axis-aligned box centered on the local origin.
 	/// @param hx the half-width.
 	/// @param hy the half-height.
-	void SetAsBox(float32 hx, float32 hy);
+	void SetAsBox(const b2Vec2& size);
 
 	/// Build vertices to represent an oriented box.
 	/// @param hx the half-width.
 	/// @param hy the half-height.
 	/// @param center the center of the box in local coordinates.
 	/// @param angle the rotation of the box in local coordinates.
-	void SetAsBox(float32 hx, float32 hy, const b2Vec2& center, float32 angle);
+	void SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle);
 
 	/// @see b2Shape::TestPoint
 	bool TestPoint(const b2Transform& transform, const b2Vec3& p) const;
 	
 	// @see b2Shape::ComputeDistance
-	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
+	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const;
 
 	/// Implement b2Shape.
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
@@ -97,10 +112,8 @@ public:
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 	b2Vec2 m_centroid;
-	b2Vec2 m_vertices[b2_maxPolygonVertices];
-	b2Vec2 m_normals[b2_maxPolygonVertices];
-	float32 m_normalsX[b2_maxPolygonVertices];
-	float32 m_normalsY[b2_maxPolygonVertices];
+	polyVec2s m_vertices;
+	polyVec2s m_normals;
 	int32 m_count;
 };
 

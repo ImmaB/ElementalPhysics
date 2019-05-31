@@ -30,15 +30,10 @@
 #include <Box2D/Particle/b2Material.h>
 
 struct b2AABB;
-struct b2BodyDef;
 struct b2Color;
 struct b2JointDef;
 struct b2Filter;
-class b2Body;
 class b2Draw;
-class b2Fixture;
-class b2FixtureDef;
-class b2FixtureProxy;
 class b2Joint;
 class b2ParticleGroup;
 class b2Contact;
@@ -51,7 +46,7 @@ class b2World
 public:
 	/// Construct a world object.
 	/// @param gravity the world gravity vector.
-	b2World(const b2Vec2& gravity);
+	b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit);
 
 	/// Destruct the world. All physics entities are destroyed and all heap memory is released.
 	~b2World();
@@ -128,8 +123,6 @@ public:
 	/// @param velocityIterations for the velocity constraint solver.
 	/// @param positionIterations for the position constraint solver.
 	/// @param particleIterations for the particle simulation.
-	void Step();
-
 	void StepPreParticle();
 	void StepPostParticle();
 
@@ -267,10 +260,6 @@ public:
 	/// Get the current profile.
 	const b2Profile& GetProfile() const;
 
-	/// Dump the world into the log file.
-	/// @warning this should be called outside of a time step.
-	void Dump();
-
 
 	vector<b2BodyMaterial> m_bodyMaterials;
 
@@ -290,10 +279,14 @@ public:
 		return m_liquidFunVersionString;
 	}
 
-	int32 GetBodyInsertIdx();
-	int32 GetFixtureInsertIdx();
 	template<typename T>
 	void RemoveFromBuffer(const int32 idx, vector<T>& buffer, set<int32>& freeIdxs) const;
+	template<typename T>
+	T& InsertIntoBuffer(vector<T> buf, set<int32> freeIdxs, int32& outIdx) const;
+	template<typename T>
+	int32 InsertIntoBuffer(T& value, vector<T> buf, set<int32> freeIdxs) const;
+
+	const b2Shape& GetSubShape(const Shape& s) const;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -320,8 +313,6 @@ private:
 	friend class b2Controller;
 	friend class b2ParticleSystem;
 
-	void Init(const b2Vec2& gravity);
-
 	void Solve(const b2TimeStep& step);
 	void SolveTOI(const b2TimeStep& step);
 
@@ -344,7 +335,10 @@ private:
 
 	int32 m_jointCount;
 
-	b2Vec2 m_gravity;
+	b2Vec3 m_gravity;
+	float32 m_lowerHeightLimit;
+	float32 m_upperHeightLimit;
+	float32 m_deleteOutsideLimit;
 	float32 m_dampingStrength;
 	bool m_allowSleep;
 
@@ -378,13 +372,10 @@ private:
 	/// the mass and you later want to reset the mass.
 	void ResetMassData(Body& b);
 
-	template<typename T>
-	int32 GetBufferInsertIdx(const vector<T> buf, const set<int32> freeIdxs) const;
+	b2Shape& InsertSubShapeIntoBuffer(Shape::Type shapeType, int32& outIdx) const;
 
 
 public:
-	b2Shape& GetSubShape(const Shape& s);
-
 	vector<Body>			m_bodyBuffer;
 	vector<Fixture>			m_fixtureBuffer;
 	vector<vector<b2FixtureProxy>> m_fixtureProxiesBuffer;
@@ -403,6 +394,7 @@ public:
 	set<int32> m_freeChainShapeIdxs;
 	set<int32> m_freeCircleShapeIdxs;
 	set<int32> m_freeEdgeShapeIdxs;
+	set<int32> m_freePolygonShapeIdxs;
 	set<int32> m_freeShapePositionIdxs;
 	set<int32> m_freeShapeNormalIdxs;
 
@@ -415,7 +407,7 @@ public:
 	/// Contacts are not created until the next time step.
 	/// @param def the fixture definition.
 	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(Body& b, b2FixtureDef& def);
+	int32 CreateFixture(int32 bodyIdx, b2FixtureDef& def);
 
 	/// Creates a fixture from a shape and attach it to this body.
 	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
@@ -424,7 +416,9 @@ public:
 	/// @param shape the shape to be cloned.
 	/// @param density the shape density (set to zero for static bodies).
 	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(Body& b, const int32 shape, float32 density);
+	int32 CreateFixture(int32 bodyIdx, const int32 shape, float32 density);
+
+	void DestroyShape(int32 shapeIdx);
 
 	/// Destroy a fixture. This removes the fixture from the broad-phase and
 	/// destroys all contacts associated with this fixture. This will
@@ -433,7 +427,7 @@ public:
 	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
 	/// @param fixture the fixture to be removed.
 	/// @warning This function is locked during callbacks.
-	void DestroyFixture(Body& b, int32 idx);
+	void DestroyFixture(int32 bodyIdx, int32 idx);
 
 	/// Set the position of the body's origin and rotation.
 	/// Manipulating a body's transform may cause non-physical behavior.
@@ -470,7 +464,7 @@ public:
 
 	/// Compute the distance from this fixture.
 	/// @param p a point in world coordinates.
-	void ComputeDistance(const Fixture& f, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const;
+	void ComputeDistance(const Fixture& f, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const;
 
 	/// Cast a ray against this shape.
 	/// @param output the ray-cast results.
@@ -504,7 +498,10 @@ public:
 	void CreateProxies(Fixture& f, b2BroadPhase& broadPhase, const b2Transform& xf);
 	void DestroyProxies(Fixture& f);
 
-	void Destroy(Fixture& f);
+	int32 CreateShape(b2ShapeDef& shapeDef);
+
+	void DestroyShape(Fixture& f);
+
 
 
 	// Contact

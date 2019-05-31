@@ -20,6 +20,12 @@
 #include <Box2D/Collision/Shapes/b2CircleShape.h>
 #include <new>
 
+void b2CircleShape::Set(const b2ShapeDef& shapeDef)
+{
+	b2CircleShapeDef& circDef = (b2CircleShapeDef&)shapeDef;
+	m_p = circDef.p;
+}
+
 b2Shape* b2CircleShape::Clone(b2BlockAllocator* allocator) const
 {
 	void* mem = allocator->Allocate(sizeof(b2CircleShape));
@@ -40,15 +46,15 @@ bool b2CircleShape::TestPoint(const b2Transform& transform, const b2Vec3& p) con
 	return b2Dot(d, d) <= m_radius * m_radius;
 }
 
-void b2CircleShape::ComputeDistance(const b2Transform& transform, const b2Vec2& p, float32* distance, b2Vec2* normal, int32 childIndex) const
+void b2CircleShape::ComputeDistance(const b2Transform& transform, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
 
 	b2Vec2 center = transform.p + b2Mul(transform.q, m_p);
 	b2Vec2 d = p - center;
 	float32 d1 = d.Length();
-	*distance = d1 - m_radius;
-	*normal = 1 / d1 * d;
+	distance = d1 - m_radius;
+	normal = 1 / d1 * d;
 }
 
 // Collision Detection in Interactive 3D Environments by Gino van den Bergen

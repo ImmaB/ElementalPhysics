@@ -61,24 +61,23 @@ struct b2ParticleGroupDef
 		groupFlags = 0;
 		position = b2Vec3_zero;
 		angle = 0;
-		linearVelocity = b2Vec2_zero;
+		linearVelocity = b2Vec3_zero;
 		angularVelocity = 0;
 		color = 0;
 		strength = 1;
-		shape = NULL;
-		shapes = NULL;
+		shapeIdx = b2_invalidIndex;
 		shapeCount = 0;
 		stride = 0;
 		particleCount = 0;
 		positionData = NULL;
 		colorData = NULL;
 		lifetime = 0.0f;
-		userData = 0;
 		groupIdx = b2_invalidIndex;
 		matIdx = b2_invalidIndex;
 		collisionGroup = 0;
 		heat = 0.0f;
 		health = 1.0f;
+		timestamp = b2_invalidIndex;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 		circleShapes = NULL;
@@ -110,7 +109,7 @@ struct b2ParticleGroupDef
 	float32 angle;
 
 	/// The linear velocity of the group's origin in world co-ordinates.
-	b2Vec2 linearVelocity;
+	b2Vec3 linearVelocity;
 
 	/// The angular velocity of the group.
 	float32 angularVelocity;
@@ -123,10 +122,7 @@ struct b2ParticleGroupDef
 	float32 strength;
 
 	/// The shape where particles will be added.
-	const b2Shape* shape;
-
-	/// A array of shapes where particles will be added.
-	const b2Shape* const* shapes;
+	int32 shapeIdx;
 
 	/// The number of shapes.
 	int32 shapeCount;
@@ -147,9 +143,6 @@ struct b2ParticleGroupDef
 	/// particle group with infinite lifetime.
 	float32 lifetime;
 
-	/// Use this to store application-specific group data.
-	int32 userData;
-
 	/// An existing particle group to which the particles will be added.
 	int32 groupIdx;
 
@@ -160,6 +153,8 @@ struct b2ParticleGroupDef
 	float32 heat;
 
 	float32 health;
+
+	int32 timestamp;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 	/// Storage for constructed CircleShapes from an incoming vertex list

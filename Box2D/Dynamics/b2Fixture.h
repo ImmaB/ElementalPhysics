@@ -28,7 +28,7 @@ class b2BlockAllocator;
 class b2Body;
 class b2BroadPhase;
 class b2Fixture;
-class Fixture;
+struct Fixture;
 
 /// This holds contact filtering data.
 struct b2Filter
@@ -60,6 +60,7 @@ struct b2FixtureDef
 	/// The constructor sets the default fixture definition values.
 	b2FixtureDef()
 	{
+		shapeIdx = b2_invalidIndex;
 		friction = 0.2f;
 		restitution = 0.0f;
 		density = 0.0f;
@@ -111,6 +112,8 @@ struct Fixture
 	float32 m_density;
 
 	int32 m_bodyIdx;
+	int32 m_idxInBody;
+
 	int32 m_shapeIdx;
 
 	float32 m_friction;
@@ -122,25 +125,12 @@ struct Fixture
 
 	bool m_isSensor;
 
-	void Set(const b2FixtureDef& def, const int32 bodyIdx);
-
-
-	/// Is this fixture a sensor (non-solid)?
-	/// @return the true if the shape is a sensor.
-	bool IsSensor() const;
-
+	void Set(const b2FixtureDef& def, const int32 bodyIdx, const int32 idxInBody);
 
 	/// Get the next fixture in the parent body's fixture list.
 	/// @return the next shape.
 	b2Fixture* GetNext();
 	const b2Fixture* GetNext() const;
-
-	/// Get the user data that was assigned in the fixture definition. Use this to
-	/// store your application specific data.
-	void* GetUserData() const;
-
-	/// Set the user data. Use this to store your application specific data.
-	void SetUserData(void* data);
 
 	/// Set the density of this fixture. This will _not_ automatically adjust the mass
 	/// of the body. You must call b2Body::ResetMassData to update the body's mass.
