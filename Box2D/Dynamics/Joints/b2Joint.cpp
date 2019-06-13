@@ -34,7 +34,7 @@
 
 #include <new>
 
-b2Joint* b2Joint::Create(const b2JointDef* def, b2BlockAllocator* allocator)
+b2Joint* b2Joint::Create(const b2JointDef* def, b2World& world, b2BlockAllocator& allocator)
 {
 	b2Joint* joint = NULL;
 
@@ -42,78 +42,78 @@ b2Joint* b2Joint::Create(const b2JointDef* def, b2BlockAllocator* allocator)
 	{
 	case e_distanceJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2DistanceJoint));
-			joint = new (mem) b2DistanceJoint(static_cast<const b2DistanceJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2DistanceJoint));
+			joint = new (mem) b2DistanceJoint(static_cast<const b2DistanceJointDef*>(def), world);
 		}
 		break;
 
 	case e_mouseJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2MouseJoint));
-			joint = new (mem) b2MouseJoint(static_cast<const b2MouseJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2MouseJoint));
+			joint = new (mem) b2MouseJoint(static_cast<const b2MouseJointDef*>(def), world);
 		}
 		break;
 
 	case e_prismaticJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2PrismaticJoint));
-			joint = new (mem) b2PrismaticJoint(static_cast<const b2PrismaticJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2PrismaticJoint));
+			joint = new (mem) b2PrismaticJoint(static_cast<const b2PrismaticJointDef*>(def), world);
 		}
 		break;
 
 	case e_revoluteJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2RevoluteJoint));
-			joint = new (mem) b2RevoluteJoint(static_cast<const b2RevoluteJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2RevoluteJoint));
+			joint = new (mem) b2RevoluteJoint(static_cast<const b2RevoluteJointDef*>(def), world);
 		}
 		break;
 
 	case e_pulleyJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2PulleyJoint));
-			joint = new (mem) b2PulleyJoint(static_cast<const b2PulleyJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2PulleyJoint));
+			joint = new (mem) b2PulleyJoint(static_cast<const b2PulleyJointDef*>(def), world);
 		}
 		break;
 
 	case e_gearJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2GearJoint));
-			joint = new (mem) b2GearJoint(static_cast<const b2GearJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2GearJoint));
+			joint = new (mem) b2GearJoint(static_cast<const b2GearJointDef*>(def), world);
 		}
 		break;
 
 	case e_wheelJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2WheelJoint));
-			joint = new (mem) b2WheelJoint(static_cast<const b2WheelJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2WheelJoint));
+			joint = new (mem) b2WheelJoint(static_cast<const b2WheelJointDef*>(def), world);
 		}
 		break;
 
 	case e_weldJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2WeldJoint));
-			joint = new (mem) b2WeldJoint(static_cast<const b2WeldJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2WeldJoint));
+			joint = new (mem) b2WeldJoint(static_cast<const b2WeldJointDef*>(def), world);
 		}
 		break;
         
 	case e_frictionJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2FrictionJoint));
-			joint = new (mem) b2FrictionJoint(static_cast<const b2FrictionJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2FrictionJoint));
+			joint = new (mem) b2FrictionJoint(static_cast<const b2FrictionJointDef*>(def), world);
 		}
 		break;
 
 	case e_ropeJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2RopeJoint));
-			joint = new (mem) b2RopeJoint(static_cast<const b2RopeJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2RopeJoint));
+			joint = new (mem) b2RopeJoint(static_cast<const b2RopeJointDef*>(def), world);
 		}
 		break;
 
 	case e_motorJoint:
 		{
-			void* mem = allocator->Allocate(sizeof(b2MotorJoint));
-			joint = new (mem) b2MotorJoint(static_cast<const b2MotorJointDef*>(def));
+			void* mem = allocator.Allocate(sizeof(b2MotorJoint));
+			joint = new (mem) b2MotorJoint(static_cast<const b2MotorJointDef*>(def), world);
 		}
 		break;
 
@@ -125,53 +125,53 @@ b2Joint* b2Joint::Create(const b2JointDef* def, b2BlockAllocator* allocator)
 	return joint;
 }
 
-void b2Joint::Destroy(b2Joint* joint, b2BlockAllocator* allocator)
+void b2Joint::Destroy(b2Joint* joint, b2BlockAllocator& allocator)
 {
 	joint->~b2Joint();
 	switch (joint->m_type)
 	{
 	case e_distanceJoint:
-		allocator->Free(joint, sizeof(b2DistanceJoint));
+		allocator.Free(joint, sizeof(b2DistanceJoint));
 		break;
 
 	case e_mouseJoint:
-		allocator->Free(joint, sizeof(b2MouseJoint));
+		allocator.Free(joint, sizeof(b2MouseJoint));
 		break;
 
 	case e_prismaticJoint:
-		allocator->Free(joint, sizeof(b2PrismaticJoint));
+		allocator.Free(joint, sizeof(b2PrismaticJoint));
 		break;
 
 	case e_revoluteJoint:
-		allocator->Free(joint, sizeof(b2RevoluteJoint));
+		allocator.Free(joint, sizeof(b2RevoluteJoint));
 		break;
 
 	case e_pulleyJoint:
-		allocator->Free(joint, sizeof(b2PulleyJoint));
+		allocator.Free(joint, sizeof(b2PulleyJoint));
 		break;
 
 	case e_gearJoint:
-		allocator->Free(joint, sizeof(b2GearJoint));
+		allocator.Free(joint, sizeof(b2GearJoint));
 		break;
 
 	case e_wheelJoint:
-		allocator->Free(joint, sizeof(b2WheelJoint));
+		allocator.Free(joint, sizeof(b2WheelJoint));
 		break;
     
 	case e_weldJoint:
-		allocator->Free(joint, sizeof(b2WeldJoint));
+		allocator.Free(joint, sizeof(b2WeldJoint));
 		break;
 
 	case e_frictionJoint:
-		allocator->Free(joint, sizeof(b2FrictionJoint));
+		allocator.Free(joint, sizeof(b2FrictionJoint));
 		break;
 
 	case e_ropeJoint:
-		allocator->Free(joint, sizeof(b2RopeJoint));
+		allocator.Free(joint, sizeof(b2RopeJoint));
 		break;
 
 	case e_motorJoint:
-		allocator->Free(joint, sizeof(b2MotorJoint));
+		allocator.Free(joint, sizeof(b2MotorJoint));
 		break;
 
 	default:
@@ -180,32 +180,33 @@ void b2Joint::Destroy(b2Joint* joint, b2BlockAllocator* allocator)
 	}
 }
 
-b2Joint::b2Joint(const b2JointDef* def)
+b2Joint::b2Joint(const b2JointDef* def, b2World& world) : m_world(world)
 {
 	b2Assert(def->bodyA != def->bodyB);
 
 	m_type = def->type;
 	m_prev = NULL;
 	m_next = NULL;
-	m_bodyA = def->bodyA;
-	m_bodyB = def->bodyB;
+	m_bodyAIdx = def->bodyAIdx;
+	m_bodyBIdx = def->bodyBIdx;
 	m_index = 0;
 	m_collideConnected = def->collideConnected;
 	m_islandFlag = false;
 	m_userData = def->userData;
 
 	m_edgeA.joint = NULL;
-	m_edgeA.other = NULL;
+	m_edgeA.otherIdx = b2_invalidIndex;
 	m_edgeA.prev = NULL;
 	m_edgeA.next = NULL;
 
 	m_edgeB.joint = NULL;
-	m_edgeB.other = NULL;
+	m_edgeB.otherIdx = b2_invalidIndex;
 	m_edgeB.prev = NULL;
 	m_edgeB.next = NULL;
 }
 
 bool b2Joint::IsActive() const
 {
-	return m_bodyA->IsActive() && m_bodyB->IsActive();
+	
+	return m_world.m_bodyBuffer[m_bodyAIdx].IsActive() && m_world.m_bodyBuffer[m_bodyBIdx].IsActive();
 }

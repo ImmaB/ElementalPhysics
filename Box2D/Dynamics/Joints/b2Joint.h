@@ -20,6 +20,7 @@
 #define B2_JOINT_H
 
 #include <Box2D/Common/b2Math.h>
+#include <Box2D/Dynamics/b2World.h>
 
 class Body;
 class b2Joint;
@@ -64,7 +65,7 @@ struct b2Jacobian
 /// nodes, one for each attached body.
 struct b2JointEdge
 {
-	Body* other;			///< provides quick access to the other body attached.
+	int32 otherIdx;			///< provides quick access to the other body attached.
 	b2Joint* joint;			///< the joint
 	b2JointEdge* prev;		///< the previous joint edge in the body's joint list
 	b2JointEdge* next;		///< the next joint edge in the body's joint list
@@ -77,8 +78,8 @@ struct b2JointDef
 	{
 		type = e_unknownJoint;
 		userData = NULL;
-		bodyA = NULL;
-		bodyB = NULL;
+		bodyAIdx = b2_invalidIndex;
+		bodyBIdx = b2_invalidIndex;
 		collideConnected = false;
 	}
 
@@ -89,10 +90,10 @@ struct b2JointDef
 	void* userData;
 
 	/// The first attached body.
-	Body* bodyA;
+	int32 bodyAIdx;
 
 	/// The second attached body.
-	Body* bodyB;
+	int32 bodyBIdx;
 
 	/// Set this flag to true if the attached bodies should collide.
 	bool collideConnected;
@@ -108,10 +109,13 @@ public:
 	b2JointType GetType() const;
 
 	/// Get the first body attached to this joint.
-	Body* GetBodyA();
+	int32 GetBodyAIdx();
 
 	/// Get the second body attached to this joint.
-	Body* GetBodyB();
+	int32 GetBodyBIdx();
+
+	Body b2Joint::GetBodyA() const;
+	Body b2Joint::GetBodyB() const;
 
 	/// Get the anchor point on bodyA in world coordinates.
 	virtual b2Vec2 GetAnchorA() const = 0;
@@ -143,6 +147,7 @@ public:
 	/// the flag is only checked when fixture AABBs begin to overlap.
 	bool GetCollideConnected() const;
 
+
 	/// Dump this joint to the log file.
 	virtual void Dump() { b2Log("// Dump is not supported for this joint type.\n"); }
 
@@ -155,10 +160,10 @@ protected:
 	friend class b2Island;
 	friend class b2GearJoint;
 
-	static b2Joint* Create(const b2JointDef* def, b2BlockAllocator* allocator);
-	static void Destroy(b2Joint* joint, b2BlockAllocator* allocator);
+	static b2Joint* Create(const b2JointDef* def, b2World& world, b2BlockAllocator& allocator);
+	static void Destroy(b2Joint* joint, b2BlockAllocator& allocator);
 
-	b2Joint(const b2JointDef* def);
+	b2Joint(const b2JointDef* def, b2World& world);
 	virtual ~b2Joint() {}
 
 	virtual void InitVelocityConstraints(const b2SolverData& data) = 0;
@@ -172,8 +177,8 @@ protected:
 	b2Joint* m_next;
 	b2JointEdge m_edgeA;
 	b2JointEdge m_edgeB;
-	Body* m_bodyA;
-	Body* m_bodyB;
+	int32 m_bodyAIdx;
+	int32 m_bodyBIdx;
 
 	int32 m_index;
 
@@ -181,6 +186,7 @@ protected:
 	bool m_collideConnected;
 
 	void* m_userData;
+	b2World& m_world;
 };
 
 inline b2JointType b2Joint::GetType() const
@@ -188,14 +194,22 @@ inline b2JointType b2Joint::GetType() const
 	return m_type;
 }
 
-inline Body* b2Joint::GetBodyA()
+inline int32 b2Joint::GetBodyAIdx()
 {
-	return m_bodyA;
+	return m_bodyAIdx;
+}
+inline int32 b2Joint::GetBodyBIdx()
+{
+	return m_bodyBIdx;
 }
 
-inline Body* b2Joint::GetBodyB()
+inline Body b2Joint::GetBodyA() const
 {
-	return m_bodyB;
+	return m_world.m_bodyBuffer[m_bodyAIdx];
+}
+inline Body b2Joint::GetBodyB() const
+{
+	return m_world.m_bodyBuffer[m_bodyBIdx];
 }
 
 inline b2Joint* b2Joint::GetNext()

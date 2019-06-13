@@ -66,12 +66,12 @@ void b2Contact::AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* dest
 	}
 }
 
-b2Contact::b2Contact(Fixture& fA, int32 indexA, Fixture& fB, int32 indexB)
+b2Contact::b2Contact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB)
 {
 	m_flags = e_enabledFlag;
 
-	m_fixtureA = &fA;
-	m_fixtureB = &fB;
+	m_fixtureIdxA = fixtureA.m_idx;
+	m_fixtureIdxB = fixtureB.m_idx;
 
 	m_indexA = indexA;
 	m_indexB = indexB;
@@ -84,17 +84,17 @@ b2Contact::b2Contact(Fixture& fA, int32 indexA, Fixture& fB, int32 indexB)
 	m_nodeA.contact = NULL;
 	m_nodeA.prev = NULL;
 	m_nodeA.next = NULL;
-	m_nodeA.other = NULL;
+	m_nodeA.otherIdx = b2_invalidIndex;
 
 	m_nodeB.contact = NULL;
 	m_nodeB.prev = NULL;
 	m_nodeB.next = NULL;
-	m_nodeB.other = NULL;
+	m_nodeB.otherIdx = b2_invalidIndex;
 
 	m_toiCount = 0;
 
-	m_friction = b2MixFriction(m_fixtureA->m_friction, m_fixtureB->m_friction);
-	m_restitution = b2MixRestitution(m_fixtureA->m_restitution, m_fixtureB->m_restitution);
+	m_friction = b2MixFriction(fixtureA.m_friction, fixtureB.m_friction);
+	m_restitution = b2MixRestitution(fixtureA.m_restitution, fixtureB.m_restitution);
 
 	m_tangentSpeed = 0.0f;
 }

@@ -16,8 +16,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_CONTACT_MANAGER_H
-#define B2_CONTACT_MANAGER_H
+#pragma once
 
 #include <Box2D/Collision/b2BroadPhase.h>
 
@@ -27,6 +26,7 @@ class b2ContactListener;
 class b2BlockAllocator;
 class b2ParticleSystem;
 class b2World;
+struct b2FixtureProxy;
 
 // Delegate of b2World.
 class b2ContactManager
@@ -35,9 +35,6 @@ public:
 	friend class b2ParticleSystem;
 
 	b2ContactManager(b2World& world);
-
-	// Broad-phase callback.
-	void AddPair(void* proxyUserDataA, void* proxyUserDataB);
 
 	void FindNewContacts();
 
@@ -55,5 +52,3 @@ public:
 private:
 	b2World& m_world;
 };
-
-#endif

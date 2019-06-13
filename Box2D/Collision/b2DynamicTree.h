@@ -21,6 +21,8 @@
 
 #include <Box2D/Collision/b2Collision.h>
 #include <Box2D/Common/b2GrowableStack.h>
+#include <Box2D/Dynamics/b2Fixture.h>
+#include <vector>
 
 #define b2_nullNode (-1)
 
@@ -35,7 +37,7 @@ struct b2TreeNode
 	/// Enlarged AABB
 	b2AABB aabb;
 
-	void* userData;
+	b2FixtureProxy* userData;
 
 	union
 	{
@@ -68,7 +70,7 @@ public:
 	~b2DynamicTree();
 
 	/// Create a proxy. Provide a tight fitting AABB and a userData pointer.
-	int32 CreateProxy(const b2AABB& aabb, void* userData);
+	int32 CreateProxy(const b2AABB& aabb, b2FixtureProxy* userData);
 
 	/// Destroy a proxy. This asserts if the id is invalid.
 	void DestroyProxy(int32 proxyId);
@@ -81,15 +83,15 @@ public:
 
 	/// Get proxy user data.
 	/// @return the proxy user data or 0 if the id is invalid.
-	void* GetUserData(int32 proxyId) const;
+	b2FixtureProxy* GetUserData(int32 proxyId) const;
 
 	/// Get the fat AABB for a proxy.
 	const b2AABB& GetFatAABB(int32 proxyId) const;
 
 	/// Query an AABB for overlapping proxies. The callback class
 	/// is called for each proxy that overlaps the supplied AABB.
-	template <typename T>
-	void Query(T* callback, const b2AABB& aabb) const;
+	template <typename F>
+	void Query(const b2AABB& aabb, F& callback) const;
 
 	/// Ray-cast against the proxies in the tree. This relies on the callback
 	/// to perform a exact ray-cast in the case were the proxy contains a shape.
@@ -141,7 +143,7 @@ private:
 
 	int32 m_root;
 
-	b2TreeNode* m_nodes;
+	std::vector<b2TreeNode> m_nodes;
 	int32 m_nodeCount;
 	int32 m_nodeCapacity;
 
@@ -153,48 +155,44 @@ private:
 	int32 m_insertionCount;
 };
 
-inline void* b2DynamicTree::GetUserData(int32 proxyId) const
+inline b2FixtureProxy* b2DynamicTree::GetUserData(int32 proxyId) const
 {
-	b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
 	return m_nodes[proxyId].userData;
 }
 
 inline const b2AABB& b2DynamicTree::GetFatAABB(int32 proxyId) const
 {
-	b2Assert(0 <= proxyId && proxyId < m_nodeCapacity);
 	return m_nodes[proxyId].aabb;
 }
 
-template <typename T>
-inline void b2DynamicTree::Query(T* callback, const b2AABB& aabb) const
+template <typename F>
+inline void b2DynamicTree::Query(const b2AABB& aabb, F& callback) const
 {
-	b2GrowableStack<int32, 256> stack;
-	stack.Push(m_root);
+	//b2GrowableStack<int32, 256> stack;
+	std::vector<int32> stack;
+	stack.reserve(256);
+	stack.push_back(m_root);
 
-	while (stack.GetCount() > 0)
+	while (stack.size() > 0)
 	{
-		int32 nodeId = stack.Pop();
+		int32 nodeId = stack.back();
+		stack.pop_back();
 		if (nodeId == b2_nullNode)
-		{
 			continue;
-		}
 
-		const b2TreeNode* node = m_nodes + nodeId;
+		const b2TreeNode& node = m_nodes[nodeId];
 
-		if (b2TestOverlap(node->aabb, aabb))
+		if (b2TestOverlap(node.aabb, aabb))
 		{
-			if (node->IsLeaf())
+			if (node.IsLeaf())
 			{
-				bool proceed = callback->QueryCallback(nodeId);
-				if (proceed == false)
-				{
+				if (!callback(nodeId))
 					return;
-				}
 			}
 			else
 			{
-				stack.Push(node->child1);
-				stack.Push(node->child2);
+				stack.push_back(node.child1);
+				stack.push_back(node.child2);
 			}
 		}
 	}
@@ -233,28 +231,22 @@ inline void b2DynamicTree::RayCast(T& callback, const b2RayCastInput& input) con
 	{
 		int32 nodeId = stack.Pop();
 		if (nodeId == b2_nullNode)
-		{
 			continue;
-		}
 
-		const b2TreeNode* node = m_nodes + nodeId;
+		const b2TreeNode& node = m_nodes[nodeId];
 
-		if (b2TestOverlap(node->aabb, segmentAABB) == false)
-		{
+		if (b2TestOverlap(node.aabb, segmentAABB) == false)
 			continue;
-		}
 
 		// Separating axis for segment (Gino, p80).
 		// |dot(v, p1 - c)| > dot(|v|, h)
-		b2Vec2 c = node->aabb.GetCenter();
-		b2Vec2 h = node->aabb.GetExtents();
+		b2Vec2 c = node.aabb.GetCenter();
+		b2Vec2 h = node.aabb.GetExtents();
 		float32 separation = b2Abs(b2Dot(v, p1 - c)) - b2Dot(abs_v, h);
 		if (separation > 0.0f)
-		{
 			continue;
-		}
 
-		if (node->IsLeaf())
+		if (node.IsLeaf())
 		{
 			b2RayCastInput subInput;
 			subInput.p1 = input.p1;
@@ -263,11 +255,8 @@ inline void b2DynamicTree::RayCast(T& callback, const b2RayCastInput& input) con
 
 			float32 value = callback.RayCastCallback(subInput, nodeId);
 
-			if (value == 0.0f)
-			{
-				// The client has terminated the ray cast.
+			if (value == 0.0f)	// The client has terminated the ray cast.
 				return;
-			}
 
 			if (value > 0.0f)
 			{
@@ -280,8 +269,8 @@ inline void b2DynamicTree::RayCast(T& callback, const b2RayCastInput& input) con
 		}
 		else
 		{
-			stack.Push(node->child1);
-			stack.Push(node->child2);
+			stack.Push(node.child1);
+			stack.Push(node.child2);
 		}
 	}
 }

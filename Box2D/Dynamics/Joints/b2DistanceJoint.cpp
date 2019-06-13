@@ -38,16 +38,16 @@
 void b2DistanceJointDef::Initialize(Body& b1, Body& b2,
 									const b2Vec2& anchor1, const b2Vec2& anchor2)
 {
-	bodyA = &b1;
-	bodyB = &b2;
-	localAnchorA = bodyA->GetLocalPoint(anchor1);
-	localAnchorB = bodyB->GetLocalPoint(anchor2);
+	bodyAIdx = b1.m_idx;
+	bodyBIdx = b2.m_idx;
+	localAnchorA = b1.GetLocalPoint(anchor1);
+	localAnchorB = b2.GetLocalPoint(anchor2);
 	b2Vec2 d = anchor2 - anchor1;
 	length = d.Length();
 }
 
-b2DistanceJoint::b2DistanceJoint(const b2DistanceJointDef* def)
-: b2Joint(def)
+b2DistanceJoint::b2DistanceJoint(const b2DistanceJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	m_localAnchorA = def->localAnchorA;
 	m_localAnchorB = def->localAnchorB;
@@ -61,14 +61,16 @@ b2DistanceJoint::b2DistanceJoint(const b2DistanceJointDef* def)
 
 void b2DistanceJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexA = m_bodyA->m_islandIndex;
-	m_indexB = m_bodyB->m_islandIndex;
-	m_localCenterA = m_bodyA->m_sweep.localCenter;
-	m_localCenterB = m_bodyB->m_sweep.localCenter;
-	m_invMassA = m_bodyA->m_invMass;
-	m_invMassB = m_bodyB->m_invMass;
-	m_invIA = m_bodyA->m_invI;
-	m_invIB = m_bodyB->m_invI;
+	Body& bodyA = GetBodyA();
+	Body& bodyB = GetBodyB();
+	m_indexA = bodyA.m_islandIndex;
+	m_indexB = bodyB.m_islandIndex;
+	m_localCenterA = bodyA.m_sweep.localCenter;
+	m_localCenterB = bodyB.m_sweep.localCenter;
+	m_invMassA = bodyA.m_invMass;
+	m_invMassB = bodyB.m_invMass;
+	m_invIA = bodyA.m_invI;
+	m_invIB = bodyB.m_invI;
 
 	b2Vec2 cA = data.positions[m_indexA].c;
 	float32 aA = data.positions[m_indexA].a;
@@ -89,13 +91,9 @@ void b2DistanceJoint::InitVelocityConstraints(const b2SolverData& data)
 	// Handle singularity.
 	float32 length = m_u.Length();
 	if (length > b2_linearSlop)
-	{
 		m_u *= 1.0f / length;
-	}
 	else
-	{
 		m_u.Set(0.0f, 0.0f);
-	}
 
 	float32 crAu = b2Cross(m_rA, m_u);
 	float32 crBu = b2Cross(m_rB, m_u);
@@ -144,9 +142,7 @@ void b2DistanceJoint::InitVelocityConstraints(const b2SolverData& data)
 		wB += m_invIB * b2Cross(m_rB, P);
 	}
 	else
-	{
 		m_impulse = 0.0f;
-	}
 
 	data.velocities[m_indexA].v = vA;
 	data.velocities[m_indexA].w = wA;
@@ -222,12 +218,12 @@ bool b2DistanceJoint::SolvePositionConstraints(const b2SolverData& data)
 
 b2Vec2 b2DistanceJoint::GetAnchorA() const
 {
-	return m_bodyA->GetWorldPoint(m_localAnchorA);
+	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
 b2Vec2 b2DistanceJoint::GetAnchorB() const
 {
-	return m_bodyB->GetWorldPoint(m_localAnchorB);
+	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
 b2Vec2 b2DistanceJoint::GetReactionForce(float32 inv_dt) const
@@ -244,8 +240,8 @@ float32 b2DistanceJoint::GetReactionTorque(float32 inv_dt) const
 
 void b2DistanceJoint::Dump()
 {
-	int32 indexA = m_bodyA->m_islandIndex;
-	int32 indexB = m_bodyB->m_islandIndex;
+	int32 indexA = GetBodyA().m_islandIndex;
+	int32 indexB = GetBodyB().m_islandIndex;
 
 	b2Log("  b2DistanceJointDef jd;\n");
 	b2Log("  jd.bodyA = bodies[%d];\n", indexA);

@@ -78,7 +78,7 @@ public:
 protected:
 
 	friend class b2Joint;
-	b2GearJoint(const b2GearJointDef* data);
+	b2GearJoint(const b2GearJointDef* data, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);
@@ -92,8 +92,8 @@ protected:
 
 	// Body A is connected to body C
 	// Body B is connected to body D
-	Body* m_bodyC;
-	Body* m_bodyD;
+	int32 m_bodyCIdx;
+	int32 m_bodyDIdx;
 
 	// Solver shared
 	b2Vec2 m_localAnchorA;

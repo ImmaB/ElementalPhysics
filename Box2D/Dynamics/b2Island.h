@@ -50,11 +50,11 @@ public:
 
 	void SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiIndexB);
 
-	void Add(Body* body)
+	void Add(Body& body)
 	{
 		b2Assert(m_bodyCount < m_bodyCapacity);
-		body->m_islandIndex = m_bodyCount;
-		m_bodies[m_bodyCount] = body;
+		body.m_islandIndex = m_bodyCount;
+		m_bodyIdxs[m_bodyCount] = body.m_idx;
 		++m_bodyCount;
 	}
 
@@ -75,7 +75,7 @@ public:
 	b2StackAllocator* m_allocator;
 	b2ContactListener* m_listener;
 
-	Body** m_bodies;
+	int32* m_bodyIdxs;
 	b2Contact** m_contacts;
 	b2Joint** m_joints;
 

@@ -34,14 +34,14 @@
 
 void b2FrictionJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor)
 {
-	bodyA = &bA;
-	bodyB = &bB;
-	localAnchorA = bodyA->GetLocalPoint(anchor);
-	localAnchorB = bodyB->GetLocalPoint(anchor);
+	bodyAIdx = bA.m_idx;
+	bodyBIdx = bB.m_idx;
+	localAnchorA = bA.GetLocalPoint(anchor);
+	localAnchorB = bB.GetLocalPoint(anchor);
 }
 
-b2FrictionJoint::b2FrictionJoint(const b2FrictionJointDef* def)
-: b2Joint(def)
+b2FrictionJoint::b2FrictionJoint(const b2FrictionJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	m_localAnchorA = def->localAnchorA;
 	m_localAnchorB = def->localAnchorB;
@@ -55,14 +55,16 @@ b2FrictionJoint::b2FrictionJoint(const b2FrictionJointDef* def)
 
 void b2FrictionJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexA = m_bodyA->m_islandIndex;
-	m_indexB = m_bodyB->m_islandIndex;
-	m_localCenterA = m_bodyA->m_sweep.localCenter;
-	m_localCenterB = m_bodyB->m_sweep.localCenter;
-	m_invMassA = m_bodyA->m_invMass;
-	m_invMassB = m_bodyB->m_invMass;
-	m_invIA = m_bodyA->m_invI;
-	m_invIB = m_bodyB->m_invI;
+	Body& bodyA = GetBodyA();
+	Body& bodyB = GetBodyB();
+	m_indexA = bodyA.m_islandIndex;
+	m_indexB = bodyA.m_islandIndex;
+	m_localCenterA = bodyA.m_sweep.localCenter;
+	m_localCenterB = bodyA.m_sweep.localCenter;
+	m_invMassA = bodyA.m_invMass;
+	m_invMassB = bodyA.m_invMass;
+	m_invIA = bodyA.m_invI;
+	m_invIB = bodyA.m_invI;
 
 	float32 aA = data.positions[m_indexA].a;
 	b2Vec2 vA = data.velocities[m_indexA].v;
@@ -194,12 +196,12 @@ bool b2FrictionJoint::SolvePositionConstraints(const b2SolverData& data)
 
 b2Vec2 b2FrictionJoint::GetAnchorA() const
 {
-	return m_bodyA->GetWorldPoint(m_localAnchorA);
+	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
 b2Vec2 b2FrictionJoint::GetAnchorB() const
 {
-	return m_bodyB->GetWorldPoint(m_localAnchorB);
+	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
 b2Vec2 b2FrictionJoint::GetReactionForce(float32 inv_dt) const
@@ -236,8 +238,8 @@ float32 b2FrictionJoint::GetMaxTorque() const
 
 void b2FrictionJoint::Dump()
 {
-	int32 indexA = m_bodyA->m_islandIndex;
-	int32 indexB = m_bodyB->m_islandIndex;
+	int32 indexA = GetBodyA().m_islandIndex;
+	int32 indexB = GetBodyB().m_islandIndex;
 
 	b2Log("  b2FrictionJointDef jd;\n");
 	b2Log("  jd.bodyA = bodies[%d];\n", indexA);

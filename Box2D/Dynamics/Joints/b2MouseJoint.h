@@ -98,7 +98,7 @@ public:
 protected:
 	friend class b2Joint;
 
-	b2MouseJoint(const b2MouseJointDef* def);
+	b2MouseJoint(const b2MouseJointDef* def, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);

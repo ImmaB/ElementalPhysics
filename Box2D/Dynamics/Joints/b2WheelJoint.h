@@ -133,7 +133,7 @@ public:
 protected:
 
 	friend class b2Joint;
-	b2WheelJoint(const b2WheelJointDef* def);
+	b2WheelJoint(const b2WheelJointDef* def, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);

@@ -58,12 +58,12 @@ b2ContactSolver::b2ContactSolver(b2ContactSolverDef& def, b2World& world) : m_wo
 	{
 		b2Contact* contact = m_contacts[i];
 
-		Fixture* fixtureA = contact->m_fixtureA;
-		Fixture* fixtureB = contact->m_fixtureB;
-		float32 radiusA = m_world.m_shapeBuffer[fixtureA->m_shapeIdx].m_radius;
-		float32 radiusB = m_world.m_shapeBuffer[fixtureB->m_shapeIdx].m_radius;
-		Body& bodyA = m_world.m_bodyBuffer[fixtureA->m_bodyIdx];
-		Body& bodyB = m_world.m_bodyBuffer[fixtureB->m_bodyIdx];
+		const Fixture& fixtureA = m_world.m_fixtureBuffer[contact->m_fixtureIdxA];
+		const Fixture& fixtureB = m_world.m_fixtureBuffer[contact->m_fixtureIdxB];
+		const float32 radiusA = m_world.m_shapeBuffer[fixtureA.m_shapeIdx].m_radius;
+		const float32 radiusB = m_world.m_shapeBuffer[fixtureB.m_shapeIdx].m_radius;
+		const Body& bodyA = m_world.m_bodyBuffer[fixtureA.m_bodyIdx];
+		const Body& bodyB = m_world.m_bodyBuffer[fixtureB.m_bodyIdx];
 		b2Manifold* manifold = contact->GetManifold();
 
 		int32 pointCount = manifold->pointCount;

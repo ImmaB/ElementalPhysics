@@ -26,11 +26,11 @@ class b2BlockAllocator;
 class b2EdgeAndCircleContact : public b2Contact
 {
 public:
-	static b2Contact* Create(	Fixture& fixtureA, int32 indexA,
-								Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator);
+	static b2Contact* Create(const Fixture& fixtureA, int32 indexA,
+							 const Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator);
 	static void Destroy(b2Contact& contact, b2BlockAllocator* allocator);
 
-	b2EdgeAndCircleContact(Fixture& fixtureA, Fixture& fixtureB);
+	b2EdgeAndCircleContact(const Fixture& fixtureA, const Fixture& fixtureB);
 	~b2EdgeAndCircleContact() {}
 };
 

@@ -470,8 +470,8 @@ struct b2Sweep
 {
 	/// Get the interpolated transform at a specific time.
 	/// @param beta is a factor in [0,1], where 0 indicates alpha0.
-	void GetTransform(b2Transform* xfb, float32 beta) const;
-	void GetTransform(b2Transform* xfb, float32 beta) const restrict(amp);
+	void GetTransform(b2Transform& xfb, float32 beta) const;
+	void GetTransform(b2Transform& xfb, float32 beta) const restrict(amp);
 
 	/// Advance the sweep forward, yielding a new initial state.
 	/// @param alpha the new initial time.
@@ -696,19 +696,19 @@ inline uint32 b2NextPowerOfTwo(uint32 x) restrict(amp) { x |= (x >> 1); x |= (x 
 inline bool b2IsPowerOfTwo(uint32 x) { bool result = x > 0 && (x & (x - 1)) == 0; return result; }
 inline bool b2IsPowerOfTwo(uint32 x) restrict(amp) { bool result = x > 0 && (x & (x - 1)) == 0; return result; }
 
-inline void b2Sweep::GetTransform(b2Transform * xf, float32 beta) const
+inline void b2Sweep::GetTransform(b2Transform& xf, float32 beta) const
 {
-	xf->p = (1.0f - beta) * c0 + beta * c;
+	xf.p = (1.0f - beta) * c0 + beta * c;
 	float32 angle = (1.0f - beta) * a0 + beta * a;
-	xf->q.Set(angle);
-	xf->p -= b2Mul(xf->q, localCenter);
+	xf.q.Set(angle);
+	xf.p -= b2Mul(xf.q, localCenter);
 }
-inline void b2Sweep::GetTransform(b2Transform * xf, float32 beta) const restrict(amp)
+inline void b2Sweep::GetTransform(b2Transform& xf, float32 beta) const restrict(amp)
 {
-	xf->p = (1.0f - beta) * c0 + beta * c;
+	xf.p = (1.0f - beta) * c0 + beta * c;
 	float32 angle = (1.0f - beta) * a0 + beta * a;
-	xf->q.Set(angle);
-	xf->p -= b2Mul(xf->q, localCenter);
+	xf.q.Set(angle);
+	xf.p -= b2Mul(xf.q, localCenter);
 }
 
 inline void b2Sweep::Advance(float32 alpha)

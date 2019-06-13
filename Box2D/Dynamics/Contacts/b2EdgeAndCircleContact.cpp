@@ -22,7 +22,7 @@
 
 #include <new>
 
-b2Contact* b2EdgeAndCircleContact::Create(Fixture& fixtureA, int32, Fixture& fixtureB, int32, b2BlockAllocator* allocator)
+b2Contact* b2EdgeAndCircleContact::Create(const Fixture& fixtureA, int32, const Fixture& fixtureB, int32, b2BlockAllocator* allocator)
 {
 	void* mem = allocator->Allocate(sizeof(b2EdgeAndCircleContact));
 	return new (mem) b2EdgeAndCircleContact(fixtureA, fixtureB);
@@ -34,7 +34,7 @@ void b2EdgeAndCircleContact::Destroy(b2Contact& contact, b2BlockAllocator* alloc
 	allocator->Free(&contact, sizeof(b2EdgeAndCircleContact));
 }
 
-b2EdgeAndCircleContact::b2EdgeAndCircleContact(Fixture& fixtureA, Fixture& fixtureB)
+b2EdgeAndCircleContact::b2EdgeAndCircleContact(const Fixture& fixtureA, const Fixture& fixtureB)
 : b2Contact(fixtureA, 0, fixtureB, 0)
 {
 	b2Assert(m_fixtureA.GetType() == b2Shape::e_edge);

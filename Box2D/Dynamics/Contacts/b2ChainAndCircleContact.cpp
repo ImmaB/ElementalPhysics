@@ -24,7 +24,7 @@
 
 #include <new>
 
-b2Contact* b2ChainAndCircleContact::Create(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator)
+b2Contact* b2ChainAndCircleContact::Create(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB, b2BlockAllocator* allocator)
 {
 	void* mem = allocator->Allocate(sizeof(b2ChainAndCircleContact));
 	return new (mem) b2ChainAndCircleContact(fixtureA, indexA, fixtureB, indexB);
@@ -36,7 +36,7 @@ void b2ChainAndCircleContact::Destroy(b2Contact& contact, b2BlockAllocator* allo
 	allocator->Free(&contact, sizeof(b2ChainAndCircleContact));
 }
 
-b2ChainAndCircleContact::b2ChainAndCircleContact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB)
+b2ChainAndCircleContact::b2ChainAndCircleContact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB)
 : b2Contact(fixtureA, indexA, fixtureB, indexB)
 {
 	b2Assert(m_fixtureA.GetType() == b2Shape::e_chain);

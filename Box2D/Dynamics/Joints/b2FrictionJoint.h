@@ -86,7 +86,7 @@ protected:
 
 	friend class b2Joint;
 
-	b2FrictionJoint(const b2FrictionJointDef* def);
+	b2FrictionJoint(const b2FrictionJointDef* def, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);

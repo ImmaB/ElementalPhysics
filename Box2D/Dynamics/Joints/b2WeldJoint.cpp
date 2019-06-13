@@ -36,15 +36,15 @@
 
 void b2WeldJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor)
 {
-	bodyA = &bA;
-	bodyB = &bB;
-	localAnchorA = bodyA->GetLocalPoint(anchor);
-	localAnchorB = bodyB->GetLocalPoint(anchor);
-	referenceAngle = bodyB->GetAngle() - bodyA->GetAngle();
+	bodyAIdx = bA.m_idx;
+	bodyBIdx = bB.m_idx;
+	localAnchorA = bA.GetLocalPoint(anchor);
+	localAnchorB = bB.GetLocalPoint(anchor);
+	referenceAngle = bB.GetAngle() - bA.GetAngle();
 }
 
-b2WeldJoint::b2WeldJoint(const b2WeldJointDef* def)
-: b2Joint(def)
+b2WeldJoint::b2WeldJoint(const b2WeldJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	m_localAnchorA = def->localAnchorA;
 	m_localAnchorB = def->localAnchorB;
@@ -57,14 +57,16 @@ b2WeldJoint::b2WeldJoint(const b2WeldJointDef* def)
 
 void b2WeldJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexA = m_bodyA->m_islandIndex;
-	m_indexB = m_bodyB->m_islandIndex;
-	m_localCenterA = m_bodyA->m_sweep.localCenter;
-	m_localCenterB = m_bodyB->m_sweep.localCenter;
-	m_invMassA = m_bodyA->m_invMass;
-	m_invMassB = m_bodyB->m_invMass;
-	m_invIA = m_bodyA->m_invI;
-	m_invIB = m_bodyB->m_invI;
+	Body& bodyA = GetBodyA();
+	Body& bodyB = GetBodyB();
+	m_indexA = bodyA.m_islandIndex;
+	m_indexB = bodyB.m_islandIndex;
+	m_localCenterA = bodyA.m_sweep.localCenter;
+	m_localCenterB = bodyB.m_sweep.localCenter;
+	m_invMassA = bodyA.m_invMass;
+	m_invMassB = bodyB.m_invMass;
+	m_invIA = bodyA.m_invI;
+	m_invIB = bodyB.m_invI;
 
 	float32 aA = data.positions[m_indexA].a;
 	b2Vec2 vA = data.velocities[m_indexA].v;
@@ -291,12 +293,12 @@ bool b2WeldJoint::SolvePositionConstraints(const b2SolverData& data)
 
 b2Vec2 b2WeldJoint::GetAnchorA() const
 {
-	return m_bodyA->GetWorldPoint(m_localAnchorA);
+	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
 b2Vec2 b2WeldJoint::GetAnchorB() const
 {
-	return m_bodyB->GetWorldPoint(m_localAnchorB);
+	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
 b2Vec2 b2WeldJoint::GetReactionForce(float32 inv_dt) const
@@ -312,8 +314,8 @@ float32 b2WeldJoint::GetReactionTorque(float32 inv_dt) const
 
 void b2WeldJoint::Dump()
 {
-	int32 indexA = m_bodyA->m_islandIndex;
-	int32 indexB = m_bodyB->m_islandIndex;
+	int32 indexA = GetBodyA().m_islandIndex;
+	int32 indexB = GetBodyB().m_islandIndex;
 
 	b2Log("  b2WeldJointDef jd;\n");
 	b2Log("  jd.bodyA = bodies[%d];\n", indexA);

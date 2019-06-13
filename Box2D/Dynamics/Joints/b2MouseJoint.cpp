@@ -28,8 +28,8 @@
 // Identity used:
 // w k % (rx i + ry j) = w * (-ry i + rx j)
 
-b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def)
-: b2Joint(def)
+b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	b2Assert(def->target.IsValid());
 	b2Assert(b2IsValid(def->maxForce) && def->maxForce >= 0.0f);
@@ -37,7 +37,7 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def)
 	b2Assert(b2IsValid(def->dampingRatio) && def->dampingRatio >= 0.0f);
 
 	m_targetA = def->target;
-	m_localAnchorB = b2MulT(m_bodyB->m_xf, m_targetA);
+	m_localAnchorB = b2MulT(GetBodyB().m_xf, m_targetA);
 
 	m_maxForce = def->maxForce;
 	m_impulse.SetZero();
@@ -51,10 +51,9 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def)
 
 void b2MouseJoint::SetTarget(const b2Vec2& target)
 {
-	if (m_bodyB->IsAwake() == false)
-	{
-		m_bodyB->SetAwake(true);
-	}
+	Body& bodyB = GetBodyB();
+	if (bodyB.IsAwake() == false)
+		bodyB.SetAwake(true);
 	m_targetA = target;
 }
 
@@ -95,10 +94,11 @@ float32 b2MouseJoint::GetDampingRatio() const
 
 void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexB = m_bodyB->m_islandIndex;
-	m_localCenterB = m_bodyB->m_sweep.localCenter;
-	m_invMassB = m_bodyB->m_invMass;
-	m_invIB = m_bodyB->m_invI;
+	Body& bodyB = GetBodyB();
+	m_indexB = bodyB.m_islandIndex;
+	m_localCenterB = bodyB.m_sweep.localCenter;
+	m_invMassB = bodyB.m_invMass;
+	m_invIB = bodyB.m_invI;
 
 	b2Vec2 cB = data.positions[m_indexB].c;
 	float32 aB = data.positions[m_indexB].a;
@@ -107,7 +107,7 @@ void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 
 	b2Rot qB(aB);
 
-	float32 mass = m_bodyB->m_mass;
+	float32 mass = bodyB.m_mass;
 
 	// Frequency
 	float32 omega = 2.0f * b2_pi * m_frequencyHz;
@@ -203,7 +203,7 @@ b2Vec2 b2MouseJoint::GetAnchorA() const
 
 b2Vec2 b2MouseJoint::GetAnchorB() const
 {
-	return m_bodyB->GetWorldPoint(m_localAnchorB);
+	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
 b2Vec2 b2MouseJoint::GetReactionForce(float32 inv_dt) const

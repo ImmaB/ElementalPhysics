@@ -22,7 +22,7 @@
 
 #include <new>
 
-b2Contact* b2EdgeAndPolygonContact::Create(Fixture& fixtureA, int32, Fixture& fixtureB, int32, b2BlockAllocator* allocator)
+b2Contact* b2EdgeAndPolygonContact::Create(const Fixture& fixtureA, int32, const Fixture& fixtureB, int32, b2BlockAllocator* allocator)
 {
 	void* mem = allocator->Allocate(sizeof(b2EdgeAndPolygonContact));
 	return new (mem) b2EdgeAndPolygonContact(fixtureA, fixtureB);
@@ -34,7 +34,7 @@ void b2EdgeAndPolygonContact::Destroy(b2Contact& contact, b2BlockAllocator* allo
 	allocator->Free(&contact, sizeof(b2EdgeAndPolygonContact));
 }
 
-b2EdgeAndPolygonContact::b2EdgeAndPolygonContact(Fixture& fixtureA, Fixture& fixtureB)
+b2EdgeAndPolygonContact::b2EdgeAndPolygonContact(const Fixture& fixtureA, const Fixture& fixtureB)
 : b2Contact(fixtureA, 0, fixtureB, 0)
 {
 	b2Assert(m_fixtureA.GetType() == b2Shape::e_edge);

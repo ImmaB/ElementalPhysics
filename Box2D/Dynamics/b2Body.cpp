@@ -53,9 +53,6 @@ void Body::Set(const b2BodyDef def)
 	m_sweep.a = def.angle;
 	m_sweep.alpha0 = 0.0f;
 
-	m_jointList = NULL;
-	m_contactList = NULL;
-
 	m_linearVelocity = def.linearVelocity;
 	m_angularVelocity = def.angularVelocity;
 
@@ -88,8 +85,6 @@ void Body::Set(const b2BodyDef def)
 	m_heat = def.heat;
 
 	m_health = def.health;
-
-	m_fixtureIdxBuffer = vector<int32>();
 }
 
 void Body::SetMassData(const b2MassData& massData)
@@ -121,19 +116,4 @@ void Body::SetMassData(const b2MassData& massData)
 
 	// Update center of mass velocity.
 	m_linearVelocity += b2Cross(m_angularVelocity, m_sweep.c - oldCenter);
-}
-
-bool Body::ShouldCollide(const Body& other) const
-{
-	// At least one body should be dynamic.
-	if (m_type != b2_dynamicBody && other.m_type != b2_dynamicBody)
-		return false;
-
-	// Does a joint prevent collision?
-	for (b2JointEdge* jn = m_jointList; jn; jn = jn->next)
-		if (jn->other->m_idx == other.m_idx)
-			if (jn->joint->m_collideConnected == false)
-				return false;
-
-	return true;
 }

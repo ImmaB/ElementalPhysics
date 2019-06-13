@@ -34,18 +34,18 @@
 
 void b2MotorJointDef::Initialize(Body& bA, Body& bB)
 {
-	bodyA = &bA;
-	bodyB = &bB;
-	b2Vec2 xB = bodyB->GetPosition();
-	linearOffset = bodyA->GetLocalPoint(xB);
+	bodyAIdx = bA.m_idx;
+	bodyBIdx = bB.m_idx;
+	b2Vec2 xB = bB.GetPosition();
+	linearOffset = bA.GetLocalPoint(xB);
 
-	float32 angleA = bodyA->GetAngle();
-	float32 angleB = bodyB->GetAngle();
+	float32 angleA = bA.GetAngle();
+	float32 angleB = bB.GetAngle();
 	angularOffset = angleB - angleA;
 }
 
-b2MotorJoint::b2MotorJoint(const b2MotorJointDef* def)
-: b2Joint(def)
+b2MotorJoint::b2MotorJoint(const b2MotorJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	m_linearOffset = def->linearOffset;
 	m_angularOffset = def->angularOffset;
@@ -60,14 +60,16 @@ b2MotorJoint::b2MotorJoint(const b2MotorJointDef* def)
 
 void b2MotorJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexA = m_bodyA->m_islandIndex;
-	m_indexB = m_bodyB->m_islandIndex;
-	m_localCenterA = m_bodyA->m_sweep.localCenter;
-	m_localCenterB = m_bodyB->m_sweep.localCenter;
-	m_invMassA = m_bodyA->m_invMass;
-	m_invMassB = m_bodyB->m_invMass;
-	m_invIA = m_bodyA->m_invI;
-	m_invIB = m_bodyB->m_invI;
+	Body& bodyA = GetBodyA();
+	Body& bodyB = GetBodyB();
+	m_indexA = bodyA.m_islandIndex;
+	m_indexB = bodyB.m_islandIndex;
+	m_localCenterA = bodyA.m_sweep.localCenter;
+	m_localCenterB = bodyB.m_sweep.localCenter;
+	m_invMassA = bodyA.m_invMass;
+	m_invMassB = bodyB.m_invMass;
+	m_invIA = bodyA.m_invI;
+	m_invIB = bodyB.m_invI;
 
 	b2Vec2 cA = data.positions[m_indexA].c;
 	float32 aA = data.positions[m_indexA].a;
@@ -205,12 +207,12 @@ bool b2MotorJoint::SolvePositionConstraints(const b2SolverData& data)
 
 b2Vec2 b2MotorJoint::GetAnchorA() const
 {
-	return m_bodyA->GetPosition();
+	return GetBodyA().GetPosition();
 }
 
 b2Vec2 b2MotorJoint::GetAnchorB() const
 {
-	return m_bodyB->GetPosition();
+	return GetBodyB().GetPosition();
 }
 
 b2Vec2 b2MotorJoint::GetReactionForce(float32 inv_dt) const
@@ -260,8 +262,8 @@ void b2MotorJoint::SetLinearOffset(const b2Vec2& linearOffset)
 {
 	if (linearOffset.x != m_linearOffset.x || linearOffset.y != m_linearOffset.y)
 	{
-		m_bodyA->SetAwake(true);
-		m_bodyB->SetAwake(true);
+		GetBodyA().SetAwake(true);
+		GetBodyB().SetAwake(true);
 		m_linearOffset = linearOffset;
 	}
 }
@@ -275,8 +277,8 @@ void b2MotorJoint::SetAngularOffset(float32 angularOffset)
 {
 	if (angularOffset != m_angularOffset)
 	{
-		m_bodyA->SetAwake(true);
-		m_bodyB->SetAwake(true);
+		GetBodyA().SetAwake(true);
+		GetBodyB().SetAwake(true);
 		m_angularOffset = angularOffset;
 	}
 }
@@ -288,8 +290,8 @@ float32 b2MotorJoint::GetAngularOffset() const
 
 void b2MotorJoint::Dump()
 {
-	int32 indexA = m_bodyA->m_islandIndex;
-	int32 indexB = m_bodyB->m_islandIndex;
+	int32 indexA = GetBodyA().m_islandIndex;
+	int32 indexB = GetBodyB().m_islandIndex;
 
 	b2Log("  b2MotorJointDef jd;\n");
 	b2Log("  jd.bodyA = bodies[%d];\n", indexA);

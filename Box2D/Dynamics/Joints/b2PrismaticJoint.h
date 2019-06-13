@@ -150,7 +150,7 @@ public:
 protected:
 	friend class b2Joint;
 	friend class b2GearJoint;
-	b2PrismaticJoint(const b2PrismaticJointDef* def);
+	b2PrismaticJoint(const b2PrismaticJointDef* def, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);

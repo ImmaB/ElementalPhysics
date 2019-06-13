@@ -163,7 +163,7 @@ b2Island::b2Island(
 	m_allocator = allocator;
 	m_listener = listener;
 
-	m_bodies = (Body**)m_allocator->Allocate(bodyCapacity * sizeof(Body*));
+	m_bodyIdxs = (int32*)m_allocator->Allocate(bodyCapacity * sizeof(int32));
 	m_contacts = (b2Contact**)m_allocator->Allocate(contactCapacity	 * sizeof(b2Contact*));
 	m_joints = (b2Joint**)m_allocator->Allocate(jointCapacity * sizeof(b2Joint*));
 
@@ -178,7 +178,7 @@ b2Island::~b2Island()
 	m_allocator->Free(m_velocities);
 	m_allocator->Free(m_joints);
 	m_allocator->Free(m_contacts);
-	m_allocator->Free(m_bodies);
+	m_allocator->Free(m_bodyIdxs);
 }
 
 void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& gravity, const float32& damping, bool allowSleep)
@@ -190,22 +190,22 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 	// Integrate velocities and apply damping. Initialize the body state.
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		Body* b = m_bodies[i];
+		Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
 
-		b2Vec2 c = b->m_sweep.c;
-		float32 a = b->m_sweep.a;
-		b2Vec2 v = b->m_linearVelocity;
-		float32 w = b->m_angularVelocity;
+		b2Vec2 c = b.m_sweep.c;
+		float32 a = b.m_sweep.a;
+		b2Vec2 v = b.m_linearVelocity;
+		float32 w = b.m_angularVelocity;
 
 		// Store positions for continuous collision.
-		b->m_sweep.c0 = b->m_sweep.c;
-		b->m_sweep.a0 = b->m_sweep.a;
+		b.m_sweep.c0 = b.m_sweep.c;
+		b.m_sweep.a0 = b.m_sweep.a;
 
-		if (b->m_type == b2_dynamicBody)
+		if (b.m_type == b2_dynamicBody)
 		{
 			// Integrate velocities.
-			v += h * (b->m_gravityScale * gravity + b->m_invMass * b->m_force);
-			w += h * b->m_invI * b->m_torque;
+			v += h * (b.m_gravityScale * gravity + b.m_invMass * b.m_force);
+			w += h * b.m_invI * b.m_torque;
 
 			// Apply damping.
 			// ODE: dv/dt + c * v = 0
@@ -214,8 +214,8 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 			// v2 = exp(-c * dt) * v1
 			// Pade approximation:
 			// v2 = v1 * 1 / (1 + c * dt)
-			v *= 1.0f / (1.0f + h * b->m_linearDamping);
-			w *= 1.0f / (1.0f + h * b->m_angularDamping);
+			v *= 1.0f / (1.0f + h * b.m_linearDamping);
+			w *= 1.0f / (1.0f + h * b.m_angularDamping);
 
 
 			// General Damping	TODO on Floor?
@@ -336,12 +336,12 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 	// Copy state buffers back to the bodies
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		Body* body = m_bodies[i];
-		body->m_sweep.c = m_positions[i].c;
-		body->m_sweep.a = m_positions[i].a;
-		body->m_linearVelocity = m_velocities[i].v;
-		body->m_angularVelocity = m_velocities[i].w;
-		body->SynchronizeTransform();
+		Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
+		b.m_sweep.c = m_positions[i].c;
+		b.m_sweep.a = m_positions[i].a;
+		b.m_linearVelocity = m_velocities[i].v;
+		b.m_angularVelocity = m_velocities[i].w;
+		b.SynchronizeTransform();
 	}
 
 	profile.solvePosition = timer.GetMilliseconds();
@@ -357,21 +357,21 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 
 		for (int32 i = 0; i < m_bodyCount; ++i)
 		{
-			Body* b = m_bodies[i];
-			if (b->m_type == b2_staticBody)
+			Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
+			if (b.m_type == b2_staticBody)
 				continue;
 
-			if ((b->m_flags & b2_autoSleepBody) == 0 ||
-				b->m_angularVelocity * b->m_angularVelocity > angTolSqr ||
-				b2Dot(b->m_linearVelocity, b->m_linearVelocity) > linTolSqr)
+			if ((b.m_flags & b2_autoSleepBody) == 0 ||
+				b.m_angularVelocity * b.m_angularVelocity > angTolSqr ||
+				b2Dot(b.m_linearVelocity, b.m_linearVelocity) > linTolSqr)
 			{
-				b->m_sleepTime = 0.0f;
+				b.m_sleepTime = 0.0f;
 				minSleepTime = 0.0f;
 			}
 			else
 			{
-				b->m_sleepTime += h;
-				minSleepTime = b2Min(minSleepTime, b->m_sleepTime);
+				b.m_sleepTime += h;
+				minSleepTime = b2Min(minSleepTime, b.m_sleepTime);
 			}
 		}
 
@@ -379,8 +379,8 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 		{
 			for (int32 i = 0; i < m_bodyCount; ++i)
 			{
-				Body* b = m_bodies[i];
-				b->SetAwake(false);
+				Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
+				b.SetAwake(false);
 			}
 		}
 	}
@@ -394,11 +394,11 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 	// Initialize the body state.
 	for (int32 i = 0; i < m_bodyCount; ++i)
 	{
-		Body* b = m_bodies[i];
-		m_positions[i].c = b->m_sweep.c;
-		m_positions[i].a = b->m_sweep.a;
-		m_velocities[i].v = b->m_linearVelocity;
-		m_velocities[i].w = b->m_angularVelocity;
+		Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
+		m_positions[i].c = b.m_sweep.c;
+		m_positions[i].a = b.m_sweep.a;
+		m_velocities[i].v = b.m_linearVelocity;
+		m_velocities[i].w = b.m_angularVelocity;
 	}
 
 	b2ContactSolverDef contactSolverDef;
@@ -454,10 +454,11 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 #endif
 
 	// Leap of faith to new safe state.
-	m_bodies[toiIndexA]->m_sweep.c0 = m_positions[toiIndexA].c;
-	m_bodies[toiIndexA]->m_sweep.a0 = m_positions[toiIndexA].a;
-	m_bodies[toiIndexB]->m_sweep.c0 = m_positions[toiIndexB].c;
-	m_bodies[toiIndexB]->m_sweep.a0 = m_positions[toiIndexB].a;
+	Body& b = m_world.m_bodyBuffer[m_bodyIdxs[toiIndexA]];
+	b.m_sweep.c0 = m_positions[toiIndexA].c;
+	b.m_sweep.a0 = m_positions[toiIndexA].a;
+	b.m_sweep.c0 = m_positions[toiIndexB].c;
+	b.m_sweep.a0 = m_positions[toiIndexB].a;
 
 	// No warm starting is needed for TOI events because warm
 	// starting impulses were applied in the discrete solver.
@@ -507,12 +508,12 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 		m_velocities[i].w = w;
 
 		// Sync bodies
-		Body* body = m_bodies[i];
-		body->m_sweep.c = c;
-		body->m_sweep.a = a;
-		body->m_linearVelocity = v;
-		body->m_angularVelocity = w;
-		body->SynchronizeTransform();
+		Body& body = m_world.m_bodyBuffer[m_bodyIdxs[i]];
+		body.m_sweep.c = c;
+		body.m_sweep.a = a;
+		body.m_linearVelocity = v;
+		body.m_angularVelocity = w;
+		body.SynchronizeTransform();
 	}
 
 	Report(contactSolver.m_velocityConstraints);

@@ -12,7 +12,7 @@
 class b2NewRaycastCallback : public b2RayCastCallback {
 public:
     b2NewRaycastCallback(int32 m, bool shouldQ) : numFixtures(0), numParticles(0), mode(m), shouldQuery(shouldQ) {}
-    virtual float32 ReportFixture(Fixture& fixture, const b2Vec2& point,
+    virtual float32 ReportFixture(const Fixture& fixture, const b2Vec2& point,
                                   const b2Vec2& normal, float32 fraction) {
         ++numFixtures;
         fixturesArray.push_back(point.x);
@@ -155,7 +155,8 @@ int* returnArray;
 #pragma endregion
 
 #pragma region API World
-EXPORT b2World* CreateWorld(b2Vec3 grav, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit) {
+EXPORT b2World* CreateWorld(b2Vec3 grav, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit)
+{
 	pWorld = new b2World(grav, lowerHeightLimit, upperHeightLimit, deleteOutsideLimit);
     return pWorld;
 }
@@ -166,16 +167,16 @@ EXPORT int32 DestroyWorld(b2World* pWorld)
 	return 0;
 }
 
-EXPORT void SetStepParams(b2World* pWorld, float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations) {
-	b2World* world = pWorld;
+EXPORT void SetStepParams(float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations)
+{
 	pWorld->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
 }
-EXPORT void StepPreParticle(b2World* pWorld) {
-	b2World* world = pWorld;
+EXPORT void StepPreParticle()
+{
 	pWorld->StepPreParticle();
 }
-EXPORT void StepPostParticle(b2World* pWorld) {
-	b2World* world = pWorld;
+EXPORT void StepPostParticle()
+{
 	pWorld->StepPostParticle();
 }
 
@@ -188,36 +189,33 @@ EXPORT void SetAllowSleeping(b2World* pWorld, bool flag)
 	pWorld->SetAllowSleeping(flag);
 }
 
-EXPORT float32* GetWorldGravity(b2World* pWorld)
+EXPORT b2Vec3 GetWorldGravity()
 {
-	float32* returnArray = new float[2];
-	returnArray[0] = pWorld->GetGravity().x;
-	returnArray[1] = pWorld->GetGravity().y;
-	return returnArray;
+	return pWorld->GetGravity();
 }
-EXPORT void SetWorldGravity(b2World* pWorld, float32 x, float32 y)
+EXPORT void SetWorldGravity(b2Vec3 gravity)
 {
-	pWorld->SetGravity(b2Vec2(x, y));
+	pWorld->SetGravity(gravity);
 }
-EXPORT void SetWorldDamping(b2World* pWorld, float32 s)
+EXPORT void SetWorldDamping(float32 s)
 {
 	pWorld->SetDamping(s);
 }
 
-EXPORT int32 AddParticleMaterial(void* partSysPtr, uint32 matFlags, uint32 partFlags, float32 density, float32 stability, float32 heatConductivity) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+EXPORT int32 AddParticleMaterial(uint32 matFlags, uint32 partFlags, float32 density, float32 stability, float32 heatConductivity)
+{
 	b2ParticleMaterialDef md;
 	md.matFlags = matFlags;
 	md.partFlags = partFlags;
-	md.mass = density * partSys->GetParticleMass();
+	md.mass = density * pPartSys->GetParticleMass();
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
-	return partSys->CreateParticleMaterial(md);
+	return pPartSys->CreateParticleMaterial(md);
 }
-EXPORT void AddParticleMatChangeMats(b2ParticleSystem* partSysPtr, int32 matIdx,
+EXPORT void AddParticleMatChangeMats(int32 matIdx,
 	float32 colderThan, int32 changeToColdMat, float32 hotterThan, int32 changeToHotMat, float32 ignitionPoint, int32 burnToMat)
 {
-	partSysPtr->PartMatChangeMats(matIdx, colderThan, changeToColdMat, hotterThan, changeToHotMat, ignitionPoint, burnToMat);
+	pPartSys->PartMatChangeMats(matIdx, colderThan, changeToColdMat, hotterThan, changeToHotMat, ignitionPoint, burnToMat);
 }
 
 
@@ -266,34 +264,34 @@ EXPORT void* CreateParticleSystem(bool accelerate, float32 radius, float32 dampi
 	pPartSys->SetHeatLossRatio(heatLossRatio);
 	return pPartSys;
 }
-EXPORT void SetAccelerate(void* partsysPointer, bool acc) {
-	b2ParticleSystem* sys = static_cast<b2ParticleSystem*>(partsysPointer);
-	sys->SetAccelerate(acc);
+EXPORT void SetAccelerate(bool acc)
+{
+	pPartSys->SetAccelerate(acc);
 }
 EXPORT int32 GetParticleIterations(float32 gravity, float32 particleRadius, float32 timeStep) {
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
 }
 
 
-EXPORT void SolveInit(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveInit();
+EXPORT void SolveInit()
+{
+	pPartSys->SolveInit();
 }
-EXPORT void UpdateContacts(void* partSysPtr, int32 iteration) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->UpdateContacts(false);
+EXPORT void UpdateContacts(int32 iteration)
+{
+	pPartSys->UpdateContacts(false);
 }
-EXPORT void SolveIteration(void* partSysPtr, int32 iteration) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIteration(iteration);
+EXPORT void SolveIteration(int32 iteration)
+{
+	pPartSys->SolveIteration(iteration);
 }
-EXPORT void SolveIteration2(void* partSysPtr, int32 iteration) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveIteration2(iteration);
+EXPORT void SolveIteration2(int32 iteration)
+{
+	pPartSys->SolveIteration2(iteration);
 }
-EXPORT void SolveEnd(void* partSysPtr) {
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	partSys->SolveEnd();
+EXPORT void SolveEnd()
+{
+	pPartSys->SolveEnd();
 }
 
 EXPORT void SetStaticPressureIterations(void* systemPointer,int32 iterations)
@@ -329,11 +327,11 @@ EXPORT void DeleteParticleSystem(b2World* pWorld, void* partSysPtr)
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     pWorld->DestroyParticleSystem(partSys);
 }
-EXPORT int32 GetParticleCount(b2ParticleSystem* pPartSys)
+EXPORT int32 GetParticleCount()
 {
     return pPartSys->GetParticleCount();
 }
-EXPORT int32 GetContactCount(b2ParticleSystem* pPartSys)
+EXPORT int32 GetContactCount()
 {
 	return pPartSys->GetContactCount();
 }
@@ -416,7 +414,7 @@ EXPORT void GetAmpPositions(void* partSysPtr, void** dstPtr)
 	partSys->CopyAmpPositions(dst);
 };
 
-EXPORT void GetPartBufPtrs(b2ParticleSystem* pPartSys, int32** matIdxBufPtr, b2Vec3** posBufPtr,
+EXPORT void GetPartBufPtrs(int32** matIdxBufPtr, b2Vec3** posBufPtr,
 	b2Vec3** velBufPtr, float32** weightBufPtr, float32** healthBufPtr, float32** heatBufPtr)
 {
 	*matIdxBufPtr = pPartSys->GetPartMatIdxBuffer();
@@ -513,12 +511,14 @@ EXPORT bool IsPointInShape(int32 shapeIdx, b2Vec3 p, float32 angle)
 EXPORT int32 AddBoxShape(b2Vec2 size, float32 height, b2Vec3 pos, float32 angle)
 {
 	b2PolygonShapeDef sd;
+	sd.type = Shape::e_polygon;
 	sd.SetAsBox(size, pos, angle);
 	return pWorld->CreateShape(sd);
 }
 EXPORT int32 AddCircleShape(float32 radius, float32 height, b2Vec3 pos)
 {
 	b2CircleShapeDef sd;
+	sd.type = Shape::e_circle;
 	sd.p = pos;
 	sd.radius = radius;
 	return pWorld->CreateShape(sd);
@@ -602,20 +602,11 @@ EXPORT void DestroyShape(int32 shapeIdx)
 
 #pragma region Body
 
-EXPORT int32 CreateBody(int32 type, b2Vec3 pos, float32 angle, float32 linearDamping,
+EXPORT int32 CreateBody(b2BodyType type, b2Vec3 pos, float32 angle, float32 linearDamping,
 	float32 angularDamping, int32 materialIdx, float32 heat, float32 health, uint32 flags, float32 gravityScale)
 {
-    b2BodyType bodyType;
-    
-    if (type == 1)
-        bodyType = b2_dynamicBody;
-    else if (type == 2)
-        bodyType = b2_kinematicBody;
-    else
-        bodyType = b2_staticBody;
-    
     b2BodyDef bd;
-    bd.type = bodyType;
+    bd.type = type;
     bd.position = pos;
     bd.angle = angle;
     bd.linearDamping = linearDamping;
@@ -624,11 +615,9 @@ EXPORT int32 CreateBody(int32 type, b2Vec3 pos, float32 angle, float32 linearDam
 	bd.heat = heat;
 	bd.health = health;
 	bd.flags = flags;
-    
 	bd.gravityScale = gravityScale;
 
-    int32 bodyIdx = pWorld->CreateBody(bd);
-    return bodyIdx;
+    return pWorld->CreateBody(bd);
 }
 EXPORT Body* GetBody(int32 idx)
 {
@@ -642,15 +631,6 @@ EXPORT void ApplyForceToCentreOfBody(Body* pBody, float32 impulseX, float32 impu
 EXPORT void SetBodyAwake(Body* pBody, bool isAwake)
 {
 	pBody->SetAwake(isAwake);
-}
-EXPORT void SetBodyType(Body* pBody, int32 type)
-{  
-    if (type == 1)
-		pBody->m_type = b2_dynamicBody;
-    else if (type == 2)
-		pBody->m_type = b2_kinematicBody;
-    else
-		pBody->m_type = b2_staticBody;
 }
 EXPORT bool GetBodyAwake(b2World* pWorld, int32 bodyIdx)
 {
@@ -672,13 +652,6 @@ EXPORT void SetBodyPosition(Body* pBody, float32 x, float32 y)
 }
 EXPORT void SetBodyRotation(Body* pBody, float32 rotation) {
 	pWorld->SetTransform(*pBody, pBody->GetPosition(), rotation);
-}
-EXPORT void SetBodyLinearVelocity(b2World* pWorld, int32 idx, float32 x, float32 y)
-{
-    b2World* world = pWorld;
-	Body& body = pWorld->GetBodyBuffer()[idx];
-    b2Vec2 vel = b2Vec2(x, y);
-	body.SetLinearVelocity(vel);
 }
 
 EXPORT void ApplyAngularImpulseToBody(Body* pBody, float32 impulse, bool wake)
@@ -712,6 +685,12 @@ EXPORT void DeleteBody(int32 idx)
 	pWorld->DestroyBody(idx);
 }
 
+EXPORT void SetBodyVelocity(int32 idx, b2Vec3 vel)
+{
+	pWorld->GetBody(idx).SetLinearVelocity(vel);
+}
+
+
 #pragma endregion
 
 #pragma region Fixture
@@ -720,14 +699,15 @@ EXPORT int32 AddFixture(int32 bodyIdx, int32 shapeIdx, bool isSensor, int32 grou
 {
     b2FixtureDef fd;
 	fd.isSensor = isSensor;
+	fd.bodyIdx = bodyIdx;
     fd.shapeIdx = shapeIdx;
-    int32 idx = pWorld->CreateFixture(bodyIdx, fd);
+    int32 idx = pWorld->CreateFixture(fd);
+	Fixture& fixture = pWorld->GetFixture(idx);
 
 	b2Filter filter = b2Filter();
 	filter.groupIndex = groupIndex;
 	filter.maskBits = maskBits;
 	filter.categoryBits = categoryBits;
-	Fixture& fixture = pWorld->GetFixtureBuffer()[idx];
 	pWorld->SetFilterData(fixture, filter);
 
     return idx;
@@ -748,7 +728,7 @@ EXPORT void SetFixtureFilterData(int32 idx, int32 groupIndex, uint16 categoryBit
     filter.groupIndex = groupIndex;
     filter.maskBits = maskBits;
     filter.categoryBits = categoryBits;
-	Fixture& fixture = pWorld->GetFixtureBuffer()[idx];
+	Fixture& fixture = pWorld->GetFixture(idx);
 	pWorld->SetFilterData(fixture, filter);
 }
 EXPORT uint16 GetFixtureGroupIndex(Fixture* pFixture)
@@ -787,12 +767,12 @@ EXPORT void DeleteFixture(int32 bodyIdx, int32 idx)
 #pragma region Joints
 
 #pragma region DistanceJoints
-EXPORT b2DistanceJoint* CreateDistanceJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 length, bool collideConnected)
+EXPORT b2DistanceJoint* CreateDistanceJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 length, bool collideConnected)
 {
     b2DistanceJoint* dj;
     b2DistanceJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnected;
@@ -827,12 +807,12 @@ EXPORT float32 GetDistanceJointLength(b2DistanceJoint* pJoint)
 #pragma endregion
 
 #pragma region RevoluteJoints
-EXPORT void* CreateRevoluteJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnected)
+EXPORT void* CreateRevoluteJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnected)
 {
     b2RevoluteJoint* rj;
     b2RevoluteJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnected;
@@ -886,12 +866,12 @@ EXPORT float32 GetRevoluteJointMaxMotorTorque(b2RevoluteJoint* pJoint)
 #pragma endregion
 
 #pragma region PrismaticJoints
-EXPORT void* CreatePrismaticJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 axisX, float32 axisY, bool collideConnect)
+EXPORT void* CreatePrismaticJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 axisX, float32 axisY, bool collideConnect)
 {
     b2PrismaticJoint* pj;
     b2PrismaticJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.localAxisA.Set(axisX, axisY);
@@ -954,7 +934,7 @@ EXPORT float32 GetPrismaticJointSpeed(b2PrismaticJoint* pJoint)
 #pragma endregion
 
 #pragma region PulleyJoints
-EXPORT void* CreatePulleyJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 groundAnchorAX,
+EXPORT void* CreatePulleyJoint(int32 bodyAIdx, int32 bodyBIdx, float32 groundAnchorAX,
 	float32 groundAanchorAY, float32 groundAnchorBX, float32 groundAanchorBY, float32 anchorAX, float32 anchorAY, float32 anchorBX,
 	float32 anchorBY, float32 ratio, float32 lengthA, float32 lengthB, bool collideConnect)
 {
@@ -962,8 +942,8 @@ EXPORT void* CreatePulleyJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, floa
 
     b2PulleyJoint* pj;
     b2PulleyJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.groundAnchorA.Set(groundAnchorAX, groundAanchorAY);
     jd.groundAnchorB.Set(groundAnchorBX, groundAanchorBY);
     jd.localAnchorA.Set(anchorAX, anchorAY);
@@ -986,12 +966,12 @@ EXPORT float32 GetPulleyJointLengthB(b2PulleyJoint* pJoint)
 #pragma endregion
 
 #pragma region GearJoints
-EXPORT b2Joint* CreateGearJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB,
+EXPORT b2Joint* CreateGearJoint(int32 bodyAIdx, int32 bodyBIdx,
 	b2Joint* pJointA, bool isARevolute, b2Joint* pJointB, bool isBRevolute, float32 ratio, bool collideConnect)
 {
     b2GearJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.joint1 = pJointA;
     jd.joint2 = pJointB;
     jd.ratio = ratio;
@@ -1009,12 +989,12 @@ EXPORT float32 GetGearJointRatio(b2GearJoint* pJoint)
 #pragma endregion
 
 #pragma region WheelJoints
-EXPORT b2Joint* CreateWheelJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB,
+EXPORT b2Joint* CreateWheelJoint(int32 bodyAIdx, int32 bodyBIdx,
 	float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 axisA, float32 axisB, bool collideConnect)
 {
     b2WheelJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.localAxisA.Set(axisA, axisB);
@@ -1068,11 +1048,11 @@ EXPORT float32 GetWheelJointMaxMotorTorque(b2WheelJoint* pJoint)
 #pragma endregion
 
 #pragma region WeldJoints
-EXPORT b2Joint* CreateWeldJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY)
+EXPORT b2Joint* CreateWeldJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY)
 {
     b2WeldJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     return pWorld->CreateJoint(&jd);
@@ -1096,11 +1076,11 @@ EXPORT void SetWeldJointDampingRatio(b2WeldJoint* pJoint, float32 ratio)
 #pragma endregion
 
 #pragma region FrictionJoints
-EXPORT b2Joint* CreateFrictionJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnect)
+EXPORT b2Joint* CreateFrictionJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX, float32 anchorAY, float32 anchorBX, float32 anchorBY, bool collideConnect)
 {
     b2FrictionJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.collideConnected = collideConnect;
@@ -1125,12 +1105,12 @@ EXPORT void SetFrictionJointMaxTorque(b2FrictionJoint* pJoint, float32 torque)
 #pragma endregion
 
 #pragma region RopeJoints
-EXPORT b2Joint* CreateRopeJoint(b2World* pWorld, Body* pBodyA, Body* pBodyB, float32 anchorAX,
+EXPORT b2Joint* CreateRopeJoint(int32 bodyAIdx, int32 bodyBIdx, float32 anchorAX,
 	float32 anchorAY, float32 anchorBX, float32 anchorBY, float32 maxLength, bool collideConnect)
 {
     b2RopeJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.localAnchorA.Set(anchorAX, anchorAY);
     jd.localAnchorB.Set(anchorBX, anchorBY);
     jd.maxLength = maxLength;
@@ -1148,13 +1128,13 @@ EXPORT void SetRopeJointMaxLength(b2RopeJoint* pJoint, float32 length)
 #pragma endregion
 
 #pragma region MouseJoints
-EXPORT b2Joint* CreateMouseJoint(b2World* pWorld, Body* pBodyA,
-	Body* pBodyB, float32 targetX, float32 targetY, bool collideConnect)
+EXPORT b2Joint* CreateMouseJoint(int32 bodyAIdx,
+	int32 bodyBIdx, float32 targetX, float32 targetY, bool collideConnect)
 {
     b2Vec2 target = b2Vec2(targetX, targetY);
     b2MouseJointDef jd;
-    jd.bodyA = pBodyA;
-    jd.bodyB = pBodyB;
+    jd.bodyAIdx = bodyAIdx;
+    jd.bodyBIdx = bodyBIdx;
     jd.target = target;
     jd.collideConnected = collideConnect;
 	return pWorld->CreateJoint(&jd);
@@ -1191,7 +1171,7 @@ EXPORT void SetMouseJointTarget(b2MouseJoint* pJoint, float32 targetX, float32 t
 #pragma endregion
 
 #pragma region GenericFunctions
-EXPORT void DeleteJoint(b2World* pWorld, b2Joint* pJoint)
+EXPORT void DeleteJoint(b2Joint* pJoint)
 {
     pWorld->DestroyJoint(pJoint);
 }

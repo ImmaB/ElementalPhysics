@@ -169,17 +169,11 @@ struct Body
 	b2Transform m_xf0;		// the previous transform for particle simulation
 	b2Sweep m_sweep;		// the swept motion for CCD
 
-	b2Vec2 m_linearVelocity;
+	b2Vec3 m_linearVelocity;
 	float32 m_angularVelocity;
 
-	b2Vec2 m_force;
+	b2Vec3 m_force;
 	float32 m_torque;
-
-	std::vector<int32> m_fixtureIdxBuffer;
-	std::set<int32> m_freeFixtureIdxs;
-
-	b2JointEdge* m_jointList;
-	b2ContactEdge* m_contactList;
 
 	float32 m_mass, m_invMass;
 
@@ -232,16 +226,12 @@ struct Body
 
 	/// Set the linear velocity of the center of mass.
 	/// @param v the new linear velocity of the center of mass.
-	void SetLinearVelocity(const b2Vec2& v);
+	void SetLinearVelocity(const b2Vec3& v);
 
 	/// Set the angular velocity.
 	/// @param omega the new angular velocity in radians/second.
 	void SetAngularVelocity(float32 omega);
 
-
-	// This is used to prevent connected bodies from colliding.
-	// It may lie, depending on the collideConnected flag.
-	bool ShouldCollide(const Body& other) const;
 
 	void Advance(float32 t);
 
@@ -377,7 +367,7 @@ inline const b2Vec2 Body::GetLocalCenter() const
 	return m_sweep.localCenter;
 }
 
-inline void Body::SetLinearVelocity(const b2Vec2& v)
+inline void Body::SetLinearVelocity(const b2Vec3& v)
 {
 	if (m_type == b2_staticBody)
 		return;

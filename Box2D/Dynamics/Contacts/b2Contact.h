@@ -46,9 +46,9 @@ inline float32 b2MixRestitution(float32 restitution1, float32 restitution2)
 	return restitution1 > restitution2 ? restitution1 : restitution2;
 }
 
-typedef b2Contact* b2ContactCreateFcn(	Fixture& fixtureA, int32 indexA,
-										Fixture& fixtureB, int32 indexB,
-										b2BlockAllocator* allocator);
+typedef b2Contact* b2ContactCreateFcn(const Fixture& fixtureA, int32 indexA,
+									  const Fixture& fixtureB, int32 indexB,
+									  b2BlockAllocator* allocator);
 typedef void b2ContactDestroyFcn(b2Contact& contact, b2BlockAllocator* allocator);
 
 struct b2ContactRegister
@@ -65,7 +65,7 @@ struct b2ContactRegister
 /// nodes, one for each attached body.
 struct b2ContactEdge
 {
-	Body* other;			///< provides quick access to the other body attached.
+	int32 otherIdx;			///< provides quick access to the other body attached.
 	b2Contact* contact;		///< the contact
 	b2ContactEdge* prev;	///< the previous contact edge in the body's contact list
 	b2ContactEdge* next;	///< the next contact edge in the body's contact list
@@ -99,21 +99,15 @@ public:
 	const b2Contact* GetNext() const;
 
 	/// Get fixture A in this contact.
-	Fixture* GetFixtureA();
-	const Fixture* GetFixtureA() const;
+	int32 GetFixtureIdxA();
+	const int32 GetFixtureIdxA() const;
+
+	/// Get fixture B in this contact.
+	int32 GetFixtureIdxB();
+	const int32 GetFixtureIdxB() const;
 
 	/// Get the child primitive index for fixture A.
 	int32 GetChildIndexA() const;
-
-	/// Get fixture B in this contact.
-	Fixture* GetFixtureB();
-	const Fixture* GetFixtureB() const;
-	/*
-	inline int32 GetFixtureIdxA();
-	inline const int32 GetFixtureIdxA() const;
-	inline int32 GetFixtureIdxB();
-	inline const int32 GetFixtureIdxB() const;
-	*/
 
 	/// Get the child primitive index for fixture B.
 	int32 GetChildIndexB() const;
@@ -125,18 +119,12 @@ public:
 	/// Get the friction.
 	float32 GetFriction() const;
 
-	/// Reset the friction mixture to the default value.
-	void ResetFriction();
-
 	/// Override the default restitution mixture. You can call this in b2ContactListener::PreSolve.
 	/// The value persists until you set or reset.
 	void SetRestitution(float32 restitution);
 
 	/// Get the restitution.
 	float32 GetRestitution() const;
-
-	/// Reset the restitution to the default value.
-	void ResetRestitution();
 
 	/// Set the desired tangent speed for a conveyor belt behavior. In meters per second.
 	void SetTangentSpeed(float32 speed);
@@ -181,8 +169,8 @@ protected:
 						Shape::Type typeA, Shape::Type typeB);
 	static void InitializeRegisters();
 
-	b2Contact() : m_fixtureA(NULL), m_fixtureB(NULL) {}
-	b2Contact(Fixture& fixtureA, int32 indexA, Fixture& fixtureB, int32 indexB);
+	b2Contact() : m_fixtureIdxA(b2_invalidIndex), m_fixtureIdxB(b2_invalidIndex) {}
+	b2Contact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB);
 	virtual ~b2Contact() {}
 
 
@@ -199,11 +187,8 @@ protected:
 	b2ContactEdge m_nodeA;
 	b2ContactEdge m_nodeB;
 
-	Fixture* m_fixtureA;
-	Fixture* m_fixtureB;
-
-	//int32 m_fixtureIdxA;
-	//int32 m_fixtureIdxB;
+	int32 m_fixtureIdxA;
+	int32 m_fixtureIdxB;
 
 	int32 m_indexA;
 	int32 m_indexB;
@@ -257,21 +242,6 @@ inline const b2Contact* b2Contact::GetNext() const
 	return m_next;
 }
 
-inline Fixture* b2Contact::GetFixtureA()
-{
-	return m_fixtureA;
-}
-
-inline const Fixture* b2Contact::GetFixtureA() const
-{
-	return m_fixtureA;
-}
-
-inline Fixture* b2Contact::GetFixtureB()
-{
-	return m_fixtureB;
-}
-/*
 inline int32 b2Contact::GetFixtureIdxA()
 {
 	return m_fixtureIdxA;
@@ -280,6 +250,7 @@ inline const int32 b2Contact::GetFixtureIdxA() const
 {
 	return m_fixtureIdxA;
 }
+
 inline int32 b2Contact::GetFixtureIdxB()
 {
 	return m_fixtureIdxB;
@@ -287,16 +258,12 @@ inline int32 b2Contact::GetFixtureIdxB()
 inline const int32 b2Contact::GetFixtureIdxB() const
 {
 	return m_fixtureIdxB;
-}*/
+}
+
 
 inline int32 b2Contact::GetChildIndexA() const
 {
 	return m_indexA;
-}
-
-inline const Fixture* b2Contact::GetFixtureB() const
-{
-	return m_fixtureB;
 }
 
 inline int32 b2Contact::GetChildIndexB() const
@@ -319,11 +286,6 @@ inline float32 b2Contact::GetFriction() const
 	return m_friction;
 }
 
-inline void b2Contact::ResetFriction()
-{
-	m_friction = b2MixFriction(m_fixtureA->m_friction, m_fixtureB->m_friction);
-}
-
 inline void b2Contact::SetRestitution(float32 restitution)
 {
 	m_restitution = restitution;
@@ -332,11 +294,6 @@ inline void b2Contact::SetRestitution(float32 restitution)
 inline float32 b2Contact::GetRestitution() const
 {
 	return m_restitution;
-}
-
-inline void b2Contact::ResetRestitution()
-{
-	m_restitution = b2MixRestitution(m_fixtureA->m_restitution, m_fixtureB->m_restitution);
 }
 
 inline void b2Contact::SetTangentSpeed(float32 speed)

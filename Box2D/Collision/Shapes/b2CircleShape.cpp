@@ -23,6 +23,8 @@
 void b2CircleShape::Set(const b2ShapeDef& shapeDef)
 {
 	b2CircleShapeDef& circDef = (b2CircleShapeDef&)shapeDef;
+	//m_type = Shape::e_circle;
+	m_radius = shapeDef.radius;
 	m_p = circDef.p;
 }
 

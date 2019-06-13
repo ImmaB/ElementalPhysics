@@ -159,7 +159,7 @@ protected:
 	friend class b2Joint;
 	friend class b2GearJoint;
 
-	b2RevoluteJoint(const b2RevoluteJointDef* def);
+	b2RevoluteJoint(const b2RevoluteJointDef* def, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);

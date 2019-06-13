@@ -33,27 +33,36 @@ void b2DistanceProxy::Set(const b2Shape& subShape, int32 index)
 	switch (subShape.m_type)
 	{
 	case Shape::e_circle:
-		m_vertices = &((const b2CircleShape&)subShape).m_p;
-		m_count = 1;
+		{
+			m_vertices = &((const b2CircleShape&)subShape).m_p;
+			m_count = 1;
+		}
 		break;
 	case Shape::e_polygon:
-		m_vertices = ((const b2PolygonShape&)subShape).m_vertices.data();
-		m_count = ((const b2PolygonShape&)subShape).m_count;
+		{
+			const b2PolygonShape& polyShape = (const b2PolygonShape&)subShape;
+			m_vertices = polyShape.m_vertices.data();
+			m_count = polyShape.m_count;
+		}
 		break;
 	case Shape::e_chain:
-		b2Assert(0 <= index && index < chain->m_count);
-
-		m_buffer[0] = ((const b2ChainShape&)subShape).m_vertices[index];
-		if (index + 1 < ((const b2ChainShape&)subShape).m_count)
-			m_buffer[1] = ((const b2ChainShape&)subShape).m_vertices[index + 1];
-		else
-			m_buffer[1] = ((const b2ChainShape&)subShape).m_vertices[0];
-		m_vertices = m_buffer;
-		m_count = 2;
+		{
+			b2Assert(0 <= index && index < chain->m_count);
+			const b2ChainShape& chainShape = (const b2ChainShape&)subShape;
+			m_buffer[0] = chainShape.m_vertices[index];
+			if (index + 1 < chainShape.m_count)
+				m_buffer[1] = chainShape.m_vertices[index + 1];
+			else
+				m_buffer[1] = chainShape.m_vertices[0];
+			m_vertices = m_buffer;
+			m_count = 2;
+		}
 		break;
 	case Shape::e_edge:
-		m_vertices = &((const b2EdgeShape&)subShape).m_vertex1;
-		m_count = 2;
+		{
+			m_vertices = &((const b2EdgeShape&)subShape).m_vertex1;
+			m_count = 2;
+		}
 		break;
 	}
 	m_radius = subShape.m_radius;
@@ -71,22 +80,22 @@ struct b2SimplexVertex
 
 struct b2Simplex
 {
-	void ReadCache(	const b2SimplexCache* cache,
-					const b2DistanceProxy* proxyA, const b2Transform& transformA,
-					const b2DistanceProxy* proxyB, const b2Transform& transformB)
+	void ReadCache(	const b2SimplexCache& cache,
+					const b2DistanceProxy& proxyA, const b2Transform& transformA,
+					const b2DistanceProxy& proxyB, const b2Transform& transformB)
 	{
 		b2Assert(cache->count <= 3);
 		
 		// Copy data from cache.
-		m_count = cache->count;
+		m_count = cache.count;
 		b2SimplexVertex* vertices = &m_v1;
 		for (int32 i = 0; i < m_count; ++i)
 		{
 			b2SimplexVertex* v = vertices + i;
-			v->indexA = cache->indexA[i];
-			v->indexB = cache->indexB[i];
-			b2Vec2 wALocal = proxyA->GetVertex(v->indexA);
-			b2Vec2 wBLocal = proxyB->GetVertex(v->indexB);
+			v->indexA = cache.indexA[i];
+			v->indexB = cache.indexB[i];
+			b2Vec2 wALocal = proxyA.GetVertex(v->indexA);
+			b2Vec2 wBLocal = proxyB.GetVertex(v->indexB);
 			v->wA = b2Mul(transformA, wALocal);
 			v->wB = b2Mul(transformB, wBLocal);
 			v->w = v->wB - v->wA;
@@ -97,7 +106,7 @@ struct b2Simplex
 		// old metric then flush the simplex.
 		if (m_count > 1)
 		{
-			float32 metric1 = cache->metric;
+			float32 metric1 = cache.metric;
 			float32 metric2 = GetMetric();
 			if (metric2 < 0.5f * metric1 || 2.0f * metric1 < metric2 || metric2 < b2_epsilon)
 			{
@@ -112,8 +121,8 @@ struct b2Simplex
 			b2SimplexVertex* v = vertices + 0;
 			v->indexA = 0;
 			v->indexB = 0;
-			b2Vec2 wALocal = proxyA->GetVertex(0);
-			b2Vec2 wBLocal = proxyB->GetVertex(0);
+			b2Vec2 wALocal = proxyA.GetVertex(0);
+			b2Vec2 wBLocal = proxyB.GetVertex(0);
 			v->wA = b2Mul(transformA, wALocal);
 			v->wB = b2Mul(transformB, wBLocal);
 			v->w = v->wB - v->wA;
@@ -122,15 +131,15 @@ struct b2Simplex
 		}
 	}
 
-	void WriteCache(b2SimplexCache* cache) const
+	void WriteCache(b2SimplexCache& cache) const
 	{
-		cache->metric = GetMetric();
-		cache->count = uint16(m_count);
+		cache.metric = GetMetric();
+		cache.count = uint16(m_count);
 		const b2SimplexVertex* vertices = &m_v1;
 		for (int32 i = 0; i < m_count; ++i)
 		{
-			cache->indexA[i] = uint8(vertices[i].indexA);
-			cache->indexB[i] = uint8(vertices[i].indexB);
+			cache.indexA[i] = uint8(vertices[i].indexA);
+			cache.indexB[i] = uint8(vertices[i].indexB);
 		}
 	}
 
@@ -186,7 +195,7 @@ struct b2Simplex
 		}
 	}
 
-	void GetWitnessPoints(b2Vec2* pA, b2Vec2* pB) const
+	void GetWitnessPoints(b2Vec2& pA, b2Vec2& pB) const
 	{
 		switch (m_count)
 		{
@@ -195,18 +204,18 @@ struct b2Simplex
 			break;
 
 		case 1:
-			*pA = m_v1.wA;
-			*pB = m_v1.wB;
+			pA = m_v1.wA;
+			pB = m_v1.wB;
 			break;
 
 		case 2:
-			*pA = m_v1.a * m_v1.wA + m_v2.a * m_v2.wA;
-			*pB = m_v1.a * m_v1.wB + m_v2.a * m_v2.wB;
+			pA = m_v1.a * m_v1.wA + m_v2.a * m_v2.wA;
+			pB = m_v1.a * m_v1.wB + m_v2.a * m_v2.wB;
 			break;
 
 		case 3:
-			*pA = m_v1.a * m_v1.wA + m_v2.a * m_v2.wA + m_v3.a * m_v3.wA;
-			*pB = *pA;
+			pA = m_v1.a * m_v1.wA + m_v2.a * m_v2.wA + m_v3.a * m_v3.wA;
+			pB = pA;
 			break;
 
 		default:
@@ -417,17 +426,17 @@ void b2Simplex::Solve3()
 	m_count = 3;
 }
 
-void b2Distance(b2DistanceOutput* output,
-				b2SimplexCache* cache,
-				const b2DistanceInput* input)
+void b2Distance(b2DistanceOutput& output,
+				b2SimplexCache& cache,
+				const b2DistanceInput& input)
 {
 	++b2_gjkCalls;
 
-	const b2DistanceProxy* proxyA = &input->proxyA;
-	const b2DistanceProxy* proxyB = &input->proxyB;
+	const b2DistanceProxy& proxyA = input.proxyA;
+	const b2DistanceProxy& proxyB = input.proxyB;
 
-	b2Transform transformA = input->transformA;
-	b2Transform transformB = input->transformB;
+	b2Transform transformA = input.transformA;
+	b2Transform transformB = input.transformB;
 
 	// Initialize the simplex.
 	b2Simplex simplex;
@@ -516,11 +525,11 @@ void b2Distance(b2DistanceOutput* output,
 
 		// Compute a tentative new simplex vertex using support points.
 		b2SimplexVertex* vertex = vertices + simplex.m_count;
-		vertex->indexA = proxyA->GetSupport(b2MulT(transformA.q, -d));
-		vertex->wA = b2Mul(transformA, proxyA->GetVertex(vertex->indexA));
+		vertex->indexA = proxyA.GetSupport(b2MulT(transformA.q, -d));
+		vertex->wA = b2Mul(transformA, proxyA.GetVertex(vertex->indexA));
 		b2Vec2 wBLocal;
-		vertex->indexB = proxyB->GetSupport(b2MulT(transformB.q, d));
-		vertex->wB = b2Mul(transformB, proxyB->GetVertex(vertex->indexB));
+		vertex->indexB = proxyB.GetSupport(b2MulT(transformB.q, d));
+		vertex->wB = b2Mul(transformB, proxyB.GetVertex(vertex->indexB));
 		vertex->w = vertex->wB - vertex->wA;
 
 		// Iteration count is equated to the number of support point calls.
@@ -551,37 +560,37 @@ void b2Distance(b2DistanceOutput* output,
 	b2_gjkMaxIters = b2Max(b2_gjkMaxIters, iter);
 
 	// Prepare output.
-	simplex.GetWitnessPoints(&output->pointA, &output->pointB);
-	output->distance = b2Distance(output->pointA, output->pointB);
-	output->iterations = iter;
+	simplex.GetWitnessPoints(output.pointA, output.pointB);
+	output.distance = b2Distance(output.pointA, output.pointB);
+	output.iterations = iter;
 
 	// Cache the simplex.
 	simplex.WriteCache(cache);
 
 	// Apply radii if requested.
-	if (input->useRadii)
+	if (input.useRadii)
 	{
-		float32 rA = proxyA->m_radius;
-		float32 rB = proxyB->m_radius;
+		float32 rA = proxyA.m_radius;
+		float32 rB = proxyB.m_radius;
 
-		if (output->distance > rA + rB && output->distance > b2_epsilon)
+		if (output.distance > rA + rB && output.distance > b2_epsilon)
 		{
 			// Shapes are still no overlapped.
 			// Move the witness points to the outer surface.
-			output->distance -= rA + rB;
-			b2Vec2 normal = output->pointB - output->pointA;
+			output.distance -= rA + rB;
+			b2Vec2 normal = output.pointB - output.pointA;
 			normal.Normalize();
-			output->pointA += rA * normal;
-			output->pointB -= rB * normal;
+			output.pointA += rA * normal;
+			output.pointB -= rB * normal;
 		}
 		else
 		{
 			// Shapes are overlapped when radii are considered.
 			// Move the witness points to the middle.
-			b2Vec2 p = 0.5f * (output->pointA + output->pointB);
-			output->pointA = p;
-			output->pointB = p;
-			output->distance = 0.0f;
+			b2Vec2 p = 0.5f * (output.pointA + output.pointB);
+			output.pointA = p;
+			output.pointB = p;
+			output.distance = 0.0f;
 		}
 	}
 }

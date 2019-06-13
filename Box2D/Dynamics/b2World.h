@@ -17,8 +17,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_WORLD_H
-#define B2_WORLD_H
+#pragma once
 
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Common/b2BlockAllocator.h>
@@ -168,12 +167,14 @@ public:
 	/// @param point2 the ray ending point
 	void RayCast(b2RayCastCallback& callback, const b2Vec2& point1, const b2Vec2& point2) const;
 
-	std::vector<Body> GetBodyBuffer();
-	const std::vector<Body> GetBodyBuffer() const;
-	Body& GetBody(int32 idx);
+	Body& GetBody(const int32 idx);
+	const Body GetBody(const int32 idx) const;
 
-	std::vector<Fixture> GetFixtureBuffer();
-	const std::vector<Fixture> GetFixtureBuffer() const;
+	Body& GetFixtureBody(const int32 fixtureIdx);
+	const Body GetFixtureBody(const int32 fixtureIdx) const;
+
+	Fixture GetFixture(const int32 idx);
+	const Fixture GetFixture(const int32 idx) const;
 	
 	/// Get the world joint list. With the returned joint, use b2Joint::GetNext to get
 	/// the next joint in the world list. A NULL joint indicates the end of the list.
@@ -280,12 +281,23 @@ public:
 	}
 
 	template<typename T>
-	void RemoveFromBuffer(const int32 idx, vector<T>& buffer, set<int32>& freeIdxs) const;
-	template<typename T>
-	T& InsertIntoBuffer(vector<T> buf, set<int32> freeIdxs, int32& outIdx) const;
-	template<typename T>
-	int32 InsertIntoBuffer(T& value, vector<T> buf, set<int32> freeIdxs) const;
+	void RemoveFromBuffer(const int32 idx, vector<T>& buffer, set<int32>& freeIdxs);
+	template<typename T1, typename T2>
+	void RemoveFromBuffers(const int32 idx, vector<T1>& buf1, vector<T2>& buf2, set<int32>& freeIdxs);
+	template<typename T1, typename T2, typename T3, typename T4, typename T5>
+	void RemoveFromBuffers(const int32 idx, vector<T1>& buf1, vector<T2>& buf2, vector<T3>& buf3, vector<T4>& buf4, vector<T5>& buf5, set<int32>& freeIdxs);
 
+	template<typename T>
+	T& InsertIntoBuffer(vector<T>& buf, set<int32>& freeIdxs, int32& outIdx);
+	template<typename T1, typename T2>
+	T1& InsertIntoBuffers(vector<T1>& buf1, vector<T2>& buf2, set<int32>& freeIdxs, int32& outIdx);
+	template<typename T1, typename T2, typename T3, typename T4, typename T5>
+	T1& InsertIntoBuffers(vector<T1>& buf1, vector<T2>& buf2, vector<T3>& buf3, vector<T4>& buf4, vector<T5>& buf5, set<int32>& freeIdxs, int32& outIdx);
+	template<typename T>
+	int32 InsertIntoBuffer(T& value, vector<T>& buf, set<int32>& freeIdxs);
+
+	const b2Shape& GetFixtureSubShape(const int32 fixtureIdx) const;
+	const b2Shape& GetSubShape(const Fixture& f) const;
 	const b2Shape& GetSubShape(const Shape& s) const;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
@@ -372,13 +384,19 @@ private:
 	/// the mass and you later want to reset the mass.
 	void ResetMassData(Body& b);
 
-	b2Shape& InsertSubShapeIntoBuffer(Shape::Type shapeType, int32& outIdx) const;
+	b2Shape& InsertSubShapeIntoBuffer(Shape::Type shapeType, int32& outIdx);
+	void RemoveSubShapeFromBuffer(Shape::Type shapeType, int32 idx);
 
 
 public:
 	vector<Body>			m_bodyBuffer;
+	vector<vector<int32>>	m_bodyFixtureIdxsBuffer;
+	vector<set<int32>>		m_bodyFreeFixtureIdxsBuffer;
+	vector<b2JointEdge*>	m_bodyJointListBuffer;
+	vector<b2ContactEdge*>	m_bodyContactListBuffer;
+
 	vector<Fixture>			m_fixtureBuffer;
-	vector<vector<b2FixtureProxy>> m_fixtureProxiesBuffer;
+	vector<b2FixtureProxy*> m_fixtureProxiesBuffer;
 
 	vector<Shape>			m_shapeBuffer;
 	vector<b2ChainShape>	m_chainShapeBuffer;
@@ -400,15 +418,6 @@ public:
 
 	// Body
 
-	/// Creates a fixture and attach it to this body. Use this function if you need
-	/// to set some fixture parameters, like friction. Otherwise you can create the
-	/// fixture directly from a shape.
-	/// If the density is non-zero, this function automatically updates the mass of the body.
-	/// Contacts are not created until the next time step.
-	/// @param def the fixture definition.
-	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(int32 bodyIdx, b2FixtureDef& def);
-
 	/// Creates a fixture from a shape and attach it to this body.
 	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
 	/// like friction, restitution, user data, or filtering.
@@ -417,6 +426,7 @@ public:
 	/// @param density the shape density (set to zero for static bodies).
 	/// @warning This function is locked during callbacks.
 	int32 CreateFixture(int32 bodyIdx, const int32 shape, float32 density);
+	int32 CreateFixture(b2FixtureDef& def);
 
 	void DestroyShape(int32 shapeIdx);
 
@@ -428,6 +438,7 @@ public:
 	/// @param fixture the fixture to be removed.
 	/// @warning This function is locked during callbacks.
 	void DestroyFixture(int32 bodyIdx, int32 idx);
+	void DestroyFixture(Body& b, int32 idx);
 
 	/// Set the position of the body's origin and rotation.
 	/// Manipulating a body's transform may cause non-physical behavior.
@@ -454,6 +465,11 @@ public:
 	/// Set this body to have fixed rotation. This causes the mass
 	/// to be reset.
 	void SetFixedRotation(Body& b, bool flag);
+
+	/// This is used to prevent connected bodies from colliding.
+	/// It may lie, depending on the collideConnected flag.
+	bool ShouldCollide(const Body& b, const Body& other) const;
+
 
 	// Fixture
 	Shape::Type GetType(const Fixture& f) const;
@@ -516,9 +532,15 @@ public:
 
 	void Update(b2Contact& c);
 
+	/// Reset the friction mixture to the default value.
+	void ResetFriction(b2Contact& c);
+
+	/// Reset the restitution to the default value.
+	void ResetRestitution(b2Contact& c);
+
 	// Collision
 
-	/// Determine if two generic shapes overlap.
+	/// Determine if two generic shapes overlap.S
 	bool b2TestOverlap(const Shape& shapeA, int32 indexA,
 					   const Shape& shapeB, int32 indexB,
 					   const b2Transform& xfA, const b2Transform& xfB);
@@ -534,27 +556,31 @@ inline float32 b2World::GetDamping() const
 	return m_dampingStrength;
 }
 
-inline std::vector<Body> b2World::GetBodyBuffer()
+inline const Body b2World::GetBody(const int32 idx) const
 {
-	return m_bodyBuffer;
-}
-inline const std::vector<Body> b2World::GetBodyBuffer() const
-{
-	return m_bodyBuffer;
+	return m_bodyBuffer[idx];
 }
 inline Body& b2World::GetBody(int32 idx)
 {
 	return m_bodyBuffer[idx];
 }
 
-
-inline std::vector<Fixture> b2World::GetFixtureBuffer()
+inline const Body b2World::GetFixtureBody(const int32 fixtureIdx) const
 {
-	return m_fixtureBuffer;
+	return m_bodyBuffer[m_fixtureBuffer[fixtureIdx].m_bodyIdx];
 }
-inline const std::vector<Fixture> b2World::GetFixtureBuffer() const
+inline Body& b2World::GetFixtureBody(int32 fixtureIdx)
 {
-	return m_fixtureBuffer;
+	return m_bodyBuffer[m_fixtureBuffer[fixtureIdx].m_bodyIdx];
+}
+
+inline Fixture b2World::GetFixture(const int32 idx)
+{
+	return m_fixtureBuffer[idx];
+}
+inline const Fixture b2World::GetFixture(const int32 idx) const
+{
+	return m_fixtureBuffer[idx];
 }
 
 inline b2Joint* b2World::GetJointList()
@@ -656,5 +682,3 @@ inline void b2World::SetGravity(float32 gravityX, float32 gravityY)
 	SetGravity(b2Vec2(gravityX, gravityY));
 }
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-#endif

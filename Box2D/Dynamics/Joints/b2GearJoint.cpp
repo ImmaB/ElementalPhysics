@@ -41,8 +41,8 @@
 // J = [ug cross(r, ug)]
 // K = J * invM * JT = invMass + invI * cross(r, ug)^2
 
-b2GearJoint::b2GearJoint(const b2GearJointDef* def)
-: b2Joint(def)
+b2GearJoint::b2GearJoint(const b2GearJointDef* def, b2World& world)
+: b2Joint(def, world)
 {
 	m_joint1 = def->joint1;
 	m_joint2 = def->joint2;
@@ -57,14 +57,17 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def)
 
 	// TODO_ERIN there might be some problem with the joint edges in b2Joint.
 
-	m_bodyC = m_joint1->GetBodyA();
-	m_bodyA = m_joint1->GetBodyB();
+	m_bodyCIdx = m_joint1->GetBodyAIdx();
+	Body& bodyC = m_joint1->GetBodyA();
+	m_bodyAIdx = m_joint1->GetBodyBIdx();
+	Body& bodyA = m_joint1->GetBodyB();
 
 	// Get geometry of joint1
-	b2Transform xfA = m_bodyA->m_xf;
-	float32 aA = m_bodyA->m_sweep.a;
-	b2Transform xfC = m_bodyC->m_xf;
-	float32 aC = m_bodyC->m_sweep.a;
+	b2Transform xfA = bodyA.m_xf;
+	float32 aA = bodyA.m_sweep.a;
+
+	b2Transform xfC = bodyC.m_xf;
+	float32 aC = bodyC.m_sweep.a;
 
 	if (m_typeA == e_revoluteJoint)
 	{
@@ -89,14 +92,16 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def)
 		coordinateA = b2Dot(pA - pC, m_localAxisC);
 	}
 
-	m_bodyD = m_joint2->GetBodyA();
-	m_bodyB = m_joint2->GetBodyB();
+	m_bodyBIdx = m_joint2->GetBodyBIdx();
+	Body& bodyB = m_joint2->GetBodyB();
+	m_bodyDIdx = m_joint2->GetBodyAIdx();
+	Body& bodyD = m_joint2->GetBodyA();
 
 	// Get geometry of joint2
-	b2Transform xfB = m_bodyB->m_xf;
-	float32 aB = m_bodyB->m_sweep.a;
-	b2Transform xfD = m_bodyD->m_xf;
-	float32 aD = m_bodyD->m_sweep.a;
+	b2Transform xfB = bodyB.m_xf;
+	float32 aB = bodyB.m_sweep.a;
+	b2Transform xfD = bodyD.m_xf;
+	float32 aD = bodyD.m_sweep.a;
 
 	if (m_typeB == e_revoluteJoint)
 	{
@@ -130,22 +135,26 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def)
 
 void b2GearJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	m_indexA = m_bodyA->m_islandIndex;
-	m_indexB = m_bodyB->m_islandIndex;
-	m_indexC = m_bodyC->m_islandIndex;
-	m_indexD = m_bodyD->m_islandIndex;
-	m_lcA = m_bodyA->m_sweep.localCenter;
-	m_lcB = m_bodyB->m_sweep.localCenter;
-	m_lcC = m_bodyC->m_sweep.localCenter;
-	m_lcD = m_bodyD->m_sweep.localCenter;
-	m_mA = m_bodyA->m_invMass;
-	m_mB = m_bodyB->m_invMass;
-	m_mC = m_bodyC->m_invMass;
-	m_mD = m_bodyD->m_invMass;
-	m_iA = m_bodyA->m_invI;
-	m_iB = m_bodyB->m_invI;
-	m_iC = m_bodyC->m_invI;
-	m_iD = m_bodyD->m_invI;
+	Body& bodyA = GetBodyA();
+	Body& bodyB = GetBodyB();
+	Body& bodyC = m_world.m_bodyBuffer[m_bodyCIdx];
+	Body& bodyD = m_world.m_bodyBuffer[m_bodyDIdx];
+	m_indexA = bodyA.m_islandIndex;
+	m_indexB = bodyB.m_islandIndex;
+	m_indexC = bodyC.m_islandIndex;
+	m_indexD = bodyD.m_islandIndex;
+	m_lcA = bodyA.m_sweep.localCenter;
+	m_lcB = bodyB.m_sweep.localCenter;
+	m_lcC = bodyC.m_sweep.localCenter;
+	m_lcD = bodyD.m_sweep.localCenter;
+	m_mA = bodyA.m_invMass;
+	m_mB = bodyB.m_invMass;
+	m_mC = bodyC.m_invMass;
+	m_mD = bodyD.m_invMass;
+	m_iA = bodyA.m_invI;
+	m_iB = bodyB.m_invI;
+	m_iC = bodyC.m_invI;
+	m_iD = bodyD.m_invI;
 
 	float32 aA = data.positions[m_indexA].a;
 	b2Vec2 vA = data.velocities[m_indexA].v;
@@ -369,12 +378,12 @@ bool b2GearJoint::SolvePositionConstraints(const b2SolverData& data)
 
 b2Vec2 b2GearJoint::GetAnchorA() const
 {
-	return m_bodyA->GetWorldPoint(m_localAnchorA);
+	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
 b2Vec2 b2GearJoint::GetAnchorB() const
 {
-	return m_bodyB->GetWorldPoint(m_localAnchorB);
+	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
 b2Vec2 b2GearJoint::GetReactionForce(float32 inv_dt) const
@@ -402,8 +411,8 @@ float32 b2GearJoint::GetRatio() const
 
 void b2GearJoint::Dump()
 {
-	int32 indexA = m_bodyA->m_islandIndex;
-	int32 indexB = m_bodyB->m_islandIndex;
+	int32 indexA = GetBodyA().m_islandIndex;
+	int32 indexB = GetBodyB().m_islandIndex;
 
 	int32 index1 = m_joint1->m_index;
 	int32 index2 = m_joint2->m_index;

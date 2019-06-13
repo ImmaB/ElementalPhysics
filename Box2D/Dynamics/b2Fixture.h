@@ -60,12 +60,15 @@ struct b2FixtureDef
 	/// The constructor sets the default fixture definition values.
 	b2FixtureDef()
 	{
+		bodyIdx = b2_invalidIndex;
 		shapeIdx = b2_invalidIndex;
 		friction = 0.2f;
 		restitution = 0.0f;
 		density = 0.0f;
 		isSensor = false;
 	}
+
+	int32 bodyIdx;
 
 	/// The shape, this must be set. The shape will be cloned, so you
 	/// can create the shape on the stack.
@@ -92,14 +95,12 @@ struct b2FixtureDef
 struct b2FixtureProxy
 {
 	b2AABB aabb;
-	Fixture* fixture;
 	int32 fixtureIdx;
 	int32 childIndex;
 	int32 proxyId;
 
 	b2FixtureProxy()
 	{
-		fixture = nullptr;
 		fixtureIdx = b2_invalidIndex;
 		proxyId = b2_invalidIndex; // b2BroadPhase::e_nullProxy;
 	}
@@ -125,7 +126,7 @@ struct Fixture
 
 	bool m_isSensor;
 
-	void Set(const b2FixtureDef& def, const int32 bodyIdx, const int32 idxInBody);
+	void Set(const b2FixtureDef& def, const int32 idxInBody);
 
 	/// Get the next fixture in the parent body's fixture list.
 	/// @return the next shape.
@@ -136,56 +137,6 @@ struct Fixture
 	/// of the body. You must call b2Body::ResetMassData to update the body's mass.
 	void SetDensity(float32 density);
 };
-
-/// A fixture is used to attach a shape to a body for collision detection. A fixture
-/// inherits its transform from its parent. Fixtures hold additional non-geometric data
-/// such as friction, collision filters, etc.
-/// Fixtures are created via b2Body::CreateFixture.
-/// @warning you cannot reuse fixtures.
-class b2Fixture
-{
-public:
-
-	/// Dump this fixture to the log file.
-	void Dump(int32 bodyIndex);
-
-protected:
-
-	friend class b2Body;
-	friend class b2World;
-	friend class b2Contact;
-	friend class b2ContactManager;
-
-	b2Fixture(b2Body& body) : m_body(body) {};
-
-	// We need separation create/destroy functions from the constructor/destructor because
-	// the destructor cannot access the allocator (no destructor arguments allowed by C++).
-	void Create(b2BlockAllocator* allocator, int32 bodyIdx, const b2FixtureDef* def);
-	void Destroy(b2BlockAllocator* allocator);
-
-	int32 m_idx;
-
-	float32 m_density;
-
-	b2Body& m_body;
-	int32 m_bodyIdx;
-
-	b2Shape* m_shape;
-
-	float32 m_friction;
-	float32 m_restitution;
-
-	b2FixtureProxy* m_proxies;
-	int32 m_proxyCount;
-
-	b2Filter m_filter;
-
-	bool m_isSensor;
-
-	void* m_userData;
-
-};
-
 
 inline void Fixture::SetDensity(float32 density)
 {

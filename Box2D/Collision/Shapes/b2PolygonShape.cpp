@@ -268,6 +268,7 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 void b2PolygonShape::Set(const b2ShapeDef& shapeDef)
 {
 	b2PolygonShapeDef& polyDef = (b2PolygonShapeDef&)shapeDef;
+	//m_type = Shape::e_polygon;
 	m_centroid = polyDef.centroid;
 	m_vertices = polyDef.vertices;
 	m_normals = polyDef.normals;

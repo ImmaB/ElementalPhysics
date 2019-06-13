@@ -115,7 +115,7 @@ public:
 protected:
 
 	friend class b2Joint;
-	b2PulleyJoint(const b2PulleyJointDef* data);
+	b2PulleyJoint(const b2PulleyJointDef* data, b2World& world);
 
 	void InitVelocityConstraints(const b2SolverData& data);
 	void SolveVelocityConstraints(const b2SolverData& data);
