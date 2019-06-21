@@ -71,7 +71,7 @@ private:
 		int32 m_x, m_y, m_i;
 		Generator* m_generator;
 
-		b2VoronoiDiagramTask() {}
+		b2VoronoiDiagramTask(): m_x(0), m_y(0), m_i(0), m_generator(nullptr) {}
 		b2VoronoiDiagramTask(int32 x, int32 y, int32 i, Generator* g)
 		{
 			m_x = x;

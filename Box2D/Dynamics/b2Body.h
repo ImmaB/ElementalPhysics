@@ -219,9 +219,11 @@ struct Body
 
 	/// Get the world position of the center of mass.
 	const b2Vec2 GetWorldCenter() const;
+	const b2Vec2 GetWorldCenter() const restrict(amp);
 
 	/// Get the local position of the center of mass.
 	const b2Vec2 GetLocalCenter() const;
+	const b2Vec2 GetLocalCenter() const restrict(amp);
 
 
 	/// Set the linear velocity of the center of mass.
@@ -252,6 +254,7 @@ struct Body
 	/// @param force the world force vector, usually in Newtons (N).
 	/// @param wake also wake up the body
 	void ApplyForceToCenter(const b2Vec2& force, bool wake);
+	void ApplyImpulseToCenter(const b2Vec2& impulse, bool wake);
 
 	/// Apply a torque. This affects the angular velocity
 	/// without affecting the linear velocity of the center of mass.
@@ -276,6 +279,7 @@ struct Body
 	/// Get the rotational inertia of the body about the local origin.
 	/// @return the rotational inertia, usually in kg-m^2.
 	float32 GetInertia() const;
+	float32 GetInertia() const restrict (amp);
 
 	/// Get the mass data of the body.
 	/// @return a struct containing the mass, inertia and center of the body.
@@ -361,8 +365,16 @@ inline const b2Vec2 Body::GetWorldCenter() const
 {
 	return m_sweep.c;
 }
+inline const b2Vec2 Body::GetWorldCenter() const restrict(amp)
+{
+	return m_sweep.c;
+}
 
 inline const b2Vec2 Body::GetLocalCenter() const
+{
+	return m_sweep.localCenter;
+}
+inline const b2Vec2 Body::GetLocalCenter() const restrict(amp)
 {
 	return m_sweep.localCenter;
 }
@@ -389,6 +401,11 @@ inline float32 Body::GetInertia() const
 {
 	return m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter);
 }
+inline float32 Body::GetInertia() const restrict(amp)
+{
+	return m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter);
+}
+
 
 inline b2MassData Body::GetMassData() const
 {
@@ -518,6 +535,18 @@ inline void Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
 	// Don't accumulate a force if the body is sleeping
 	if (m_flags & b2_awakeBody)
 		m_force += force;
+}
+inline void Body::ApplyImpulseToCenter(const b2Vec2& impulse, bool wake)
+{
+	if (m_type != b2_dynamicBody)
+		return;
+
+	if (wake && (m_flags & b2_awakeBody) == 0)
+		SetAwake(true);
+
+	// Don't accumulate a force if the body is sleeping
+	if (m_flags & b2_awakeBody)
+		m_linearVelocity += m_invMass * impulse;
 }
 
 inline void Body::ApplyTorque(float32 torque, bool wake)

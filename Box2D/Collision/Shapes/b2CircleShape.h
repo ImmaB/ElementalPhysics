@@ -16,13 +16,11 @@
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 */
-
-#ifndef B2_CIRCLE_SHAPE_H
-#define B2_CIRCLE_SHAPE_H
+#pragma once
 
 #include <Box2D/Collision/Shapes/b2Shape.h>
 
-struct b2CircleShapeDef : public b2ShapeDef
+struct b2CircleShapeDef : public b2Shape::Def
 {
 	b2Vec2 p;
 };
@@ -31,7 +29,7 @@ struct b2CircleShapeDef : public b2ShapeDef
 class b2CircleShape : public b2Shape
 {
 public:
-	void Set(const b2ShapeDef& shapeDef);
+	void Set(const b2Shape::Def& shapeDef);
 
 	b2CircleShape();
 
@@ -87,7 +85,7 @@ public:
 
 inline b2CircleShape::b2CircleShape()
 {
-	m_type = Shape::e_circle;
+	m_type = b2Shape::e_circle;
 	m_radius = 0.0f;
 	m_p.SetZero();
 }
@@ -110,5 +108,3 @@ inline const b2Vec2& b2CircleShape::GetVertex(int32 index) const
 	b2Assert(index == 0);
 	return m_p;
 }
-
-#endif

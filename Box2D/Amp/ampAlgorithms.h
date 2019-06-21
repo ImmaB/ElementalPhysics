@@ -5,30 +5,30 @@
 
 
 template <int N>
-inline uint32 getNextMultiple(const uint32 value)
+inline int32 getNextMultiple(const int32 value)
 {
 	return value % N ? value + (N - value % N) : value;
 }
 template <int TileSize>
-inline uint32 getTileCnt(const uint32 value)
+inline int32 getTileCnt(const int32 value)
 {
 	return value % TileSize ? value / TileSize + 1 : value / TileSize;
 }
 
 namespace amp
 {
-	static ampExtent getTilableExtent(const uint32 size)
+	static ampExtent getTilableExtent(const int32 size)
 	{
 		return ampExtent(((size + TILE_SIZE - 1) / TILE_SIZE) * TILE_SIZE);
 	}
-	static ampExtent getTilableExtent(const uint32 size, uint32 & tileCnt)
+	static ampExtent getTilableExtent(const int32 size, int32 & tileCnt)
 	{
 		tileCnt = ((size + TILE_SIZE - 1) / TILE_SIZE);
 		return ampExtent(tileCnt * TILE_SIZE);
 	}
 
 	template<typename T>
-	static void copy(const ampArray<T>& a, std::vector<T>& v, const uint32 size = 0)
+	static void copy(const ampArray<T>& a, std::vector<T>& v, const int32 size = 0)
 	{
 		if (size)
 			Concurrency::copy(a.section(0, size), v.data());
@@ -36,7 +36,7 @@ namespace amp
 			Concurrency::copy(a, v.data());
 	}
 	template<typename T>
-	static void copy(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
+	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 size = 0)
 	{
 		if (size)
 			Concurrency::copy(vec.data(), vec.data() + size, a);
@@ -44,28 +44,28 @@ namespace amp
 			Concurrency::copy(vec.data(), vec.data() + vec.size(), a);
 	}
 	template<typename T>
-	static void copy(const std::vector<T>& vec, ampArray<T>& a, const uint32 start, const uint32 size)
+	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 start, const int32 size)
 	{
 		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
 	}
 	template<typename T>
-	static void copy(const ampArray<T>& a, const uint32 idx, T& dest)
+	static void copy(const ampArray<T>& a, const int32 idx, T& dest)
 	{
 		Concurrency::copy(a.section(idx, 1), &dest);
 	}
 	template<typename T>
-	static void copy(const ampArrayView<T>& a, const uint32 idx, T& dest)
+	static void copy(const ampArrayView<T>& a, const int32 idx, T& dest)
 	{
 		Concurrency::copy(a.section(idx, 1), &dest);
 	}
 	template<typename T>
-	static void copy(const T& elem, ampArray<T>& dest, const uint32 idx)
+	static void copy(const T& elem, ampArray<T>& dest, const int32 idx)
 	{
 		Concurrency::copy(&elem, &elem + 1, dest.section(idx, 1));
 	}
 
 	template<typename T>
-	static ampCopyFuture copyAsync(const ampArray<T>& a, std::vector<T>& v, const uint32 size = 0)
+	static ampCopyFuture copyAsync(const ampArray<T>& a, std::vector<T>& v, const int32 size = 0)
 	{
 		if (size)
 			return Concurrency::copy_async(a.section(0, size), v.data());
@@ -73,7 +73,7 @@ namespace amp
 			return Concurrency::copy_async(a, v.data());
 	}
 	template<typename T>
-	static ampCopyFuture copyAsync(const std::vector<T>& vec, ampArray<T>& a, const uint32 size = 0)
+	static ampCopyFuture copyAsync(const std::vector<T>& vec, ampArray<T>& a, const int32 size = 0)
 	{
 		if (size)
 			return Concurrency::copy_async(vec.data(), vec.data() + size, a);
@@ -81,22 +81,22 @@ namespace amp
 			return Concurrency::copy_async(vec.data(), vec.data() + vec.size(), a);
 	}
 	template<typename T>
-	static ampCopyFuture copyAsync(const ampArray<T>& a, const uint32 idx, T& dest)
+	static ampCopyFuture copyAsync(const ampArray<T>& a, const int32 idx, T& dest)
 	{
 		return Concurrency::copy_async(a.section(idx, 1), &dest);
 	}
 	template<typename T>
-	static ampCopyFuture copyAsync(const ampArrayView<T>& a, const uint32 idx, T& dest)
+	static ampCopyFuture copyAsync(const ampArrayView<T>& a, const int32 idx, T& dest)
 	{
 		return Concurrency::copy_async(a.section(idx, 1), &dest);
 	}
 
 
 	template <typename T>
-	static void fill(ampArray<T>& a, const T& value, const uint32 size = 0)
+	static void fill(ampArray<T>& a, const T& value, const int32 size = 0)
 	{
 		const ampExtent e = size ? ampExtent(size) : a.extent;
-		Concurrency::parallel_for_each(e, [=, &a](ampIndex idx) restrict(amp)
+		Concurrency::parallel_for_each(e, [=, &a](ampIdx idx) restrict(amp)
 		{
 			a[idx] = value;
 		});
@@ -104,7 +104,7 @@ namespace amp
 	template <typename T>
 	static void fill(ampArrayView<T>& av, const T& value)
 	{
-		Concurrency::parallel_for_each(av.extent, [=](ampIndex idx) restrict(amp)
+		Concurrency::parallel_for_each(av.extent, [=](ampIdx idx) restrict(amp)
 		{
 			av[idx] = value;
 		});
@@ -132,13 +132,26 @@ namespace amp
 	}
 
 	template <typename F>
-	static void forEach(const uint32 cnt, const F& function)
+	static void forEach(const int32 cnt, const F& function)
 	{
 		if (!cnt) return;
 		Concurrency::parallel_for_each(ampExtent(cnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
 			if (const int32 i = tIdx.global[0]; i < cnt)
 				function(i);
+		});
+	}
+	template <int T1, int T2, typename F>
+	static void forEach2D(const int32 cnt1, const int32 cnt2, const F& function)
+	{
+		if (!cnt1 || !cnt2) return;
+		Concurrency::parallel_for_each(ampExtent2D(cnt1, cnt2).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
+		{
+			const ampIdx2D idx = tIdx.global;
+			const int32 i1 = idx[0];
+			const int32 i2 = idx[1];
+			if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cnt1 && i2 < cnt2)
+				function(i1, i2);
 		});
 	}
 	template<typename F>
@@ -155,7 +168,7 @@ namespace amp
 		}
 	}
 	template <typename F>
-	static void forEachTiled(const uint32 elemCnt, F& function)
+	static void forEachTiled(const int32 elemCnt, F& function)
 	{
 		if (!elemCnt) return;
 		Concurrency::parallel_for_each(ampExtent(elemCnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
@@ -165,7 +178,7 @@ namespace amp
 		});
 	}
 	template <typename F>
-	static void forEachTiledWithBarrier(const uint32 elemCnt, F& function)
+	static void forEachTiledWithBarrier(const int32 elemCnt, F& function)
 	{
 		if (!elemCnt) return;
 		Concurrency::parallel_for_each(ampExtent(elemCnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
@@ -174,21 +187,21 @@ namespace amp
 		});
 	}
 
-	static uint32 reduceFlags(const ampArray<uint32>& a, const uint32 elemCnt)
+	static uint32 reduceFlags(const ampArray<uint32>& a, const int32 elemCnt)
 	{
 		if (!elemCnt) return 0;
 		ampArrayView<uint32> flagBits(32);
 		fill(flagBits, 0u);
 		Concurrency::parallel_for_each(a.extent.tile<TILE_SIZE>().pad(), [=, &a](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
-			const uint32 gi = tIdx.global[0];
-			const uint32 li = tIdx.local[0];
-			tile_static uint32 lFlagBits[32];
+			const int32 gi = tIdx.global[0];
+			const int32 li = tIdx.local[0];
+			tile_static int32 lFlagBits[32];
 			if (li < 32)
 				lFlagBits[li] = 0;
 			tIdx.barrier.wait_with_tile_static_memory_fence();
 			if (gi < elemCnt)
-				for (uint32 i = 0; i < 32; i++)
+				for (int32 i = 0; i < 32; i++)
 					if (a[gi] & (1 << i))
 						lFlagBits[i] = 1;
 			tIdx.barrier.wait_with_tile_static_memory_fence();
@@ -204,14 +217,14 @@ namespace amp
 		return particleFlags;
 	}
 
-	template<typename F>
+	/*template<typename F>
 	static uint32 reduceOld(const ampArray<uint32>& cnts, const uint32 size, const F& function)
 	{
 		const uint32 sizeMax = cnts.extent[0];
 		ampArray<uint32> cntSums(cnts, m_gpuAccelView);
 		for (uint32 stride = 2, halfStride = 1; stride <= sizeMax; halfStride = stride, stride *= 2)
 		{
-			Concurrency::parallel_for_each(ampExtent(sizeMax / stride), [=, &cntSums](ampIndex idx) restrict(amp)
+			Concurrency::parallel_for_each(ampExtent(sizeMax / stride), [=, &cntSums](ampIdx idx) restrict(amp)
 			{
 				const uint32 i = (idx[0] + 1) * stride - 1;
 				cntSums[i] += cntSums[i - halfStride];
@@ -237,13 +250,13 @@ namespace amp
 		});
 		reducedCntPromise.wait();
 		return reducedCnt;
-	}
+	}*/
 
 
 	namespace _reduce_detail
 	{
 		template<int TileSize>
-		inline uint32 scanTileExclusive(uint32* const tileData, ampTiledIdx<TileSize> tIdx) restrict(amp)
+		inline int32 scanTileExclusive(int32* const tileData, ampTiledIdx<TileSize> tIdx) restrict(amp)
 		{
 			const int li = tIdx.local[0];
 
@@ -262,7 +275,7 @@ namespace amp
 			{
 				if ((li + 1) % (stride * 2) == 0)
 				{
-					const uint32 tmp = tileData[li];
+					const int32 tmp = tileData[li];
 					tileData[li] += tileData[li - stride];
 					tileData[li - stride] = tmp;
 				}
@@ -273,26 +286,26 @@ namespace amp
 	};
 
 	template<typename F>
-	static uint32 reduce(const ampArray<uint32>& cnts, const uint32 elemCnt, const F& function)
+	static int32 reduce(const ampArray<int32>& cnts, const int32 elemCnt, const F& function)
 	{
 		using namespace concurrency;
         const auto computeDomain = ampExtent(elemCnt).tile<TILE_SIZE>().pad();
-		const uint32 tileCnt = computeDomain[0] / TILE_SIZE;
-        ampArray<uint32> tileSums(tileCnt);
-        ampArrayView<uint32> tileSumsView(tileSums);
-		ampArrayView<const uint32> inputView(cnts);
-		ampArrayView<uint32> outputView(elemCnt);
+		const int32 tileCnt = computeDomain[0] / TILE_SIZE;
+        ampArray<int32> tileSums(tileCnt);
+        ampArrayView<int32> tileSumsView(tileSums);
+		ampArrayView<const int32> inputView(cnts);
+		ampArrayView<int32> outputView(elemCnt);
 
         // 1 & 2. Scan all tiles and store results in tile_results.
         parallel_for_each(computeDomain, [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
         {
             const int32 gi = tIdx.global[0];
 			const int32 li = tIdx.local[0];
-            tile_static uint32 tileData[TILE_SIZE];
-			const uint32 origValue = tileData[li] = (gi < elemCnt) ? inputView[gi] : 0;
+            tile_static int32 tileData[TILE_SIZE];
+			const int32 origValue = tileData[li] = (gi < elemCnt) ? inputView[gi] : 0;
             tIdx.barrier.wait_with_tile_static_memory_fence();
 
-            const uint32 val = _reduce_detail::scanTileExclusive<TILE_SIZE>(tileData, tIdx);
+            const int32 val = _reduce_detail::scanTileExclusive<TILE_SIZE>(tileData, tIdx);
             if (li == (TILE_SIZE - 1))
                 tileSumsView[tIdx.tile] = val + origValue;
 
@@ -313,7 +326,7 @@ namespace amp
                 const int32 gi = tIdx.global[0];
                 const int32 li = tIdx.local[0];
 
-                tile_static uint32 tileData[TILE_SIZE];
+                tile_static int32 tileData[TILE_SIZE];
 				tileData[li] = (gi < tileCnt) ? tileSumsView[gi] : 0;
 
                 tIdx.barrier.wait_with_tile_static_memory_fence();
@@ -324,7 +337,7 @@ namespace amp
                 tIdx.barrier.wait_with_tile_static_memory_fence();
             });
         }
-		uint32 lastStart, lastTileStart;
+		int32 lastStart, lastTileStart;
 		ampCopyFuture lastTileStartProm = copyAsync(tileSumsView, tileCnt - 1, lastStart);
 		ampCopyFuture lastStartProm = copyAsync(outputView, elemCnt - 1, lastTileStart);
 
@@ -338,7 +351,7 @@ namespace amp
         });
 		lastTileStartProm.wait();
 		lastStartProm.wait();
-		return lastStart +lastTileStart;
+		return lastStart + lastTileStart;
 	}
 
 	namespace _radix_sort_detail
@@ -412,7 +425,7 @@ namespace amp
 			const uint32 tileCnt = computeDomain.size() / TileSize;
 			Concurrency::parallel_for_each(computeDomain, [=, &intermSums](ampTiledIdx<TileSize> tIdx) restrict(amp)
 			{
-				const bool inbound = ((uint32)tIdx.global[0] < intermArr.extent[0]);
+				const bool inbound = (tIdx.global[0] < intermArr.extent[0]);
 				uint32 num = (inbound) ? getBits(intermArr[tIdx.global[0]].tag, 2, bitoffset) : getBits(0xffffffff, 2, bitoffset);
 				for (uint32 i = 0; i < 4; i++)
 				{
@@ -448,7 +461,7 @@ namespace amp
 			const uint32 tileCnt = computeDomain.size() / TileSize;
 			Concurrency::parallel_for_each(computeDomain, [=, &intermPrefixSums](ampTiledIdx<TileSize> tidx) restrict(amp)
 			{
-				const uint32 gi = tidx.global[0];
+				const int32 gi = tidx.global[0];
 				const bool inbounds = (gi < src.extent[0]);
 				const Proxy element = inbounds ? src[gi] : Proxy(0, 0xffffffff);
 				uint32 num = getBits(element.tag, 2, bitoffset);
@@ -462,7 +475,7 @@ namespace amp
 	}
 	static void radixSort(ampArray<Proxy>& a, const uint32 size)
 	{
-		const uint32 tileCnt = getTileCnt<TILE_SIZE>(size);
+		const int32 tileCnt = getTileCnt<TILE_SIZE>(size);
 		ampArray<Proxy> intermArr(size);
 		ampArray<uint32> intermSums(tileCnt * 4);
 		ampArray<uint32> intermPrefixSums(tileCnt * 4);

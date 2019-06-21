@@ -68,12 +68,14 @@ template <typename T>
 using ampArray2D = Concurrency::array<T, 2>;
 using ampExtent = Concurrency::extent<1>;
 using ampExtent2D = Concurrency::extent<2>;
-using ampIndex = Concurrency::index<1>;
 using ampIdx = Concurrency::index<1>;
+using ampIdx2D = Concurrency::index<2>;
 template <int N>
 using ampTiledExt = Concurrency::tiled_extent<N>;
 template <int N>
 using ampTiledIdx = Concurrency::tiled_index<N>;
+template <int N1, int N2>
+using ampTiledIdx2D = Concurrency::tiled_index<N1, N2>;
 using ampCopyFuture = Concurrency::completion_future;
 using ampAccel = Concurrency::accelerator;
 using ampAccelView = Concurrency::accelerator_view;
@@ -87,8 +89,8 @@ struct Proxy
 
 	Proxy(int32 idx, uint32 tag) : idx(idx), tag(tag) {};
 	Proxy(int32 idx, uint32 tag) restrict(amp) : idx(idx), tag(tag) {};
-	Proxy() restrict(amp) {};
-	Proxy() {};
+	Proxy() restrict(amp) : idx(-1), tag(0) {};
+	Proxy() : idx(-1), tag(0) {};
 
 	friend inline bool operator<(const Proxy& a, const Proxy& b)
 	{

@@ -23,7 +23,7 @@
 #include <Box2D/Common/b2IntrusiveList.h>
 
 struct b2Color;
-class b2ParticleGroup;
+struct b2ParticleGroup;
 
 /// @file
 /// The particle type. Can be combined with the | operator.

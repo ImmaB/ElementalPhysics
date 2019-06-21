@@ -229,7 +229,7 @@ void b2PrismaticJoint::InitVelocityConstraints(const b2SolverData& data)
 		m_impulse.z = 0.0f;
 	}
 
-	if (m_enableMotor == false)
+	if (!m_enableMotor)
 	{
 		m_motorImpulse = 0.0f;
 	}

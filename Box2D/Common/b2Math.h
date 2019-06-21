@@ -84,8 +84,8 @@ inline float32 b2InvSqrt(float32 x) restrict(amp)
 struct b2Vec2
 {
 	/// Default constructor does nothing (for performance).
-	b2Vec2() {}
-	b2Vec2() restrict(amp) {}
+	b2Vec2(): x(0), y(0) {}
+	b2Vec2() restrict(amp) : x(0), y(0) {}
 
 	/// Construct using coordinates
 	b2Vec2(float32 x, float32 y) : x(x), y(y) {}
@@ -183,8 +183,8 @@ inline b2Vec2 operator / (const b2Vec2 & v, float f) restrict(amp) { return b2Ve
 struct b2Vec3
 {
 	/// Default constructor does nothing (for performance).
-	b2Vec3() {}
-	b2Vec3() restrict(amp) {}
+	b2Vec3(): x(0), y(0), z(0) {}
+	b2Vec3() restrict(amp) : x(0), y(0), z(0) {}
 
 	/// Construct using coordinates.
 	b2Vec3(float32 x, float32 y, float32 z) : x(x), y(y), z(z) {}
@@ -265,8 +265,8 @@ struct b2Vec3
 struct b2Vec4
 {
 	/// Default constructor does nothing (for performance).
-	b2Vec4() {}
-	b2Vec4() restrict(amp) {}
+	b2Vec4(): x(0), y(0), z(0), w(0) {}
+	b2Vec4() restrict(amp) : x(0), y(0), z(0), w(0) {}
 
 	/// Construct using coordinates.
 	b2Vec4(float32 x, float32 y, float32 z, float32 w) : x(x), y(y), z(z), w(w) {}
@@ -391,8 +391,8 @@ struct b2Mat33
 /// Rotation
 struct b2Rot
 {
-	b2Rot() {}
-	b2Rot() restrict(amp) {}
+	b2Rot(): s(0), c(0) {}
+	b2Rot() restrict(amp) : s(0), c(0) {}
 
 	/// Initialize from an angle in radians
 	explicit b2Rot(float32 angle) { s = sinf(angle); c = cosf(angle); }

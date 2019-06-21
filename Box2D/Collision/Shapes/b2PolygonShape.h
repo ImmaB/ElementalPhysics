@@ -25,7 +25,7 @@
 
 using polyVec2s = std::array<b2Vec2, b2_maxPolygonVertices>;
 
-struct b2PolygonShapeDef : public b2ShapeDef
+struct b2PolygonShapeDef : public b2Shape::Def
 {
 	b2Vec2 centroid;
 	polyVec2s vertices;
@@ -42,7 +42,12 @@ struct b2PolygonShapeDef : public b2ShapeDef
 class b2PolygonShape : public b2Shape
 {
 public:
-	void Set(const b2ShapeDef& shapeDef);
+	/// Create a convex hull from the given array of local points.
+	/// The count must be in the range [3, b2_maxPolygonVertices].
+	/// @warning the points may be re-ordered, even if they form a convex polygon
+	/// @warning collinear points are handled but not removed. Collinear points
+	/// may lead to poor stacking behavior.
+	void Set(const b2Shape::Def& shapeDef);
 
 	b2PolygonShape();
 
@@ -52,12 +57,6 @@ public:
 	/// @see b2Shape::GetChildCount
 	int32 GetChildCount() const;
 
-	/// Create a convex hull from the given array of local points.
-	/// The count must be in the range [3, b2_maxPolygonVertices].
-	/// @warning the points may be re-ordered, even if they form a convex polygon
-	/// @warning collinear points are handled but not removed. Collinear points
-	/// may lead to poor stacking behavior.
-	void Set(const b2Vec2* points, int32 count);
 
 	/// Build vertices to represent an axis-aligned box centered on the local origin.
 	/// @param hx the half-width.
@@ -119,7 +118,7 @@ public:
 
 inline b2PolygonShape::b2PolygonShape()
 {
-	m_type = Shape::e_polygon;
+	m_type = b2Shape::e_polygon;
 	m_radius = b2_polygonRadius;
 	m_count = 0;
 	m_centroid.SetZero();

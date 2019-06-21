@@ -19,11 +19,12 @@
 #define B2_PARTICLE_GROUP
 
 #include <Box2D/Particle/b2Particle.h>
+#include <Box2D/Collision/Shapes/b2Shape.h>
 
 class b2Shape;
 class b2World;
 class b2ParticleSystem;
-class b2ParticleGroup;
+struct b2ParticleGroup;
 class b2ParticleColor;
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 class b2CircleShape;
@@ -65,6 +66,7 @@ struct b2ParticleGroupDef
 		angularVelocity = 0;
 		color = 0;
 		strength = 1;
+		shapeType = b2Shape::e_typeCount;
 		shapeIdx = b2_invalidIndex;
 		shapeCount = 0;
 		stride = 0;
@@ -98,8 +100,6 @@ struct b2ParticleGroupDef
 	/// The group-construction flags (See #b2ParticleGroupFlag).
 	uint32 groupFlags;
 
-	int32 layer;
-
 	/// The world position of the group.
 	/// Moves the group's shape a distance equal to the value of position.
 	b2Vec3 position;
@@ -122,6 +122,7 @@ struct b2ParticleGroupDef
 	float32 strength;
 
 	/// The shape where particles will be added.
+	b2Shape::Type shapeType;
 	int32 shapeIdx;
 
 	/// The number of shapes.
@@ -224,8 +225,9 @@ struct b2ParticleGroup
 		m_lastIndex = 0;
 		m_groupFlags = 0;
 		m_strength = 1.0f;
-
-		m_timestamp = -1;
+		m_matIdx = b2_invalidIndex;
+		m_collisionGroup = 0;
+		m_timestamp = b2_invalidIndex;
 		m_mass = 0;
 		m_inertia = 0;
 		m_center = b2Vec2_zero;

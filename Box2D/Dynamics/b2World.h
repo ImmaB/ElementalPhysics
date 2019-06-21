@@ -34,7 +34,7 @@ struct b2JointDef;
 struct b2Filter;
 class b2Draw;
 class b2Joint;
-class b2ParticleGroup;
+struct b2ParticleGroup;
 class b2Contact;
 
 /// The world class manages all physics entities, dynamic simulation,
@@ -149,7 +149,16 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param aabb the query box.
 	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
-	void AmpQueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
+	template <typename F>
+	void AmpQueryAABB(const b2AABB& aabb, const F& callback) const
+	{
+		m_contactManager.m_broadPhase.Query(aabb, [=](int32 proxyId) -> bool
+		{
+			b2FixtureProxy* proxy = m_contactManager.m_broadPhase.GetUserData(proxyId);
+			callback(proxy->fixtureIdx);
+			return true;
+		});
+	}
 
 	/// Query the world for all fixtures that potentially overlap the
 	/// provided shape's AABB. Calls QueryAABB internally.
@@ -296,9 +305,9 @@ public:
 	template<typename T>
 	int32 InsertIntoBuffer(T& value, vector<T>& buf, set<int32>& freeIdxs);
 
-	const b2Shape& GetFixtureSubShape(const int32 fixtureIdx) const;
-	const b2Shape& GetSubShape(const Fixture& f) const;
-	const b2Shape& GetSubShape(const Shape& s) const;
+	const b2Shape& GetShape(const int32 fixtureIdx) const;
+	const b2Shape& GetShape(const Fixture& f) const;
+	const b2Shape& GetShape(b2Shape::Type type, int32 idx) const;
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -384,8 +393,8 @@ private:
 	/// the mass and you later want to reset the mass.
 	void ResetMassData(Body& b);
 
-	b2Shape& InsertSubShapeIntoBuffer(Shape::Type shapeType, int32& outIdx);
-	void RemoveSubShapeFromBuffer(Shape::Type shapeType, int32 idx);
+	b2Shape& InsertSubShapeIntoBuffer(b2Shape::Type shapeType, int32& outIdx);
+	void RemoveSubShapeFromBuffer(b2Shape::Type shapeType, int32 idx);
 
 
 public:
@@ -398,7 +407,6 @@ public:
 	vector<Fixture>			m_fixtureBuffer;
 	vector<b2FixtureProxy*> m_fixtureProxiesBuffer;
 
-	vector<Shape>			m_shapeBuffer;
 	vector<b2ChainShape>	m_chainShapeBuffer;
 	vector<b2CircleShape>	m_circleShapeBuffer;
 	vector<b2EdgeShape>		m_edgeShapeBuffer;
@@ -408,7 +416,6 @@ public:
 
 	set<int32> m_freeBodyIdxs;
 	set<int32> m_freeFixtureIdxs;
-	set<int32> m_freeShapeIdxs;
 	set<int32> m_freeChainShapeIdxs;
 	set<int32> m_freeCircleShapeIdxs;
 	set<int32> m_freeEdgeShapeIdxs;
@@ -425,10 +432,10 @@ public:
 	/// @param shape the shape to be cloned.
 	/// @param density the shape density (set to zero for static bodies).
 	/// @warning This function is locked during callbacks.
-	int32 CreateFixture(int32 bodyIdx, const int32 shape, float32 density);
+	int32 CreateFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx, float32 density);
 	int32 CreateFixture(b2FixtureDef& def);
 
-	void DestroyShape(int32 shapeIdx);
+	void DestroyShape(b2Shape::Type type, int32 idx);
 
 	/// Destroy a fixture. This removes the fixture from the broad-phase and
 	/// destroys all contacts associated with this fixture. This will
@@ -468,11 +475,11 @@ public:
 
 	/// This is used to prevent connected bodies from colliding.
 	/// It may lie, depending on the collideConnected flag.
+	bool ShouldBodiesCollide(int32 bodyAIdx, int32 bodyBIdx) const;
 	bool ShouldCollide(const Body& b, const Body& other) const;
 
 
 	// Fixture
-	Shape::Type GetType(const Fixture& f) const;
 
 	/// Test a point for containment in this fixture.
 	/// @param p a point in world coordinates.
@@ -514,7 +521,7 @@ public:
 	void CreateProxies(Fixture& f, b2BroadPhase& broadPhase, const b2Transform& xf);
 	void DestroyProxies(Fixture& f);
 
-	int32 CreateShape(b2ShapeDef& shapeDef);
+	int32 CreateShape(b2Shape::Def& shapeDef);
 
 	void DestroyShape(Fixture& f);
 
@@ -528,7 +535,7 @@ public:
 	void Destroy(b2Contact& c, b2BlockAllocator* allocator);
 
 	/// Evaluate this contact with your own manifold and transforms.
-	void Evaluate(b2Contact& c, b2Manifold& manifold, const b2Transform& xfA, const b2Transform& xfB);
+	void Evaluate(b2Contact& c, const b2Transform& xfA, const b2Transform& xfB);
 
 	void Update(b2Contact& c);
 
@@ -541,8 +548,8 @@ public:
 	// Collision
 
 	/// Determine if two generic shapes overlap.S
-	bool b2TestOverlap(const Shape& shapeA, int32 indexA,
-					   const Shape& shapeB, int32 indexB,
+	bool b2TestOverlap(const Fixture& fixtureA, int32 indexA,
+					   const Fixture& fixtureB, int32 indexB,
 					   const b2Transform& xfA, const b2Transform& xfB);
 };
 
@@ -615,7 +622,7 @@ inline const b2Contact* b2World::GetContactList() const
 
 inline int32 b2World::GetBodyCount() const
 {
-	return m_bodyBuffer.size() - m_freeBodyIdxs.size();
+	return (int32)m_bodyBuffer.size() - (int32)m_freeBodyIdxs.size();
 }
 
 inline int32 b2World::GetJointCount() const

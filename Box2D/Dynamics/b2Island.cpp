@@ -415,9 +415,7 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 	{
 		bool contactsOkay = contactSolver.SolveTOIPositionConstraints(toiIndexA, toiIndexB);
 		if (contactsOkay)
-		{
 			break;
-		}
 	}
 
 #if 0
@@ -454,11 +452,12 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 #endif
 
 	// Leap of faith to new safe state.
-	Body& b = m_world.m_bodyBuffer[m_bodyIdxs[toiIndexA]];
-	b.m_sweep.c0 = m_positions[toiIndexA].c;
-	b.m_sweep.a0 = m_positions[toiIndexA].a;
-	b.m_sweep.c0 = m_positions[toiIndexB].c;
-	b.m_sweep.a0 = m_positions[toiIndexB].a;
+	Body& bA = m_world.m_bodyBuffer[m_bodyIdxs[toiIndexA]];
+	Body& bB = m_world.m_bodyBuffer[m_bodyIdxs[toiIndexB]];
+	bA.m_sweep.c0 = m_positions[toiIndexA].c;
+	bA.m_sweep.a0 = m_positions[toiIndexA].a;
+	bB.m_sweep.c0 = m_positions[toiIndexB].c;
+	bB.m_sweep.a0 = m_positions[toiIndexB].a;
 
 	// No warm starting is needed for TOI events because warm
 	// starting impulses were applied in the discrete solver.
@@ -466,9 +465,7 @@ void b2Island::SolveTOI(const b2TimeStep& subStep, int32 toiIndexA, int32 toiInd
 
 	// Solve velocity constraints.
 	for (int32 i = 0; i < subStep.velocityIterations; ++i)
-	{
 		contactSolver.SolveVelocityConstraints();
-	}
 
 	// Don't store the TOI contact forces for warm starting
 	// because they can be quite large.

@@ -34,22 +34,22 @@
 #include <Box2D/Dynamics/b2Fixture.h>
 #include <Box2D/Dynamics/b2World.h>
 
-b2ContactRegister b2Contact::s_registers[Shape::e_typeCount][Shape::e_typeCount];
+b2ContactRegister b2Contact::s_registers[b2Shape::e_typeCount][b2Shape::e_typeCount];
 bool b2Contact::s_initialized = false;
 
 void b2Contact::InitializeRegisters()
 {
-	AddType(b2CircleContact::Create, b2CircleContact::Destroy, Shape::e_circle, Shape::e_circle);
-	AddType(b2PolygonAndCircleContact::Create, b2PolygonAndCircleContact::Destroy, Shape::e_polygon, Shape::e_circle);
-	AddType(b2PolygonContact::Create, b2PolygonContact::Destroy, Shape::e_polygon, Shape::e_polygon);
-	AddType(b2EdgeAndCircleContact::Create, b2EdgeAndCircleContact::Destroy, Shape::e_edge, Shape::e_circle);
-	AddType(b2EdgeAndPolygonContact::Create, b2EdgeAndPolygonContact::Destroy, Shape::e_edge, Shape::e_polygon);
-	AddType(b2ChainAndCircleContact::Create, b2ChainAndCircleContact::Destroy, Shape::e_chain, Shape::e_circle);
-	AddType(b2ChainAndPolygonContact::Create, b2ChainAndPolygonContact::Destroy, Shape::e_chain, Shape::e_polygon);
+	AddType(b2CircleContact::Create, b2CircleContact::Destroy, b2Shape::e_circle, b2Shape::e_circle);
+	AddType(b2PolygonAndCircleContact::Create, b2PolygonAndCircleContact::Destroy, b2Shape::e_polygon, b2Shape::e_circle);
+	AddType(b2PolygonContact::Create, b2PolygonContact::Destroy, b2Shape::e_polygon, b2Shape::e_polygon);
+	AddType(b2EdgeAndCircleContact::Create, b2EdgeAndCircleContact::Destroy, b2Shape::e_edge, b2Shape::e_circle);
+	AddType(b2EdgeAndPolygonContact::Create, b2EdgeAndPolygonContact::Destroy, b2Shape::e_edge, b2Shape::e_polygon);
+	AddType(b2ChainAndCircleContact::Create, b2ChainAndCircleContact::Destroy, b2Shape::e_chain, b2Shape::e_circle);
+	AddType(b2ChainAndPolygonContact::Create, b2ChainAndPolygonContact::Destroy, b2Shape::e_chain, b2Shape::e_polygon);
 }
 
 void b2Contact::AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* destoryFcn,
-						Shape::Type type1, Shape::Type type2)
+						b2Shape::Type type1, b2Shape::Type type2)
 {
 	b2Assert(0 <= type1 && type1 < b2Shape::e_typeCount);
 	b2Assert(0 <= type2 && type2 < b2Shape::e_typeCount);

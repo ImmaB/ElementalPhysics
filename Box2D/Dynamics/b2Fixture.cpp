@@ -36,6 +36,7 @@ void Fixture::Set(const b2FixtureDef& def, const int32 idxInBody)
 	m_bodyIdx = def.bodyIdx;
 	m_idxInBody = idxInBody;
 
+	m_shapeType = def.shapeType;
 	m_shapeIdx = def.shapeIdx;
 
 	m_filter = def.filter;

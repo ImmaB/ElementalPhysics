@@ -123,7 +123,7 @@ static b2Vec2 ComputeCentroid(const polyVec2s& vs, int32 count)
 		// Triangle vertices.
 		b2Vec2 p1 = pRef;
 		b2Vec2 p2 = vs[i];
-		b2Vec2 p3 = i + 1 < count ? vs[i+1] : vs[0];
+		b2Vec2 p3 = i + 1 < count ? vs[i + 1] : vs[0];
 
 		b2Vec2 e1 = p2 - p1;
 		b2Vec2 e2 = p3 - p1;
@@ -143,23 +143,25 @@ static b2Vec2 ComputeCentroid(const polyVec2s& vs, int32 count)
 	return c;
 }
 
-void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
+void b2PolygonShape::Set(const b2Shape::Def& shapeDef)
 {
-	b2Assert(3 <= count && count <= b2_maxPolygonVertices);
-	if (count < 3)
+	const b2PolygonShapeDef& polyDef = (const b2PolygonShapeDef&)shapeDef;
+
+	b2Assert(3 <= polyDef.count && polyDef.count <= b2_maxPolygonVertices);
+	if (polyDef.count < 3)
 	{
 		SetAsBox(b2Vec2(1.0f, 1.0f));
 		return;
 	}
-	
-	int32 n = b2Min(count, b2_maxPolygonVertices);
+
+	int32 n = b2Min(polyDef.count, b2_maxPolygonVertices);
 
 	// Perform welding and copy vertices into local buffer.
 	b2Vec2 ps[b2_maxPolygonVertices];
 	int32 tempCount = 0;
 	for (int32 i = 0; i < n; ++i)
 	{
-		b2Vec2 v = vertices[i];
+		b2Vec2 v = polyDef.vertices[i];
 
 		bool unique = true;
 		for (int32 j = 0; j < tempCount; ++j)
@@ -172,9 +174,7 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 		}
 
 		if (unique)
-		{
 			ps[tempCount++] = v;
-		}
 	}
 
 	n = tempCount;
@@ -223,33 +223,25 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 			b2Vec2 v = ps[j] - ps[hull[m]];
 			float32 c = b2Cross(r, v);
 			if (c < 0.0f)
-			{
 				ie = j;
-			}
 
 			// Collinearity check
 			if (c == 0.0f && v.LengthSquared() > r.LengthSquared())
-			{
 				ie = j;
-			}
 		}
 
 		++m;
 		ih = ie;
 
 		if (ie == i0)
-		{
 			break;
-		}
 	}
-	
+
 	m_count = m;
 
 	// Copy vertices.
 	for (int32 i = 0; i < m; ++i)
-	{
 		m_vertices[i] = ps[hull[i]];
-	}
 
 	// Compute normals. Ensure the edges have non-zero length.
 	for (int32 i = 0; i < m; ++i)
@@ -264,15 +256,6 @@ void b2PolygonShape::Set(const b2Vec2* vertices, int32 count)
 
 	// Compute the polygon centroid.
 	m_centroid = ComputeCentroid(m_vertices, m);
-}
-void b2PolygonShape::Set(const b2ShapeDef& shapeDef)
-{
-	b2PolygonShapeDef& polyDef = (b2PolygonShapeDef&)shapeDef;
-	//m_type = Shape::e_polygon;
-	m_centroid = polyDef.centroid;
-	m_vertices = polyDef.vertices;
-	m_normals = polyDef.normals;
-	m_count = polyDef.count;
 }
 
 bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const

@@ -52,7 +52,7 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def, b2World& world)
 void b2MouseJoint::SetTarget(const b2Vec2& target)
 {
 	Body& bodyB = GetBodyB();
-	if (bodyB.IsAwake() == false)
+	if (!bodyB.IsAwake())
 		bodyB.SetAwake(true);
 	m_targetA = target;
 }

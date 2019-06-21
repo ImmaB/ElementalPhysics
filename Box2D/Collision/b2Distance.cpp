@@ -32,40 +32,47 @@ void b2DistanceProxy::Set(const b2Shape& subShape, int32 index)
 {
 	switch (subShape.m_type)
 	{
-	case Shape::e_circle:
+	case b2Shape::e_circle:
 		{
-			m_vertices = &((const b2CircleShape&)subShape).m_p;
+			const b2CircleShape& circle = (const b2CircleShape&)subShape;
+			m_vertices = &circle.m_p;
 			m_count = 1;
+			m_radius = circle.m_radius;
 		}
 		break;
-	case Shape::e_polygon:
+	case b2Shape::e_polygon:
 		{
-			const b2PolygonShape& polyShape = (const b2PolygonShape&)subShape;
-			m_vertices = polyShape.m_vertices.data();
-			m_count = polyShape.m_count;
+			const b2PolygonShape& polygon = (const b2PolygonShape&)subShape;
+			m_vertices = polygon.m_vertices.data();
+			m_count = polygon.m_count;
+			m_radius = polygon.m_radius;
 		}
 		break;
-	case Shape::e_chain:
+	case b2Shape::e_chain:
 		{
-			b2Assert(0 <= index && index < chain->m_count);
-			const b2ChainShape& chainShape = (const b2ChainShape&)subShape;
-			m_buffer[0] = chainShape.m_vertices[index];
-			if (index + 1 < chainShape.m_count)
-				m_buffer[1] = chainShape.m_vertices[index + 1];
+			const b2ChainShape& chain = (const b2ChainShape&)subShape;
+			b2Assert(0 <= index && index < chain.m_count);
+			m_buffer[0] = chain.m_vertices[index];
+			if (index + 1 < chain.m_count)
+				m_buffer[1] = chain.m_vertices[index + 1];
 			else
-				m_buffer[1] = chainShape.m_vertices[0];
+				m_buffer[1] = chain.m_vertices[0];
 			m_vertices = m_buffer;
 			m_count = 2;
+			m_radius = chain.m_radius;
 		}
 		break;
-	case Shape::e_edge:
+	case b2Shape::e_edge:
 		{
-			m_vertices = &((const b2EdgeShape&)subShape).m_vertex1;
+			const b2EdgeShape& edge = (const b2EdgeShape&)subShape;
+			m_vertices = &edge.m_vertex1;
 			m_count = 2;
+			m_radius = subShape.m_radius;
 		}
 		break;
+	default:
+		b2Assert(false);
 	}
-	m_radius = subShape.m_radius;
 }
 
 struct b2SimplexVertex

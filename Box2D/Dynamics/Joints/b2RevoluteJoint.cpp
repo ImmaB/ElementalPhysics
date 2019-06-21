@@ -117,12 +117,12 @@ void b2RevoluteJoint::InitVelocityConstraints(const b2SolverData& data)
 		m_motorMass = 1.0f / m_motorMass;
 	}
 
-	if (m_enableMotor == false || fixedRotation)
+	if (!m_enableMotor || fixedRotation)
 	{
 		m_motorImpulse = 0.0f;
 	}
 
-	if (m_enableLimit && fixedRotation == false)
+	if (m_enableLimit && !fixedRotation)
 	{
 		float32 jointAngle = aB - aA - m_referenceAngle;
 		if (b2Abs(m_upperAngle - m_lowerAngle) < 2.0f * b2_angularSlop)
@@ -195,7 +195,7 @@ void b2RevoluteJoint::SolveVelocityConstraints(const b2SolverData& data)
 	bool fixedRotation = (iA + iB == 0.0f);
 
 	// Solve motor constraint.
-	if (m_enableMotor && m_limitState != e_equalLimits && fixedRotation == false)
+	if (m_enableMotor && m_limitState != e_equalLimits && !fixedRotation)
 	{
 		float32 Cdot = wB - wA - m_motorSpeed;
 		float32 impulse = -m_motorMass * Cdot;
@@ -209,7 +209,7 @@ void b2RevoluteJoint::SolveVelocityConstraints(const b2SolverData& data)
 	}
 
 	// Solve limit constraint.
-	if (m_enableLimit && m_limitState != e_inactiveLimit && fixedRotation == false)
+	if (m_enableLimit && m_limitState != e_inactiveLimit && !fixedRotation)
 	{
 		b2Vec2 Cdot1 = vB + b2Cross(wB, m_rB) - vA - b2Cross(wA, m_rA);
 		float32 Cdot2 = wB - wA;
@@ -305,7 +305,7 @@ bool b2RevoluteJoint::SolvePositionConstraints(const b2SolverData& data)
 	bool fixedRotation = (m_invIA + m_invIB == 0.0f);
 
 	// Solve angular limit constraint.
-	if (m_enableLimit && m_limitState != e_inactiveLimit && fixedRotation == false)
+	if (m_enableLimit && m_limitState != e_inactiveLimit && !fixedRotation)
 	{
 		float32 angle = aB - aA - m_referenceAngle;
 		float32 limitImpulse = 0.0f;

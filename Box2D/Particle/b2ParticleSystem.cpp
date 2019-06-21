@@ -413,6 +413,10 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef& def,
 	m_stgBodyContactFloats(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 	m_stgBodyContactVec3s(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 
+	// Box2D
+	m_ampBodies(TILE_SIZE, m_gpuAccelView),
+	m_ampFixtures(TILE_SIZE, m_gpuAccelView),
+
 	m_ampBodyContactPartIdxs(TILE_SIZE, m_gpuAccelView),
 
 	// Particles
@@ -683,7 +687,7 @@ inline void b2ParticleSystem::AmpForEachTriad(F& function) const
 	});
 }
 
-void b2ParticleSystem::ResizePartMatBuffers(uint32 size)
+void b2ParticleSystem::ResizePartMatBuffers(int32 size)
 {
 	if (size < b2_minGroupBufferCapacity) size = b2_minPartMatBufferCapacity;
 	m_partMatFlagsBuf.resize(size);
@@ -717,7 +721,7 @@ void b2ParticleSystem::ResizePartMatBuffers(uint32 size)
 	m_partMatCapacity = size;
 }
 
-inline boolean b2ParticleSystem::AdjustCapacityToSize(uint32& capacity, uint32 size, const uint32 minCapacity) const
+inline boolean b2ParticleSystem::AdjustCapacityToSize(int32& capacity, int32 size, const int32 minCapacity) const
 {
 	if (size < minCapacity)
 		size = minCapacity;
@@ -739,7 +743,7 @@ inline boolean b2ParticleSystem::AdjustCapacityToSize(uint32& capacity, uint32 s
 	return false;
 }
 
-void b2ParticleSystem::ResizeParticleBuffers(uint32 size)
+void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 {
 	m_tilableExtent = amp::getTilableExtent(size, m_tileCnt);
 	if (!AdjustCapacityToSize(m_capacity, size, b2_minParticleBufferCapacity)) return;
@@ -798,7 +802,7 @@ void b2ParticleSystem::ResizeParticleBuffers(uint32 size)
 	m_idxByExpireTimeBuf.resize(m_capacity);
 }
 
-void b2ParticleSystem::ResizeGroupBuffers(uint32 size)
+void b2ParticleSystem::ResizeGroupBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_groupCapacity, size, b2_minGroupBufferCapacity)) return;
 	m_groupBuffer.resize(m_groupCapacity);
@@ -807,14 +811,14 @@ void b2ParticleSystem::ResizeGroupBuffers(uint32 size)
 	m_groupExtent = ampExtent(m_groupCount);
 }
 
-void b2ParticleSystem::ResizeContactBuffers(uint32 size)
+void b2ParticleSystem::ResizeContactBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_contactCapacity, size, b2_minParticleBufferCapacity)) return;
 	m_partContactBuf.resize(m_contactCapacity);
 	amp::resize(m_ampContacts, m_contactCapacity);
 	amp::resize(m_ampPairs, m_contactCapacity);
 }
-void b2ParticleSystem::ResizeBodyContactBuffers(uint32 size)
+void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_bodyContactCapacity, size, b2_minParticleBufferCapacity)) return;
 	m_bodyContactBuf.resize(m_bodyContactCapacity);
@@ -824,13 +828,13 @@ void b2ParticleSystem::ResizeBodyContactBuffers(uint32 size)
 	amp::resizeStaging(m_stgBodyContactVec3s, m_bodyContactCapacity);
 }
 
-void b2ParticleSystem::ResizePairBuffers(uint32 size)
+void b2ParticleSystem::ResizePairBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_pairCapacity, size, b2_minParticleBufferCapacity)) return;
 	m_pairBuffer.resize(m_pairCapacity);
 	amp::resize(m_ampPairs, m_pairCapacity);
 }
-void b2ParticleSystem::ResizeTriadBuffers(uint32 size)
+void b2ParticleSystem::ResizeTriadBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_pairCapacity, size + 1, b2_minParticleBufferCapacity)) return;
 	m_triadBuffer.resize(m_pairCapacity);
@@ -929,7 +933,7 @@ void b2ParticleSystem::DestroyParticlesInGroup(const int32 groupIdx)
 }
 void b2ParticleSystem::DestroyParticlesInGroup(const b2ParticleGroup& group)
 {
-	b2Assert(m_world.IsLocked() == false);
+	b2Assert(!m_world.IsLocked());
 	if (m_world.IsLocked()) return;
 
 	for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++) {
@@ -941,7 +945,7 @@ int32 b2ParticleSystem::DestroyParticlesInShape(
 	const b2Shape& shape, const b2Transform& xf,
 	bool callDestructionListener)
 {
-	b2Assert(m_world.IsLocked() == false);
+	b2Assert(!m_world.IsLocked());
 	if (m_world.IsLocked())
 	{
 		return 0;
@@ -1030,8 +1034,8 @@ int32 b2ParticleSystem::CreateParticlesForGroup(const b2ParticleGroupDef& groupD
 int32 b2ParticleSystem::CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
 	const b2Transform& xf, const vector<b2Vec3>& poss, const vector<int32>& cols)
 {
-	uint32 writeIdx = GetWriteIdx(poss.size());
-	for (uint32 i = writeIdx; i < poss.size(); i++)
+	int32 writeIdx = GetWriteIdx(poss.size());
+	for (int32 i = writeIdx; i < poss.size(); i++)
 	{
 		m_flagsBuffer[i] = groupDef.flags;
 		if (!m_lastBodyContactStepBuffer.empty())
@@ -1099,7 +1103,7 @@ pair<int32, int32> b2ParticleSystem::CreateParticlesFillShapeForGroup(
 	float32 startY = floorf(aabb.lowerBound.y / stride) * stride;
 	float32 startX = floorf(aabb.lowerBound.x / stride) * stride;
 	vector<b2Vec3> positions;
-	positions.reserve(((aabb.upperBound.y - startY) * (aabb.upperBound.x - startX)) / (stride * stride));
+	positions.reserve((int32)(((aabb.upperBound.y - startY) * (aabb.upperBound.x - startX)) / (stride * stride)));
 	for (float32 y = startY; y < aabb.upperBound.y; y += stride)
 	{
 		for (float32 x = startX; x < aabb.upperBound.x; x += stride)
@@ -1114,19 +1118,18 @@ pair<int32, int32> b2ParticleSystem::CreateParticlesFillShapeForGroup(
 }
 
 pair<int32, int32> b2ParticleSystem::CreateParticlesWithShapeForGroup(
-	const int32 shapeIdx,
+	const b2Shape::Type shapeType, const int32 shapeIdx,
 	const b2ParticleGroupDef& groupDef, const b2Transform& xf)
 {
-	Shape& shape = m_world.m_shapeBuffer[shapeIdx];
-	const b2Shape& subShape = m_world.GetSubShape(shape);
+	const b2Shape& shape = m_world.GetShape(shapeType, shapeIdx);
 	switch (shape.m_type) {
-	case Shape::e_edge:
-	case Shape::e_chain:
-		return CreateParticlesStrokeShapeForGroup(subShape, groupDef, xf);
+	case b2Shape::e_edge:
+	case b2Shape::e_chain:
+		return CreateParticlesStrokeShapeForGroup(shape, groupDef, xf);
 		break;
-	case Shape::e_polygon:
-	case Shape::e_circle:
-		return CreateParticlesFillShapeForGroup(subShape, groupDef, xf);
+	case b2Shape::e_polygon:
+	case b2Shape::e_circle:
+		return CreateParticlesFillShapeForGroup(shape, groupDef, xf);
 		break;
 	default:
 		b2Assert(false);
@@ -1142,13 +1145,13 @@ int32 b2ParticleSystem::CreateGroup(
 	// get group Index
 	if (!m_freeGroupIdxs.empty())
 	{
-		groupDef.idx = m_freeGroupIdxs.back();
+		groupDef.groupIdx = groupDef.idx = m_freeGroupIdxs.back();
 		m_freeGroupIdxs.pop_back();
 	}
 	else
 	{
 		ResizeGroupBuffers(m_groupCount + 1);
-		groupDef.idx = m_groupCount++;
+		groupDef.groupIdx = groupDef.idx = m_groupCount++;
 	}
 
 	b2Transform transform;
@@ -1156,7 +1159,7 @@ int32 b2ParticleSystem::CreateGroup(
 	pair<int32, int32> firstAndLastIdx;
 	if (groupDef.shapeIdx != b2_invalidIndex)
 	{
-		firstAndLastIdx = CreateParticlesWithShapeForGroup(groupDef.shapeIdx, groupDef, transform);
+		firstAndLastIdx = CreateParticlesWithShapeForGroup(groupDef.shapeType, groupDef.shapeIdx, groupDef, transform);
 	}
 	if (groupDef.particleCount)
 	{
@@ -1166,10 +1169,7 @@ int32 b2ParticleSystem::CreateGroup(
 		firstAndLastIdx.second = firstAndLastIdx.first + groupDef.particleCount;
 	}
 
-	int32 lastIndex = m_count;
-
 	b2ParticleGroup& group = m_groupBuffer[groupDef.idx];
-	//group.m_system = this;
 	group.m_firstIndex = firstAndLastIdx.first;
 	group.m_lastIndex = firstAndLastIdx.second;
 	group.m_strength = groupDef.strength;
@@ -1216,7 +1216,7 @@ void b2ParticleSystem::CopyParticleRangeToGpu(const uint32 first, const uint32 l
 void b2ParticleSystem::JoinParticleGroups(int32 groupAIdx,
 										  int32 groupBIdx)
 {
-	b2Assert(m_world.IsLocked() == false);
+	b2Assert(!m_world.IsLocked());
 	if (m_world.IsLocked())
 	{
 		return;
@@ -1667,7 +1667,7 @@ void b2ParticleSystem::UpdatePairsAndTriads(
 					b2ParticleGroup& groupA = m_system->m_groupBuffer[groupAIdx];
 					b2ParticleGroup& groupB = m_system->m_groupBuffer[groupBIdx];
 					b2ParticleGroup& groupC = m_system->m_groupBuffer[groupCIdx];
-					uint32& triadCount = m_system->m_triadCount;
+					int32& triadCount = m_system->m_triadCount;
 					m_system->ResizeTriadBuffers(triadCount);
 					b2ParticleTriad& triad = m_system->m_triadBuffer[triadCount];
 					triadCount++;
@@ -1757,8 +1757,8 @@ void b2ParticleSystem::AmpUpdatePairsAndTriads(
 		const uint32 reactiveFlag = b2_reactiveParticle;
 		const uint32 zombieFlag = b2_zombieParticle;
 		const uint32 pairFlag = k_pairFlags;
-		ampArray<uint32> cnts(contacts.extent, m_gpuAccelView);
-		amp::fill(cnts, 0u);
+		ampArray<int32> cnts(contacts.extent, m_gpuAccelView);
+		amp::fill(cnts, 0);
 		AmpForEachContact([=, &oldPairs, &cnts, &contacts, &flags, &groupIdxs, &groups, &positions](const int32 i) restrict(amp)
 		{
 			const b2ParticleContact& contact = contacts[i];
@@ -1838,7 +1838,7 @@ void b2ParticleSystem::AmpUpdatePairsAndTriads(
 					b2ParticleGroup & groupA = m_system->m_groupBuffer[groupAIdx];
 					b2ParticleGroup & groupB = m_system->m_groupBuffer[groupBIdx];
 					b2ParticleGroup & groupC = m_system->m_groupBuffer[groupCIdx];
-					uint32 & triadCount = m_system->m_triadCount;
+					int32 & triadCount = m_system->m_triadCount;
 					m_system->ResizeTriadBuffers(triadCount);
 					b2ParticleTriad & triad = m_system->m_triadBuffer[triadCount];
 					triadCount++;
@@ -2116,9 +2116,9 @@ void b2ParticleSystem::AmpComputeDepth()
 	auto& groupIdxs = m_ampGroupIdxs;
 	auto& contacts = m_ampContacts;
 	auto& groups = m_ampGroups;
-	ampArray<uint32> contactCnts(m_contactTileCnt, m_gpuAccelView);
+	ampArray<int32> contactCnts(m_contactTileCnt, m_gpuAccelView);
 	ampArray2D<b2ParticleContact> localContacts(m_contactTileCnt, TILE_SIZE, m_gpuAccelView);
-	amp::fill(contactCnts, 0u);
+	amp::fill(contactCnts, 0);
 	amp::forEachTiled(m_contactCount, [=, &contacts, &contactCnts, &localContacts,
 		&groups, &groupIdxs](const int32 gi, const int32 ti, const int32 li) restrict(amp)
 	{
@@ -2320,6 +2320,53 @@ void b2ParticleSystem::AmpForEachInsideBounds(const b2AABB& aabb, F& function)
 		function(proxy.idx);
 	});
 }
+template<typename F>
+void b2ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function)
+{
+	int32 boundCnt = aabbs.size();
+	vector<b2TagBounds> tagBounds(boundCnt);
+	for (int32 i = 0; i < boundCnt; i++)
+	{
+		const b2AABBFixtureProxy& aabb = aabbs[i];
+		b2TagBounds& tb = tagBounds[i];
+		tb.lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
+			m_inverseDiameter * aabb.lowerBound.y - 1);
+		tb.upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x + 1,
+			m_inverseDiameter * aabb.upperBound.y + 1);
+		tb.xLower = tb.lowerTag & xMask;
+		tb.xUpper = tb.upperTag & xMask;
+		tb.fixtureIdx = aabb.fixtureIdx;
+		tb.childIdx = aabb.childIdx;
+	}
+	ampArrayView<const b2TagBounds> ampTagBounds(boundCnt, tagBounds);
+
+	auto& proxies = m_ampProxies;
+	//AmpForEachParticle([=, &proxies](const int32 i) restrict(amp)
+	//{
+	//	const Proxy& proxy = proxies[i];
+	//	const uint32 xTag = proxy.tag & xMask;
+	//	for (int32 i = 0; i < boundCnt; i++)
+	//	{
+	//		const b2TagBounds& tb = ampTagBounds[i];
+	//		if (proxy.tag < tb.yLower || proxy.tag > tb.yUpper) continue;
+	//		if (xTag < tb.xLower || xTag > tb.xUpper) continue;
+	//		function(proxy.idx, i);
+	//	}
+	//});
+
+	auto& flags = m_ampFlags;
+	const uint32 zombieFlag = b2_zombieParticle;
+	amp::forEach2D<TILE_SIZE, 1>(m_count, boundCnt,
+		[=, &flags, &proxies](const int32 i, const int32 boundIdx) restrict(amp)
+	{
+		if (flags[i] & zombieFlag) return;
+		const Proxy& proxy = proxies[i];
+		const b2TagBounds& tb = ampTagBounds[boundIdx];
+		if (proxy.tag < tb.lowerTag || proxy.tag > tb.upperTag) return;
+		if (const uint32 xTag = proxy.tag & xMask; xTag < tb.xLower || xTag > tb.xUpper) return;
+		function(proxy.idx, tb.fixtureIdx, tb.childIdx);
+	});
+}
 
 void b2ParticleSystem::FindContacts()
 {
@@ -2353,7 +2400,7 @@ void b2ParticleSystem::FindContacts()
 		cnt:;
 	}
 }
-inline bool b2ParticleSystem::AddContact(int32 a, int32 b, uint32& contactCount)
+inline bool b2ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
 {
 	const int32& colGroupA = m_groupBuffer[m_partGroupIdxBuffer[a]].m_collisionGroup;
 	const int32& colGroupB = m_groupBuffer[m_partGroupIdxBuffer[b]].m_collisionGroup;
@@ -2436,8 +2483,8 @@ void b2ParticleSystem::AmpFindContacts(bool exceptZombie)
 
 	auto& proxies = m_ampProxies;
 	ampArray2D<b2ParticleContact> localContacts(cnt, MAX_CONTACTS_PER_PARTICLE, m_gpuAccelView);
-	ampArray<uint32> contactCnts(m_capacity);
-	amp::fill(contactCnts, 0u);
+	ampArray<int32> contactCnts(m_capacity);
+	amp::fill(contactCnts, 0);
 
 	const auto TagLowerBound = [=, &proxies](uint32 first, uint32 tag) restrict(amp) -> int32
 	{
@@ -2460,7 +2507,7 @@ void b2ParticleSystem::AmpFindContacts(bool exceptZombie)
 	auto& contacts = m_ampContacts;
 	AmpForEachParticle([=, &contacts, &localContacts, &contactCnts, &proxies](const int32 i) restrict(amp)
 	{
-		uint32& localContactCnt = contactCnts[i];
+		int32& localContactCnt = contactCnts[i];
 		auto& contacts = localContacts[i];
 
 		const Proxy aProxy = proxies[i];
@@ -2485,8 +2532,8 @@ void b2ParticleSystem::AmpFindContacts(bool exceptZombie)
 	});
 	m_contactCount = amp::reduce(contactCnts, m_count, [=, &contactCnts, &contacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
 	{
-		const uint32 cnt = contactCnts[i];
-		for (int j = 0; j < cnt; j++)
+		const int32 cnt = contactCnts[i];
+		for (int32 j = 0; j < cnt; j++)
 			contacts[wi + j] = localContacts[i][j];
 	});
 }
@@ -2775,7 +2822,7 @@ void b2ParticleSystem::AmpComputeAABB(b2AABB& aabb, bool addVel) const
 	const uint32 zombieFlag = b2_zombieParticle;
 	const float32 minFloat = -b2_maxFloat;
 	const float32 maxFloat = +b2_maxFloat;
-	ampArrayView<b2AABB> tileAABBs(b2Max(1u, m_tileCnt/2));
+	ampArrayView<b2AABB> tileAABBs(b2Max(1, m_tileCnt/2));
 	amp::forEachTiledWithBarrier(m_capacity / 2, [=, &flags,
 		&positions,&velocities](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 	{
@@ -3016,14 +3063,16 @@ private:
 		Fixture& fixture = m_system.m_fixtureBuffer[fixtureIdx];
 		if (fixture.m_isSensor) return true;
 
-		const Shape& shape = m_world.m_shapeBuffer[fixture.m_shapeIdx];
-		const b2Shape& b2Shape = m_world.GetSubShape(shape);
+		const b2Shape& b2Shape = m_world.GetShape(fixture);
 		int32 childCount = b2Shape.GetChildCount();
 		for (int32 childIndex = 0; childIndex < childCount; childIndex++)
 		{
 			b2AABB aabb = m_world.GetAABB(fixture, childIndex);
 			b2ParticleSystem::InsideBoundsEnumerator enumerator =
 								m_system.GetInsideBoundsEnumerator(aabb);
+			
+			//m_system.AmpForEachInsideBounds(aabb, )
+
 			// b2Vec2 bodyPos = fixture.GetBody().GetPosition();
 			int32 index;
 
@@ -3212,63 +3261,82 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 	m_bodyContactCount = 0;
 	m_stuckParticleCount = 0;
 
-	class UpdateBodyContactsCallback : public b2FixtureParticleQueryCallback
-	{
-		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
-		{
-			Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
-			if (m_system.ShouldCollide(a, fixture))
-			{
-				const b2Vec2 ap = b2Vec2(m_system.m_positionBuffer[a]);
-				float32 d;
-				b2Vec2 n;
-				m_world.ComputeDistance(fixture, ap, d, n, childIndex);
-				if (d < m_system.m_particleDiameter)
-				{
-					Body& b = m_world.m_bodyBuffer[fixture.m_bodyIdx];
-					b2Vec2 bp = b.GetWorldCenter();
-					float32 bm = b.m_mass;
-					float32 bI =
-						b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
-					float32 invBm = bm > 0 ? 1 / bm : 0;
-					float32 invBI = bI > 0 ? 1 / bI : 0;
-					float32 invAm =
-						m_system.m_flagsBuffer[a] &
-						b2_wallParticle ? 0 : m_system.m_partMatInvMassBuf[m_system.m_partMatIdxBuffer[a]];
-					b2Vec2 rp = ap - bp;
-					float32 rpn = b2Cross(rp, n);
-					float32 invM = invAm + invBm + invBI * rpn * rpn;
-
-					const uint32 bodyContactIdx = m_system.m_bodyContactCount++;
-					m_system.ResizeBodyContactBuffers(m_system.m_bodyContactCount);
-					b2PartBodyContact & contact = m_system.m_bodyContactBuf[bodyContactIdx];
-					m_system.m_bodyContactPartIdxs[bodyContactIdx] = a;
-					contact.body = &b;
-					contact.fixture = &fixture;
-					contact.weight = 1 - d * m_system.m_inverseDiameter;
-					contact.normal = -n;
-					contact.mass = invM > 0 ? 1 / invM : 0;
-					m_system.DetectStuckParticle(a);
-				}
-			}
-		}
-
-		b2ContactFilter* m_contactFilter;
-
-	public:
-		UpdateBodyContactsCallback(b2World& world,
-			b2ParticleSystem& system, b2ContactFilter * contactFilter) :
-			b2FixtureParticleQueryCallback(world, system)
-		{
-			m_contactFilter = contactFilter;
-		}
-	} callback(m_world, *this, GetFixtureContactFilter());
-
 	amp::copy(m_ampProxies, m_proxyBuffer, m_count);
 
-	b2AABB aabb;
-	AmpComputeAABB(aabb);
-	m_world.AmpQueryAABB(&callback, aabb);
+	vector<b2AABBFixtureProxy> fixtureBounds;
+
+	b2AABB partsBounds;
+	AmpComputeAABB(partsBounds);
+	m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](int32 fixtureIdx)
+	{
+		Fixture& fixture = m_fixtureBuffer[fixtureIdx];
+		if (fixture.m_isSensor) return;
+
+		const b2Shape& shape = m_world.GetShape(fixture);
+		int32 childCount = shape.GetChildCount();
+		for (int32 childIdx = 0; childIdx < childCount; childIdx++)
+			fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
+	});
+
+	auto& groupIdxs = m_ampGroupIdxs;
+	auto& groups = m_ampGroups;
+	const auto& shouldCollide = [=, &groupIdxs, &groups](int32 i, const Fixture& f) restrict(amp) -> bool
+	{
+		if (f.m_filter.groupIndex >= 0)
+			return true;
+		const int32 groupIdx = groupIdxs[i];
+		if (groupIdx == b2_invalidIndex)
+			return false;
+		const int32 partColGroup = groups[groupIdx].m_collisionGroup;
+		if (!partColGroup || !(partColGroup < 0))
+			return true;
+		if (partColGroup != f.m_filter.groupIndex)
+			return true;
+		return false;
+	};
+
+	auto& bodies = m_ampBodies;
+	auto& fixtures = m_ampFixtures;
+	auto& positions = m_ampPositions;
+	AmpForEachInsideBounds(fixtureBounds,
+		[=, &bodies, &fixtures, &positions](int32 a, int32 fixtureIdx, int32 childIdx) restrict(amp)
+	{
+		//Fixture& fixture = fixtures[fixtureIdx];
+		//if (!shouldCollide(a, fixture)) return;
+		//
+		//const b2Vec2 ap = b2Vec2(positions[a]);
+		//float32 d;
+		//b2Vec2 n;
+		//m_world.ComputeDistance(fixture, ap, d, n, childIdx);
+		//if (d >= m_particleDiameter) return;
+		//
+		//Body& b = bodies[fixture.m_bodyIdx];
+		//b2Vec2 bp = b.GetWorldCenter();
+		//float32 bm = b.m_mass;
+		//float32 bI =
+		//	b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
+		//float32 invBm = bm > 0 ? 1 / bm : 0;
+		//float32 invBI = bI > 0 ? 1 / bI : 0;
+		//float32 invAm =
+		//	m_flagsBuffer[a] &
+		//	b2_wallParticle ? 0 : m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+		//b2Vec2 rp = ap - bp;
+		//float32 rpn = b2Cross(rp, n);
+		//float32 invM = invAm + invBm + invBI * rpn * rpn;
+		//
+		//const uint32 bodyContactIdx = m_bodyContactCount++;
+		//ResizeBodyContactBuffers(m_bodyContactCount);
+		//b2PartBodyContact& contact = m_bodyContactBuf[bodyContactIdx];
+		//m_bodyContactPartIdxs[bodyContactIdx] = a;
+		//contact.body = &b;
+		//contact.fixture = &fixture;
+		//contact.weight = 1 - d * m_inverseDiameter;
+		//contact.normal = -n;
+		//contact.mass = invM > 0 ? 1 / invM : 0;
+		//DetectStuckParticle(a);
+	});
+	
+
 
 	if (m_def.strictContactCheck)
 		RemoveSpuriousBodyContacts();
@@ -3406,7 +3474,7 @@ void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
 					// Put 'ap' in the local space of the previous frame
 					b2Vec2 p1 = b2MulT(body.m_xf0, ap);
 					;
-					if (m_world.m_shapeBuffer[fixture.m_shapeIdx].m_type == Shape::e_circle)
+					if (fixture.m_shapeType == b2Shape::e_circle)
 					{
 						// Make relative to the center of the circle
 						p1 -= body.GetLocalCenter();
@@ -3471,372 +3539,369 @@ void b2ParticleSystem::AmpSolveCollision(const b2TimeStep& step)
 	// and modifies velocities of them so that they will move just in front of
 	// boundary. This function function also applies the reaction force to
 	// bodies as precisely as the numerical stability is kept.
-	class SolveCollisionCallback : public b2QueryCallback
-	{
-		bool ReportFixture(int32 fixtureIdx)
-		{
-			const Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
-			if (fixture.m_isSensor)
-				return true;
-			const int32 iterationIdx = m_system.m_iterationIndex;
-			const Body& body = m_world.m_bodyBuffer[fixture.m_bodyIdx];
-			const b2Vec2& bodyLocalCentre = body.GetLocalCenter();
-			const b2Transform& bodyTransform = body.m_xf;
-			const b2Transform& bodyTransform0 = body.m_xf0;
-			const int32 fixtureGroupIdx = fixture.m_filter.groupIndex;
-			const Shape& shape = m_world.m_shapeBuffer[fixture.m_shapeIdx];
-			const float32 fixtureZMin = shape.m_zPos;
-			const float32 fixtureZMax = fixtureZMin + shape.m_height;
-			auto& positions = m_system.m_ampPositions;
-			auto& velocities = m_system.m_ampVelocities;
-			auto& forces = m_system.m_ampForces;
-			auto& groupIdxs = m_system.m_ampGroupIdxs;
-			auto& groups = m_system.m_ampGroups;
-			auto& matIdxs = m_system.m_ampMatIdxs;
-			auto& matMasses = m_system.m_ampMatMasses;
-			auto& flags = m_system.m_ampFlags;
-			const uint32 wallFlag = b2_wallParticle;
-			const float32 stepInvDt = m_step.inv_dt;
-			const float32 stepDt = m_step.dt;
-			const float32 linearSlop = b2_linearSlop;
-			const auto& testFixtureZPos = [=](float32 z) restrict(amp) -> bool
-			{
-				return fixtureZMin <= z && z <= fixtureZMax;
-			};
-			const auto& shouldCollide = [=, &positions, &groupIdxs, &groups](int32 i) restrict(amp) -> bool
-			{
-				if (!testFixtureZPos(positions[i].z))
-					return false;
-				if (fixtureGroupIdx >= 0)
-					return true;
-				const int32 groupIdx = groupIdxs[i];
-				if (groupIdx == -1)
-					return false;
-				const int32 partColGroup = groups[groupIdx].m_collisionGroup;
-				if (!partColGroup || !(partColGroup < 0))
-					return true;
-				if (partColGroup != fixtureGroupIdx)
-					return true;
-				return false;
-			};
-			float32 circleRadius;
-			b2Vec2 circleMiddle, edgeV1, edgeV2;
-			b2Vec2* vertsPtr = nullptr;
-			b2Vec2* normsPtr = nullptr;
-			uint32 vertsCnt = 0;
-			const b2Shape& subShape = m_world.GetSubShape(shape);
-			const auto shapeType = shape.m_type;
-			switch (shapeType)
-			{
-			case Shape::e_circle:
-				circleMiddle = ((b2CircleShape&)subShape).m_p;
-				circleRadius = ((b2CircleShape&)subShape).m_radius;
-				break;
-			case Shape::e_edge:
-				edgeV1 = ((b2EdgeShape&)subShape).m_vertex1;
-				edgeV2 = ((b2EdgeShape&)subShape).m_vertex2;
-				break;
-			case Shape::e_polygon:
-				vertsCnt = ((b2PolygonShape&)subShape).m_count;
-				vertsPtr = ((b2PolygonShape&)subShape).m_vertices.data();
-				normsPtr = ((b2PolygonShape&)subShape).m_normals.data();
-				break;
-			case Shape::e_chain:
-				vertsCnt = ((b2ChainShape&)subShape).m_count;
-				vertsPtr = ((b2ChainShape&)subShape).m_vertices;
-				break;
-			}
-			ampArray<b2Vec2> verts = vertsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, vertsPtr) : ampArray<b2Vec2>(1);
-			ampArray<b2Vec2> norms = normsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, normsPtr) : ampArray<b2Vec2>(1);
-			int32 childCount = subShape.GetChildCount();
-			int32 childIndex = 0;
 
-			struct AmpRayCastInput
-			{
-				AmpRayCastInput() restrict(amp) {}
-				b2Vec2 p1, p2;
-				float32 maxFraction;
-			};
-			struct AmpRayCastOutput
-			{
-				AmpRayCastOutput() restrict(amp) {}
-				b2Vec2 normal;
-				float32 fraction;
-			};
-
-			const auto& raycastCircle = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-			{
-				b2Vec2 position = bodyTransform.p + b2Mul(bodyTransform.q, circleMiddle);
-				b2Vec2 s = input.p1 - position;
-				float32 b = b2Dot(s, s) - circleRadius * circleRadius;
-
-				// Solve quadratic equation.
-				b2Vec2 r = input.p2 - input.p1;
-				float32 c = b2Dot(s, r);
-				float32 rr = b2Dot(r, r);
-				float32 sigma = c * c - rr * b;
-
-				// Check for negative discriminant and short segment.
-				if (sigma < 0.0f || rr < 1.192092896e-07F) // == b2_epsilon
-					return false;
-
-				// Find the point of intersection of the line with the circle.
-				float32 a = -(c + ampSqrt(sigma));
-
-				// Is the intersection point on the segment?
-				if (0.0f <= a && a <= input.maxFraction * rr)
-				{
-					a /= rr;
-					output.fraction = a;
-					output.normal = s + a * r;
-					output.normal.Normalize();
-					return true;
-				}
-				return false;
-			};
-			const auto& raycastEdge = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-			{
-				// Put the ray into the edge's frame of reference.
-				b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-				b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-				b2Vec2 d = p2 - p1;
-
-				b2Vec2 e = edgeV2 - edgeV1;
-				b2Vec2 normal(e.y, -e.x);
-				normal.Normalize();
-
-				// q = p1 + t * d
-				// dot(normal, q - v1) = 0
-				// dot(normal, p1 - v1) + t * dot(normal, d) = 0
-				float32 numerator = b2Dot(normal, edgeV1 - p1);
-				float32 denominator = b2Dot(normal, d);
-
-				if (denominator == 0.0f)
-					return false;
-
-				float32 t = numerator / denominator;
-				if (t < 0.0f || input.maxFraction < t)
-					return false;
-
-				b2Vec2 q = p1 + t * d;
-
-				// q = v1 + s * r
-				// s = dot(q - v1, r) / dot(r, r)
-				b2Vec2 r = edgeV2 - edgeV1;
-				float32 rr = b2Dot(r, r);
-				if (rr == 0.0f)
-					return false;
-
-				float32 s = b2Dot(q - edgeV1, r) / rr;
-				if (s < 0.0f || 1.0f < s)
-					return false;
-
-				output.fraction = t;
-				if (numerator > 0.0f)
-					output.normal = -b2Mul(bodyTransform.q, normal);
-				else
-					output.normal = b2Mul(bodyTransform.q, normal);
-				return true;
-			};
-			const auto& raycastPolygon = [=, &verts, &norms](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-			{
-				// Put the ray into the polygon's frame of reference.
-				b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-				b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-				b2Vec2 d = p2 - p1;
-
-				float32 lower = 0.0f, upper = input.maxFraction;
-
-				int32 index = -1;
-
-				for (int32 i = 0; i < vertsCnt; ++i)
-				{
-					// p = p1 + a * d
-					// dot(normal, p - v) = 0
-					// dot(normal, p1 - v) + a * dot(normal, d) = 0
-					float32 numerator = b2Dot(norms[i], verts[i] - p1);
-					float32 denominator = b2Dot(norms[i], d);
-
-					if (denominator == 0.0f)
-					{
-						if (numerator < 0.0f)
-						{
-							return false;
-						}
-					}
-					else
-					{
-						// Note: we want this predicate without division:
-						// lower < numerator / denominator, where denominator < 0
-						// Since denominator < 0, we have to flip the inequality:
-						// lower < numerator / denominator <==> denominator * lower > numerator.
-						if (denominator < 0.0f && numerator < lower * denominator)
-						{
-							// Increase lower.
-							// The segment enters this half-space.
-							lower = numerator / denominator;
-							index = i;
-						}
-						else if (denominator > 0.0f && numerator < upper * denominator)
-						{
-							// Decrease upper.
-							// The segment exits this half-space.
-							upper = numerator / denominator;
-						}
-					}
-
-					// The use of epsilon here causes the assert on lower to trip
-					// in some cases. Apparently the use of epsilon was to make edge
-					// shapes work, but now those are handled separately.
-					//if (upper < lower - b2_epsilon)
-					if (upper < lower)
-						return false;
-				}
-				if (index >= 0)
-				{
-					output.fraction = lower;
-					output.normal = b2Mul(bodyTransform.q, norms[index]);
-					return true;
-				}
-
-				return false;
-			};
-			const auto& raycastChain = [=, &verts](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-			{
-				int32 i1 = childIndex;
-				int32 i2 = childIndex + 1;
-				if (i2 == vertsCnt)
-					i2 = 0;
-
-				// edgeShape Raycast
-				const b2Vec2& v1 = verts[i1];
-				const b2Vec2& v2 = verts[i2];
-
-				// Put the ray into the edge's frame of reference.
-				b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-				b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-				b2Vec2 d = p2 - p1;
-
-				b2Vec2 e = v2 - v1;
-				b2Vec2 normal(e.y, -e.x);
-				normal.Normalize();
-
-				// q = p1 + t * d
-				// dot(normal, q - v1) = 0
-				// dot(normal, p1 - v1) + t * dot(normal, d) = 0
-				float32 numerator = b2Dot(normal, v1 - p1);
-				float32 denominator = b2Dot(normal, d);
-
-				if (denominator == 0.0f)
-					return false;
-
-				float32 t = numerator / denominator;
-				if (t < 0.0f || input.maxFraction < t)
-					return false;
-
-				b2Vec2 q = p1 + t * d;
-
-				// q = v1 + s * r
-				// s = dot(q - v1, r) / dot(r, r)
-				b2Vec2 r = v2 - v1;
-				float32 rr = b2Dot(r, r);
-				if (rr == 0.0f)
-					return false;
-
-				float32 s = b2Dot(q - v1, r) / rr;
-				if (s < 0.0f || 1.0f < s)
-					return false;
-
-				output.fraction = t;
-				if (numerator > 0.0f)
-					output.normal = -b2Mul(bodyTransform.q, normal);
-				else
-					output.normal = b2Mul(bodyTransform.q, normal);
-				return true;
-			};
-			for (; childIndex < childCount; childIndex++)
-			{
-				b2AABB aabb = m_world.GetAABB(fixture, childIndex);
-				m_system.AmpForEachInsideBounds(aabb,
-					[=, &positions, &velocities, &forces, &matIdxs, &matMasses, &flags](int32 a) restrict(amp)
-				{
-					if (!shouldCollide(a)) return;
-					const b2Vec2& ap = b2Vec2(positions[a]);
-					const b2Vec2& av = b2Vec2(velocities[a]);
-					AmpRayCastOutput output;
-					AmpRayCastInput input;
-					if (iterationIdx == 0)
-					{
-						// Put 'ap' in the local space of the previous frame
-						b2Vec2 p1 = b2MulT(bodyTransform0, ap);
-						if (shapeType == 0) // Circle
-						{
-							// Make relative to the center of the circle
-							p1 -= bodyLocalCentre;
-							// Re-apply rotation about the center of the
-							// circle
-							p1 = b2Mul(bodyTransform0.q, p1);
-							// Subtract rotation of the current frame
-							p1 = b2MulT(bodyTransform.q, p1);
-							// Return to local space
-							p1 += bodyLocalCentre;
-						}
-						// Return to global space and apply rotation of current frame
-						input.p1 = b2Mul(bodyTransform, p1);
-					}
-					else
-					{
-						input.p1 = ap;
-					}
-					input.p2 = ap + stepDt * av;
-					input.maxFraction = 1;
-					switch (shapeType)
-					{
-					case 0: // Circle
-						if (!raycastCircle(input, output)) return;
-						break;
-					case 1: // Edge
-						if (!raycastEdge(input, output)) return;
-						break;
-					case 2: // Polygon
-						if (!raycastPolygon(input, output)) return;
-						break;
-					case 3: // Chain
-						if (!raycastChain(input, output)) return;
-						break;
-					}
-					b2Vec2 n = output.normal;
-					b2Vec2 p =
-						(1 - output.fraction) * input.p1 +
-						output.fraction * input.p2 +
-						linearSlop * n;
-					b2Vec2 v = stepInvDt * (p - ap);
-					velocities[a] = b2Vec3(v, 0);
-					b2Vec2 f = stepInvDt * matMasses[matIdxs[a]] * (av - v);
-					if (IsSignificantForce(f) && !(flags[a] & wallFlag))
-					forces[a] += b2Vec3(f, 0);
-				});
-			}
-			return true;
-		}
-
-		b2World& m_world;
-		b2ParticleSystem& m_system;
-		b2TimeStep m_step;
-		b2ContactFilter* m_contactFilter;
-
-	public:
-		SolveCollisionCallback(b2World& world, b2ParticleSystem& system, const b2TimeStep & step, b2ContactFilter * contactFilter)
-			: m_world(world), m_system(system)
-		{
-			m_step = step;
-			m_contactFilter = contactFilter;
-		}
-	} callback(m_world, *this, step, GetFixtureContactFilter());
+	vector<b2AABBFixtureProxy> fixtureBounds;
 
 	b2AABB aabb;
 	AmpComputeAABB(aabb, true);
-	m_world.AmpQueryAABB(&callback, aabb);	// calls "ReportFixture" of callback
+	m_world.AmpQueryAABB(aabb, [=, &fixtureBounds](int32 fixtureIdx)
+	{
+		Fixture& fixture = m_fixtureBuffer[fixtureIdx];
+		if (fixture.m_isSensor) return;
+
+		const b2Shape& shape = m_world.GetShape(fixture);
+		int32 childCount = shape.GetChildCount();
+
+		for (int32 childIdx = 0; childIdx < childCount; childIdx++)
+			fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
+	});
+
+
+	auto& positions = m_ampPositions;
+	auto& groupIdxs = m_ampGroupIdxs;
+	auto& groups    = m_ampGroups;
+	const auto& shouldCollide = [=, &positions, &groupIdxs, &groups](const Fixture& f, int32 i) restrict(amp) -> bool
+	{
+		if (!f.TestZPos(positions[i].z))
+			return false;
+		if (f.m_filter.groupIndex >= 0)
+			return true;
+		const int32 groupIdx = groupIdxs[i];
+		if (groupIdx == -1)
+			return false;
+		const int32 partColGroup = groups[groupIdx].m_collisionGroup;
+		if (!partColGroup || !(partColGroup < 0))
+			return true;
+		if (partColGroup != f.m_filter.groupIndex)
+			return true;
+		return false;
+	};
+
+	const int32 iterationIdx = m_iterationIndex;
+	const uint32 wallFlag = b2_wallParticle;
+	const float32 stepInvDt = m_step.inv_dt;
+	const float32 stepDt = m_step.dt;
+	const float32 linearSlop = b2_linearSlop;
+
+	auto& bodies = m_ampBodies;
+	auto& fixtures = m_ampFixtures;
+	auto& velocities = m_ampVelocities;
+	auto& forces = m_ampForces;
+	auto& matIdxs = m_ampMatIdxs;
+	auto& matMasses = m_ampMatMasses;
+	auto& flags = m_ampFlags;
+	AmpForEachInsideBounds(fixtureBounds,
+		[=, &bodies, &fixtures, &positions](int32 a, int32 fixtureIdx, int32 childIdx) restrict(amp)
+	{
+		/*const Fixture& fixture = fixtures[fixtureIdx];
+		if (fixture.m_isSensor) return;
+		
+		const Body& body = bodies[fixture.m_bodyIdx];
+		const b2Vec2& bodyLocalCentre = body.GetLocalCenter();
+		const b2Transform& bodyTransform = body.m_xf;
+		const b2Transform& bodyTransform0 = body.m_xf0;
+		const float32 fixtureZMin = fixture.m_zPos;
+		const float32 fixtureZMax = fixtureZMin + fixture.m_height;
+		
+		float32 circleRadius;
+		b2Vec2 circleMiddle, edgeV1, edgeV2;
+		b2Vec2* vertsPtr = nullptr;
+		b2Vec2* normsPtr = nullptr;
+		uint32 vertsCnt = 0;
+		const b2Shape& shape = m_world.GetShape(fixture);
+		const auto shapeType = shape.m_type;
+		switch (shapeType)
+		{
+		case b2Shape::e_circle:
+			circleMiddle = ((b2CircleShape&)shape).m_p;
+			circleRadius = ((b2CircleShape&)shape).m_radius;
+			break;
+		case b2Shape::e_edge:
+			edgeV1 = ((b2EdgeShape&)shape).m_vertex1;
+			edgeV2 = ((b2EdgeShape&)shape).m_vertex2;
+			break;
+		case b2Shape::e_polygon:
+			vertsCnt = ((b2PolygonShape&)shape).m_count;
+			vertsPtr = ((b2PolygonShape&)shape).m_vertices.data();
+			normsPtr = ((b2PolygonShape&)shape).m_normals.data();
+			break;
+		case b2Shape::e_chain:
+			vertsCnt = ((b2ChainShape&)shape).m_count;
+			vertsPtr = ((b2ChainShape&)shape).m_vertices;
+			break;
+		}
+		ampArray<b2Vec2> verts = vertsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, vertsPtr) : ampArray<b2Vec2>(1);
+		ampArray<b2Vec2> norms = normsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, normsPtr) : ampArray<b2Vec2>(1);
+		int32 childCount = shape.GetChildCount();
+		int32 childIndex = 0;
+		
+		struct AmpRayCastInput
+		{
+			AmpRayCastInput() restrict(amp) {}
+			b2Vec2 p1, p2;
+			float32 maxFraction;
+		};
+		struct AmpRayCastOutput
+		{
+			AmpRayCastOutput() restrict(amp) {}
+			b2Vec2 normal;
+			float32 fraction;
+		};
+		
+		const auto& raycastCircle = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
+		{
+			b2Vec2 position = bodyTransform.p + b2Mul(bodyTransform.q, circleMiddle);
+			b2Vec2 s = input.p1 - position;
+			float32 b = b2Dot(s, s) - circleRadius * circleRadius;
+		
+			// Solve quadratic equation.
+			b2Vec2 r = input.p2 - input.p1;
+			float32 c = b2Dot(s, r);
+			float32 rr = b2Dot(r, r);
+			float32 sigma = c * c - rr * b;
+		
+			// Check for negative discriminant and short segment.
+			if (sigma < 0.0f || rr < 1.192092896e-07F) // == b2_epsilon
+				return false;
+		
+			// Find the point of intersection of the line with the circle.
+			float32 a = -(c + ampSqrt(sigma));
+		
+			// Is the intersection point on the segment?
+			if (0.0f <= a && a <= input.maxFraction * rr)
+			{
+				a /= rr;
+				output.fraction = a;
+				output.normal = s + a * r;
+				output.normal.Normalize();
+				return true;
+			}
+			return false;
+		};
+		const auto& raycastEdge = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
+		{
+			// Put the ray into the edge's frame of reference.
+			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
+			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
+			b2Vec2 d = p2 - p1;
+		
+			b2Vec2 e = edgeV2 - edgeV1;
+			b2Vec2 normal(e.y, -e.x);
+			normal.Normalize();
+		
+			// q = p1 + t * d
+			// dot(normal, q - v1) = 0
+			// dot(normal, p1 - v1) + t * dot(normal, d) = 0
+			float32 numerator = b2Dot(normal, edgeV1 - p1);
+			float32 denominator = b2Dot(normal, d);
+		
+			if (denominator == 0.0f)
+				return false;
+		
+			float32 t = numerator / denominator;
+			if (t < 0.0f || input.maxFraction < t)
+				return false;
+		
+			b2Vec2 q = p1 + t * d;
+		
+			// q = v1 + s * r
+			// s = dot(q - v1, r) / dot(r, r)
+			b2Vec2 r = edgeV2 - edgeV1;
+			float32 rr = b2Dot(r, r);
+			if (rr == 0.0f)
+				return false;
+		
+			float32 s = b2Dot(q - edgeV1, r) / rr;
+			if (s < 0.0f || 1.0f < s)
+				return false;
+		
+			output.fraction = t;
+			if (numerator > 0.0f)
+				output.normal = -b2Mul(bodyTransform.q, normal);
+			else
+				output.normal = b2Mul(bodyTransform.q, normal);
+			return true;
+		};
+		const auto& raycastPolygon = [=, &verts, &norms](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
+		{
+			// Put the ray into the polygon's frame of reference.
+			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
+			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
+			b2Vec2 d = p2 - p1;
+		
+			float32 lower = 0.0f, upper = input.maxFraction;
+		
+			int32 index = -1;
+		
+			for (int32 i = 0; i < vertsCnt; ++i)
+			{
+				// p = p1 + a * d
+				// dot(normal, p - v) = 0
+				// dot(normal, p1 - v) + a * dot(normal, d) = 0
+				float32 numerator = b2Dot(norms[i], verts[i] - p1);
+				float32 denominator = b2Dot(norms[i], d);
+		
+				if (denominator == 0.0f)
+				{
+					if (numerator < 0.0f)
+					{
+						return false;
+					}
+				}
+				else
+				{
+					// Note: we want this predicate without division:
+					// lower < numerator / denominator, where denominator < 0
+					// Since denominator < 0, we have to flip the inequality:
+					// lower < numerator / denominator <==> denominator * lower > numerator.
+					if (denominator < 0.0f && numerator < lower * denominator)
+					{
+						// Increase lower.
+						// The segment enters this half-space.
+						lower = numerator / denominator;
+						index = i;
+					}
+					else if (denominator > 0.0f && numerator < upper * denominator)
+					{
+						// Decrease upper.
+						// The segment exits this half-space.
+						upper = numerator / denominator;
+					}
+				}
+		
+				// The use of epsilon here causes the assert on lower to trip
+				// in some cases. Apparently the use of epsilon was to make edge
+				// shapes work, but now those are handled separately.
+				//if (upper < lower - b2_epsilon)
+				if (upper < lower)
+					return false;
+			}
+			if (index >= 0)
+			{
+				output.fraction = lower;
+				output.normal = b2Mul(bodyTransform.q, norms[index]);
+				return true;
+			}
+		
+			return false;
+		};
+		const auto& raycastChain = [=, &verts](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
+		{
+			int32 i1 = childIndex;
+			int32 i2 = childIndex + 1;
+			if (i2 == vertsCnt)
+				i2 = 0;
+		
+			// edgeShape Raycast
+			const b2Vec2& v1 = verts[i1];
+			const b2Vec2& v2 = verts[i2];
+		
+			// Put the ray into the edge's frame of reference.
+			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
+			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
+			b2Vec2 d = p2 - p1;
+		
+			b2Vec2 e = v2 - v1;
+			b2Vec2 normal(e.y, -e.x);
+			normal.Normalize();
+		
+			// q = p1 + t * d
+			// dot(normal, q - v1) = 0
+			// dot(normal, p1 - v1) + t * dot(normal, d) = 0
+			float32 numerator = b2Dot(normal, v1 - p1);
+			float32 denominator = b2Dot(normal, d);
+		
+			if (denominator == 0.0f)
+				return false;
+		
+			float32 t = numerator / denominator;
+			if (t < 0.0f || input.maxFraction < t)
+				return false;
+		
+			b2Vec2 q = p1 + t * d;
+		
+			// q = v1 + s * r
+			// s = dot(q - v1, r) / dot(r, r)
+			b2Vec2 r = v2 - v1;
+			float32 rr = b2Dot(r, r);
+			if (rr == 0.0f)
+				return false;
+		
+			float32 s = b2Dot(q - v1, r) / rr;
+			if (s < 0.0f || 1.0f < s)
+				return false;
+		
+			output.fraction = t;
+			if (numerator > 0.0f)
+				output.normal = -b2Mul(bodyTransform.q, normal);
+			else
+				output.normal = b2Mul(bodyTransform.q, normal);
+			return true;
+		};
+		for (; childIndex < childCount; childIndex++)
+		{
+			b2AABB aabb = m_world.GetAABB(fixture, childIndex);
+			AmpForEachInsideBounds(aabb,
+				[=, &positions, &velocities, &forces, &matIdxs, &matMasses, &flags](int32 a) restrict(amp)
+			{
+				if (!shouldCollide(a)) return;
+				const b2Vec2& ap = b2Vec2(positions[a]);
+				const b2Vec2& av = b2Vec2(velocities[a]);
+				AmpRayCastOutput output;
+				AmpRayCastInput input;
+				if (iterationIdx == 0)
+				{
+					// Put 'ap' in the local space of the previous frame
+					b2Vec2 p1 = b2MulT(bodyTransform0, ap);
+					if (shapeType == 0) // Circle
+					{
+						// Make relative to the center of the circle
+						p1 -= bodyLocalCentre;
+						// Re-apply rotation about the center of the
+						// circle
+						p1 = b2Mul(bodyTransform0.q, p1);
+						// Subtract rotation of the current frame
+						p1 = b2MulT(bodyTransform.q, p1);
+						// Return to local space
+						p1 += bodyLocalCentre;
+					}
+					// Return to global space and apply rotation of current frame
+					input.p1 = b2Mul(bodyTransform, p1);
+				}
+				else
+				{
+					input.p1 = ap;
+				}
+				input.p2 = ap + stepDt * av;
+				input.maxFraction = 1;
+				switch (shapeType)
+				{
+				case 0: // Circle
+					if (!raycastCircle(input, output)) return;
+					break;
+				case 1: // Edge
+					if (!raycastEdge(input, output)) return;
+					break;
+				case 2: // Polygon
+					if (!raycastPolygon(input, output)) return;
+					break;
+				case 3: // Chain
+					if (!raycastChain(input, output)) return;
+					break;
+				}
+				b2Vec2 n = output.normal;
+				b2Vec2 p =
+					(1 - output.fraction) * input.p1 +
+					output.fraction * input.p2 +
+					linearSlop * n;
+				b2Vec2 v = stepInvDt * (p - ap);
+				velocities[a] = b2Vec3(v, 0);
+				b2Vec2 f = stepInvDt * matMasses[matIdxs[a]] * (av - v);
+				if (IsSignificantForce(f) && !(flags[a] & wallFlag))
+				forces[a] += b2Vec3(f, 0);
+			});
+		}*/
+	});
 }
 
 void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
@@ -4246,6 +4311,8 @@ void b2ParticleSystem::SolveInit()
 	//	SolveLifetimes(m_step);
 	if (m_accelerate)
 	{
+		m_ampCopyFutBodies = amp::copyAsync(m_bodyBuffer, m_ampBodies);
+		m_ampCopyFutFixtures = amp::copyAsync(m_fixtureBuffer, m_ampFixtures);
 		if (m_needsUpdateAllParticleFlags)
 			AmpUpdateAllParticleFlags();
 	}
@@ -4272,7 +4339,11 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 		AmpSortProxies();
 		concurrency::parallel_invoke(
 			[&] { AmpFindContacts(exceptZombie); },
-			[&] { AmpUpdateBodyContacts(); }
+			[&] {
+				m_ampCopyFutBodies.wait();
+				m_ampCopyFutFixtures.wait();
+				AmpUpdateBodyContacts();
+			}
 		);
 		//AmpFindContacts(exceptZombie);
 		//AmpUpdateBodyContacts();
@@ -4608,7 +4679,7 @@ void b2ParticleSystem::LimitVelocity(const b2TimeStep& step)
 		float32 v2 = b2Dot(v, v);
 		if (v2 > criticalVelocitySquared)
 		{
-			int32 s = b2Sqrt(criticalVelocitySquared / v2);
+			float32 s = b2Sqrt(criticalVelocitySquared / v2);
 			m_velocityBuffer[i] *= s;
 
 		}
@@ -4624,7 +4695,7 @@ void b2ParticleSystem::AmpLimitVelocity(const b2TimeStep& step)
 		const b2Vec3 v = velocities[i];
 		const float32 v2 = b2Dot(v, v);
 		if (v2 <= criticalVelocitySquared) return;
-		const int32 s = ampSqrt(criticalVelocitySquared / v2);
+		const float32 s = ampSqrt(criticalVelocitySquared / v2);
 		velocities[i] *= s;
 	});
 }
@@ -6672,7 +6743,7 @@ void b2ParticleSystem::AmpSolveHealth()
 
 template <class T1, class UnaryPredicate> 
 static void b2ParticleSystem::RemoveFromVectorIf(vector<T1>& v1,
-	uint32& size, UnaryPredicate pred, bool adjustSize)
+	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
 	for (int i = 0; i < size; i++)
@@ -6728,7 +6799,7 @@ static void b2ParticleSystem::RemoveFromVectorIf(vector<T1>& v1,
 //}
 template <class T1, class T2, class UnaryPredicate>
 static void b2ParticleSystem::RemoveFromVectorsIf(vector<T1>& v1, vector<T2>& v2,
-	uint32& size, UnaryPredicate pred, bool adjustSize)
+	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
 	for (int i = 0; i < size; i++)
@@ -6748,7 +6819,7 @@ static void b2ParticleSystem::RemoveFromVectorsIf(vector<T1>& v1, vector<T2>& v2
 template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class UnaryPredicate>
 static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7,
-	uint32& size, UnaryPredicate pred, bool adjustSize)
+	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
 	for (int i = 0; i < size; i++)
@@ -6773,7 +6844,7 @@ static void b2ParticleSystem::RemoveFromVectorsIf(
 template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate>
 static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
-	uint32& size, UnaryPredicate pred, bool adjustSize)
+	int32& size, UnaryPredicate pred, bool adjustSize)
 {
 	int newI = 0;
 	for (int i = 0; i < size; i++)
@@ -6799,7 +6870,7 @@ static void b2ParticleSystem::RemoveFromVectorsIf(
 template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8, class UnaryPredicate1, class UnaryPredicate2> 
 static void b2ParticleSystem::RemoveFromVectorsIf(
 	vector<T1>& v1, vector<T2>& v2, vector<T3>& v3, vector<T4>& v4, vector<T5>& v5, vector<T6>& v6, vector<T7>& v7, vector<T8>& v8,
-	uint32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize)
+	int32& size, UnaryPredicate1 pred1, UnaryPredicate2 pred2, bool adjustSize)
 {
 	int newI = 0;
 	for (int i = 0; i < size; i++)
@@ -7069,7 +7140,7 @@ void b2ParticleSystem::AmpSolveZombie()
 
 	// add new dead groups to zombieRanges
 	bool groupWasDestroyed = false;
-	for (uint32 i = 0; i < m_groupCount; i++)
+	for (int32 i = 0; i < m_groupCount; i++)
 	{
 		auto& group = m_groupBuffer[i];
 		if (!groupHasAlive[i] && group.m_firstIndex != b2_invalidIndex)
@@ -7124,12 +7195,12 @@ void b2ParticleSystem::AddZombieRange(int32 firstIdx, int32 lastIdx)
 		m_zombieRanges.push_back(pair(firstIdx, lastIdx));
 }
 
-uint32 b2ParticleSystem::GetWriteIdx(uint32 particleCnt)
+uint32 b2ParticleSystem::GetWriteIdx(int32 particleCnt)
 {
 	uint32 writeIdx;
 	for (auto zombieRange = m_zombieRanges.begin(); zombieRange != m_zombieRanges.end(); zombieRange++)
 	{
-		int32 remainingSpace = zombieRange->second - zombieRange->first - (int32)particleCnt;
+		int32 remainingSpace = zombieRange->second - zombieRange->first - particleCnt;
 		if (remainingSpace >= 0)
 		{
 			writeIdx = zombieRange->first;

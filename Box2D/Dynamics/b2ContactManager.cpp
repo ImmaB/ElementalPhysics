@@ -100,7 +100,7 @@ void b2ContactManager::Collide()
 		if (c->m_flags & b2Contact::e_filterFlag)
 		{
 			// Should these bodies collide?
-			if (m_world.ShouldCollide(bodyB, bodyA) == false)
+			if (!m_world.ShouldCollide(bodyB, bodyA))
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
@@ -109,7 +109,7 @@ void b2ContactManager::Collide()
 			}
 
 			// Check user filtering.
-			if (m_contactFilter && m_contactFilter->ShouldCollide(fixtureA, fixtureB) == false)
+			if (m_contactFilter && !m_contactFilter->ShouldCollide(fixtureA, fixtureB))
 			{
 				b2Contact* cNuke = c;
 				c = cNuke->GetNext();
@@ -125,7 +125,7 @@ void b2ContactManager::Collide()
 		bool activeB = bodyB.IsAwake() && bodyB.m_type != b2_staticBody;
 
 		// At least one body must be awake and it must be dynamic or kinematic.
-		if (activeA == false && activeB == false)
+		if (!activeA && !activeB)
 		{
 			c = c->GetNext();
 			continue;
@@ -137,7 +137,7 @@ void b2ContactManager::Collide()
 		bool overlap = m_broadPhase.TestOverlap(proxyIdA, proxyIdB);
 
 		// Here we destroy contacts that cease to overlap in the broad-phase.
-		if (overlap == false)
+		if (!overlap)
 		{
 			b2Contact* cNuke = c;
 			c = cNuke->GetNext();
@@ -155,8 +155,10 @@ void b2ContactManager::FindNewContacts()
 {
 	m_broadPhase.UpdatePairs([=](b2FixtureProxy* proxyA, b2FixtureProxy* proxyB)
 	{
-		Fixture& fixtureA = m_world.m_fixtureBuffer[proxyA->fixtureIdx];
-		Fixture& fixtureB = m_world.m_fixtureBuffer[proxyB->fixtureIdx];
+		int32 fixtureAIdx = proxyA->fixtureIdx;
+		int32 fixtureBIdx = proxyB->fixtureIdx;
+		Fixture& fixtureA = m_world.m_fixtureBuffer[fixtureAIdx];
+		Fixture& fixtureB = m_world.m_fixtureBuffer[fixtureBIdx];
 
 		int32 bodyAIdx = fixtureA.m_bodyIdx;
 		int32 bodyBIdx = fixtureB.m_bodyIdx;
@@ -182,9 +184,9 @@ void b2ContactManager::FindNewContacts()
 				int32 iB = edge->contact->GetChildIndexB();
 
 				// A contact already exists.
-				if (fA == fixtureA.m_idx && fB == fixtureB.m_idx && iA == indexA && iB == indexB)
+				if (fA == fixtureAIdx && fB == fixtureBIdx && iA == indexA && iB == indexB)
 					return;
-				if (fA == fixtureB.m_idx && fB == fixtureA.m_idx && iA == indexB && iB == indexA)
+				if (fA == fixtureBIdx && fB == fixtureAIdx && iA == indexB && iB == indexA)
 					return;
 			}
 
@@ -192,7 +194,7 @@ void b2ContactManager::FindNewContacts()
 		}
 
 		// Does a joint override collision? Is at least one body dynamic?
-		if (!m_world.ShouldCollide(m_world.m_bodyBuffer[bodyAIdx], m_world.m_bodyBuffer[bodyBIdx]))
+		if (!m_world.ShouldBodiesCollide(bodyAIdx, bodyBIdx))
 			return;
 
 		// Check user filtering.
@@ -205,11 +207,11 @@ void b2ContactManager::FindNewContacts()
 			return;
 
 		// Contact creation may swap fixtures.
-		Fixture& fixtureA2 = m_world.GetFixture(c->m_fixtureIdxA);
-		Fixture& fixtureB2 = m_world.GetFixture(c->m_fixtureIdxB);
+		const Fixture& fixtureA2 = m_world.GetFixture(c->m_fixtureIdxA);
+		const Fixture& fixtureB2 = m_world.GetFixture(c->m_fixtureIdxB);
 
-		Body& bodyA = m_world.m_bodyBuffer[fixtureA2.m_bodyIdx];
-		Body& bodyB = m_world.m_bodyBuffer[fixtureB2.m_bodyIdx];
+		bodyAIdx = fixtureA2.m_bodyIdx;
+		bodyBIdx = fixtureB2.m_bodyIdx;
 
 		// Insert into the world.
 		c->m_prev = nullptr;
@@ -222,31 +224,31 @@ void b2ContactManager::FindNewContacts()
 
 		// Connect to body A
 		c->m_nodeA.contact = c;
-		c->m_nodeA.otherIdx = bodyB.m_idx;
+		c->m_nodeA.otherIdx = bodyBIdx;
 
-		b2ContactEdge* bodyAContactList = m_world.m_bodyContactListBuffer[bodyA.m_idx];
+		b2ContactEdge* bodyAContactList = m_world.m_bodyContactListBuffer[bodyAIdx];
 		c->m_nodeA.prev = nullptr;
 		c->m_nodeA.next = bodyAContactList;
 		if (bodyAContactList != nullptr)
 			bodyAContactList->prev = &c->m_nodeA;
-		m_world.m_bodyContactListBuffer[bodyA.m_idx] = &c->m_nodeA;
+		m_world.m_bodyContactListBuffer[bodyAIdx] = &c->m_nodeA;
 
 		// Connect to body B
 		c->m_nodeB.contact = c;
-		c->m_nodeB.otherIdx = bodyA.m_idx;
+		c->m_nodeB.otherIdx = bodyAIdx;
 
-		b2ContactEdge* bodyBContactList = m_world.m_bodyContactListBuffer[bodyB.m_idx];
+		b2ContactEdge* bodyBContactList = m_world.m_bodyContactListBuffer[bodyBIdx];
 		c->m_nodeB.prev = nullptr;
 		c->m_nodeB.next = bodyBContactList;
 		if (bodyBContactList != nullptr)
 			bodyBContactList->prev = &c->m_nodeB;
-		m_world.m_bodyContactListBuffer[bodyB.m_idx] = &c->m_nodeB;
+		m_world.m_bodyContactListBuffer[bodyBIdx] = &c->m_nodeB;
 
 		// Wake up the bodies
 		if (!fixtureA2.m_isSensor && !fixtureB2.m_isSensor)
 		{
-			bodyA.SetAwake(true);
-			bodyB.SetAwake(true);
+			m_world.m_bodyBuffer[bodyAIdx].SetAwake(true);
+			m_world.m_bodyBuffer[bodyBIdx].SetAwake(true);
 		}
 
 		++m_contactCount;

@@ -17,8 +17,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_FIXTURE_H
-#define B2_FIXTURE_H
+#pragma once
 
 #include <Box2D/Dynamics/b2Body.h>
 #include <Box2D/Collision/b2Collision.h>
@@ -35,22 +34,22 @@ struct b2Filter
 {
 	b2Filter()
 	{
-		categoryBits = 0x0001;
-		maskBits = 0xFFFF;
+		categoryBits = 0x00000001;
+		maskBits = 0xFFFFFFFF;
 		groupIndex = 0;
 	}
 
 	/// The collision category bits. Normally you would just set one bit.
-	uint16 categoryBits;
+	uint32 categoryBits;
 
 	/// The collision mask bits. This states the categories that this
 	/// shape would accept for collision.
-	uint16 maskBits;
+	uint32 maskBits;
 
 	/// Collision groups allow a certain group of objects to never collide (negative)
 	/// or always collide (positive). Zero means no collision group. Non-zero group
 	/// filtering always wins against the mask bits.
-	int16 groupIndex;
+	int32 groupIndex;
 };
 
 /// A fixture definition is used to create a fixture. This class defines an
@@ -61,6 +60,7 @@ struct b2FixtureDef
 	b2FixtureDef()
 	{
 		bodyIdx = b2_invalidIndex;
+		shapeType = b2Shape::Type::e_typeCount;
 		shapeIdx = b2_invalidIndex;
 		friction = 0.2f;
 		restitution = 0.0f;
@@ -72,6 +72,7 @@ struct b2FixtureDef
 
 	/// The shape, this must be set. The shape will be cloned, so you
 	/// can create the shape on the stack.
+	b2Shape::Type shapeType;
 	int32 shapeIdx;
 
 	/// The friction coefficient, usually in the range [0,1].
@@ -102,7 +103,8 @@ struct b2FixtureProxy
 	b2FixtureProxy()
 	{
 		fixtureIdx = b2_invalidIndex;
-		proxyId = b2_invalidIndex; // b2BroadPhase::e_nullProxy;
+		proxyId = b2_invalidIndex;
+		childIndex = b2_invalidIndex;
 	}
 };
 
@@ -115,6 +117,7 @@ struct Fixture
 	int32 m_bodyIdx;
 	int32 m_idxInBody;
 
+	b2Shape::Type m_shapeType;
 	int32 m_shapeIdx;
 
 	float32 m_friction;
@@ -126,12 +129,20 @@ struct Fixture
 
 	bool m_isSensor;
 
-	void Set(const b2FixtureDef& def, const int32 idxInBody);
+	float32 m_zPos;
+	float32 m_height;
 
-	/// Get the next fixture in the parent body's fixture list.
-	/// @return the next shape.
-	b2Fixture* GetNext();
-	const b2Fixture* GetNext() const;
+	bool TestZPos(float32 z) const
+	{
+		return m_zPos <= z && z <= m_zPos + m_height;
+	}
+	bool TestZPos(float32 z) const restrict(amp)
+	{
+		return m_zPos <= z && z <= m_zPos + m_height;
+	}
+
+
+	void Set(const b2FixtureDef& def, const int32 idxInBody);
 
 	/// Set the density of this fixture. This will _not_ automatically adjust the mass
 	/// of the body. You must call b2Body::ResetMassData to update the body's mass.
@@ -143,5 +154,3 @@ inline void Fixture::SetDensity(float32 density)
 	b2Assert(b2IsValid(density) && density >= 0.0f);
 	m_density = density;
 }
-
-#endif

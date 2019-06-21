@@ -251,6 +251,23 @@ struct b2AABB
 	b2Vec2 lowerBound;	///< the lower vertex
 	b2Vec2 upperBound;	///< the upper vertex
 };
+struct b2AABBFixtureProxy : b2AABB
+{
+
+	b2AABBFixtureProxy(const b2AABB& aabb, int32 fixtureIdx, int32 childIdx)
+		: lowerBound(aabb.lowerBound), upperBound(aabb.upperBound), fixtureIdx(fixtureIdx), childIdx(childIdx) {}
+
+	b2Vec2 lowerBound;	///< the lower vertex
+	b2Vec2 upperBound;	///< the upper vertex
+
+	int32 fixtureIdx;
+	int32 childIdx;
+};
+
+struct b2TagBounds
+{
+	uint32 upperTag, lowerTag, xUpper, xLower, fixtureIdx, childIdx;
+};
 
 /// Compute the collision manifold between two circles.
 void b2CollideCircles(b2Manifold& manifold,

@@ -1,14 +1,12 @@
 
-
-#ifndef B2_PARTICLE_MATERIAL
-#define B2_PARTICLE_MATERIAL
+#pragma once
 
 #include <BOX2d/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 
 class b2World;
 class b2ParticleSystem;
-class b2ParticleGroup;
+struct b2ParticleGroup;
 
 #pragma once
 
@@ -85,8 +83,3 @@ inline b2BodyMaterial::b2BodyMaterial(b2BodyMaterialDef def)
 
 inline b2BodyMaterial::~b2BodyMaterial()
 {}
-
-
-
-#endif
-

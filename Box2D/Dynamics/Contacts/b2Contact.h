@@ -106,6 +106,14 @@ public:
 	int32 GetFixtureIdxB();
 	const int32 GetFixtureIdxB() const;
 
+	/// Get fixture A in this contact.
+	int32 GetBodyIdxA();
+	const int32 GetBodyIdxA() const;
+
+	/// Get fixture B in this contact.
+	int32 GetBodyIdxB();
+	const int32 GetBodyIdxB() const;
+
 	/// Get the child primitive index for fixture A.
 	int32 GetChildIndexA() const;
 
@@ -166,7 +174,7 @@ protected:
 	void FlagForFiltering();
 
 	static void AddType(b2ContactCreateFcn* createFcn, b2ContactDestroyFcn* destroyFcn,
-						Shape::Type typeA, Shape::Type typeB);
+						b2Shape::Type typeA, b2Shape::Type typeB);
 	static void InitializeRegisters();
 
 	b2Contact() : m_fixtureIdxA(b2_invalidIndex), m_fixtureIdxB(b2_invalidIndex) {}
@@ -174,7 +182,7 @@ protected:
 	virtual ~b2Contact() {}
 
 
-	static b2ContactRegister s_registers[Shape::e_typeCount][Shape::e_typeCount];
+	static b2ContactRegister s_registers[b2Shape::e_typeCount][b2Shape::e_typeCount];
 	static bool s_initialized;
 
 	uint32 m_flags;
@@ -261,6 +269,25 @@ inline const int32 b2Contact::GetFixtureIdxB() const
 }
 
 
+inline int32 b2Contact::GetBodyIdxA()
+{
+	return m_nodeA.otherIdx;
+}
+inline const int32 b2Contact::GetBodyIdxA() const
+{
+	return m_nodeA.otherIdx;
+}
+
+inline int32 b2Contact::GetBodyIdxB()
+{
+	return m_nodeB.otherIdx;
+}
+inline const int32 b2Contact::GetBodyIdxB() const
+{
+	return m_nodeB.otherIdx;
+}
+
+
 inline int32 b2Contact::GetChildIndexA() const
 {
 	return m_indexA;
@@ -270,6 +297,8 @@ inline int32 b2Contact::GetChildIndexB() const
 {
 	return m_indexB;
 }
+
+
 
 inline void b2Contact::FlagForFiltering()
 {

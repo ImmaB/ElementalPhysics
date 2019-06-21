@@ -22,7 +22,7 @@
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Dynamics/b2World.h>
 
-class Body;
+struct Body;
 class b2Joint;
 struct b2SolverData;
 class b2BlockAllocator;
@@ -156,7 +156,7 @@ public:
 
 protected:
 	friend class b2World;
-	friend class Body;
+	friend struct Body;
 	friend class b2Island;
 	friend class b2GearJoint;
 

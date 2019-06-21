@@ -174,7 +174,7 @@ void b2DynamicTree::InsertLeaf(int32 leaf)
 	// Find the best sibling for this node
 	b2AABB leafAABB = m_nodes[leaf].aabb;
 	int32 index = m_root;
-	while (m_nodes[index].IsLeaf() == false)
+	while (!m_nodes[index].IsLeaf())
 	{
 		int32 child1 = m_nodes[index].child1;
 		int32 child2 = m_nodes[index].child2;
@@ -638,7 +638,7 @@ int32 b2DynamicTree::GetMaxBalance() const
 		if (node.height <= 1)
 			continue;
 
-		b2Assert(node.IsLeaf() == false);
+		b2Assert(!node.IsLeaf());
 
 		int32 child1 = node.child1;
 		int32 child2 = node.child2;

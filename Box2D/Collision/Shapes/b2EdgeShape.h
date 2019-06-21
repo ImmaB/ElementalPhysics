@@ -71,7 +71,7 @@ public:
 
 inline b2EdgeShape::b2EdgeShape()
 {
-	m_type = Shape::e_edge;
+	m_type = b2Shape::e_edge;
 	m_radius = b2_polygonRadius;
 	m_vertex0.x = 0.0f;
 	m_vertex0.y = 0.0f;

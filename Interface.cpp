@@ -9,6 +9,31 @@
 
 #define EXPORT extern "C" __declspec(dllexport)
 
+struct LFContact
+{
+	int32 bodyAIdx;
+	int32 bodyBIdx;
+};
+typedef void(__stdcall* ContactCallback)(LFContact*);
+
+class InterfaceContactListener : public b2ContactListener
+{
+public:
+
+	InterfaceContactListener(ContactCallback beginCallback) : m_beginCallback(beginCallback) {}
+
+	void BeginContact(b2Contact& c)
+	{
+		LFContact contact;
+		contact.bodyAIdx = c.GetBodyIdxA();
+		contact.bodyBIdx = c.GetBodyIdxB();
+		std::async(launch::async, m_beginCallback, &contact);
+	}
+
+	ContactCallback m_beginCallback;
+};
+
+
 class b2NewRaycastCallback : public b2RayCastCallback {
 public:
     b2NewRaycastCallback(int32 m, bool shouldQ) : numFixtures(0), numParticles(0), mode(m), shouldQuery(shouldQ) {}
@@ -59,97 +84,12 @@ private:
     std::vector<float> lengthsArray;
     std::vector<float> returnArray;
 };
-/*
-class b2NewContactListener : public b2ContactListener {
-public:
-    b2NewContactListener() : fixtureContacts(0), mixedContacts(0), particleContacts(0) {}
-    virtual void BeginContact(b2Contact* contact) {
-        //if (contact->IsTouching()) {
-        ++fixtureContacts;
-        b2WorldManifold* m = new b2WorldManifold();
-        contact->GetWorldManifold(m);
-        fixturesArray.push_back((int64)contact->GetFixtureA()->GetBody()->GetUserData());
-        fixturesArray.push_back((int64)contact->GetFixtureB()->GetBody()->GetUserData());
-        fixturesArray.push_back((int64)contact->GetFixtureA()->GetUserData());
-        fixturesArray.push_back((int64)contact->GetFixtureB()->GetUserData());
-        fixturesArray.push_back(m->points[0].x);
-        fixturesArray.push_back(m->points[0].y);
-        fixturesArray.push_back(m->points[1].x);
-        fixturesArray.push_back(m->points[1].y);
-        fixturesArray.push_back(m->normal.x);
-        fixturesArray.push_back(m->normal.y);
-        if (contact->IsTouching()) fixturesArray.push_back(1.0f);
-        else fixturesArray.push_back(0.0f);
-        
-        delete m;
-        //}
-    }
-    virtual void BeginContact(b2ParticleSystem* partSys,
-                              int32 particleBodyContactIdx) {
-        ++mixedContacts;
-        mixedArray.push_back(partSys->MyIndex); 
-        mixedArray.push_back(partSys->GetBodyContactIdxs()[particleBodyContactIdx]);
-		int32 bodyIdx = partSys->GetBodyContactBodyIdxs()[particleBodyContactIdx];
-		b2Body* body = partSys->GetBodyBuffer()[bodyIdx];
-		mixedArray.push_back((int64)body->GetUserData());
-		int32 fixtureIdx = partSys->GetBodyContactFixtureIdxs()[particleBodyContactIdx];
-		b2Fixture* fixture = partSys->GetFixtureBuffer()[bodyIdx];
-        mixedArray.push_back((int64)fixture->GetUserData());
-        mixedArray.push_back(partSys->GetBodyContactNormalXs()[particleBodyContactIdx]);
-        mixedArray.push_back(partSys->GetBodyContactNormalYs()[particleBodyContactIdx]);
-    }
-    virtual void BeginContact(b2ParticleSystem* partSys,
-                              b2ParticleContact* particleContact) {
-        ++particleContacts;
-        particleArray.push_back(partSys->MyIndex);
-        particleArray.push_back(particleContact->GetIndexA());
-        particleArray.push_back(particleContact->GetIndexB());
-        //particleArray.push_back(particleContact->GetNormal().x);
-        //particleArray.push_back(particleContact->GetNormal().y);
-    }
-    
-    float32* GetData() {
-        
-        lengthsArray.push_back(fixtureContacts);
-        lengthsArray.push_back(mixedContacts);
-        lengthsArray.push_back(particleContacts);
-        
-        returnArray.reserve(lengthsArray.size() + fixturesArray.size() + mixedArray.size() + particleArray.size());
-        returnArray.insert(returnArray.end(), lengthsArray.begin(), lengthsArray.end());
-        returnArray.insert(returnArray.end(), fixturesArray.begin(), fixturesArray.end());
-        returnArray.insert(returnArray.end(), mixedArray.begin(), mixedArray.end());
-        returnArray.insert(returnArray.end(), particleArray.begin(), particleArray.end());
-        
-        lengthsArray.clear();
-        fixturesArray.clear();
-        mixedArray.clear();
-        particleArray.clear();
-        
-        fixtureContacts = 0;
-        mixedContacts = 0;
-        particleContacts = 0;
-        
-        infoArray = &returnArray[0];
-        returnArray.clear();
-        return infoArray;
-    }
-private:
-    int32 fixtureContacts;
-    int32 mixedContacts;
-    int32 particleContacts;
-    float32* infoArray;
-    std::vector<float> fixturesArray;
-    std::vector<float> mixedArray;
-    std::vector<float> particleArray;
-    std::vector<float> lengthsArray;
-    std::vector<float> returnArray;
-};*/
-
 
 #pragma region GlobalVariables
 b2World* pWorld;
 b2ParticleSystem* pPartSys;
 b2NewRaycastCallback* newRC;
+InterfaceContactListener* pContactListener;
 float32* positionArray;
 int* returnArray;
 #pragma endregion
@@ -235,18 +175,16 @@ EXPORT void* GetDebug() {
 	return static_cast<void*>(debugString);
 }
 
-
-/*
-EXPORT void* SetContactListener(b2World* pWorld)
+EXPORT int32 GetContactCount()
 {
-	b2NewContactListener* cL = new b2NewContactListener();
-	pWorld->SetContactListener(cL);
-	return static_cast<void*>(cL);
+	return pPartSys->GetContactCount();
 }
-EXPORT float32* UpdateContactListener(void* contactPointer) {
-	b2NewContactListener* cL = static_cast<b2NewContactListener*>(contactPointer);
-	return cL->GetData();
-}*/
+EXPORT void SetContactCallback(ContactCallback callback)
+{
+	pContactListener = new InterfaceContactListener(callback);
+	pWorld->SetContactListener(pContactListener);
+}
+
 #pragma endregion
 
 #pragma region API Particle Systems
@@ -331,10 +269,6 @@ EXPORT int32 GetParticleCount()
 {
     return pPartSys->GetParticleCount();
 }
-EXPORT int32 GetContactCount()
-{
-	return pPartSys->GetContactCount();
-}
 EXPORT void SetAllParticleFlags(void* partSysPtr, int32 flags) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     int32 numParts = partSys->GetParticleCount();
@@ -392,10 +326,10 @@ EXPORT void AddFlagsToPartsInShape(void* partSysPtr, int32 flags, void* shapePtr
 		}
 	}
 }
-EXPORT void AddFlagsToPartsWithMatInShape(uint32 flag, int32 matIdx, int32 shapeIdx, b2Vec2 shapePos, float32 shapeRot)
+EXPORT void AddFlagsToPartsWithMatInFixture(uint32 flag, int32 matIdx, int32 fixtureIdx, b2Vec2 fixturePos, float32 fixtureRot)
 {
-	const b2Shape& shape = pWorld->GetSubShape(pWorld->m_shapeBuffer[shapeIdx]);
-	pPartSys->AddFlagInsideShape(flag, matIdx, shape, b2Transform(shapePos, b2Rot(shapeRot)));
+	const b2Shape& shape = pWorld->GetShape(pWorld->GetFixture(fixtureIdx));
+	pPartSys->AddFlagInsideShape(flag, matIdx, shape, b2Transform(fixturePos, b2Rot(fixtureRot)));
 }
 
 EXPORT void RemoveFlagsFromAll(void* partSysPtr, int32 flags) {
@@ -432,14 +366,15 @@ EXPORT void GetPartBufPtrs(int32** matIdxBufPtr, b2Vec3** posBufPtr,
 
 
 EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
-	float32 angle, float32 strength, float32 angVel, float32 linVelX, float32 linVelY, int32 shapeIdx, int32 color, float32 stride,
-	float32 health, float32 heat, int32 timestamp)
+	float32 angle, float32 strength, float32 angVel, float32 linVelX, float32 linVelY,
+	b2Shape::Type shapeType, int32 shapeIdx, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
 {
 	b2ParticleGroupDef gd;
 	gd.flags = partFlags;
 	gd.groupFlags = groupFlags;
 	gd.matIdx = matIdx;
 	gd.collisionGroup = collisionGroup;
+	gd.shapeType = shapeType;
 	gd.shapeIdx = shapeIdx;
 	gd.angle = angle;
 	gd.strength = strength;
@@ -501,24 +436,31 @@ EXPORT void DestroyParticleGroup(int32 groupIdx, int32 timestamp)
 
 #pragma region Shapes
 
-EXPORT bool IsPointInShape(int32 shapeIdx, b2Vec3 p, float32 angle)
+EXPORT bool IsPointInFixture(int32 fixtureIdx, b2Vec3 p, float32 angle)
 {
-	const b2Shape& s = pWorld->GetSubShape(pWorld->m_shapeBuffer[shapeIdx]);
-	b2Rot rotation = b2Rot(angle);
-	b2Transform transform = b2Transform(p, rotation);
+	const b2Shape& s = pWorld->GetShape(pWorld->GetFixture(fixtureIdx));
+	b2Transform transform = b2Transform(p, b2Rot(angle));
 	return s.TestPoint(transform, p);
 }
 EXPORT int32 AddBoxShape(b2Vec2 size, float32 height, b2Vec3 pos, float32 angle)
 {
 	b2PolygonShapeDef sd;
-	sd.type = Shape::e_polygon;
+	sd.type = b2Shape::e_polygon;
 	sd.SetAsBox(size, pos, angle);
+	return pWorld->CreateShape(sd);
+}
+EXPORT int32 AddPolygonShape(b2Vec2* vertices, int32 count)
+{
+	b2PolygonShapeDef sd;
+	sd.type = b2Shape::e_polygon;
+	std::memcpy(sd.vertices.data(), vertices, sizeof b2Vec2 * count);
+	sd.count = count;
 	return pWorld->CreateShape(sd);
 }
 EXPORT int32 AddCircleShape(float32 radius, float32 height, b2Vec3 pos)
 {
 	b2CircleShapeDef sd;
-	sd.type = Shape::e_circle;
+	sd.type = b2Shape::e_circle;
 	sd.p = pos;
 	sd.radius = radius;
 	return pWorld->CreateShape(sd);
@@ -535,56 +477,12 @@ EXPORT void* GetChainShapeDef(float32* vertArray, bool loop, float32 zPos, float
         shape->CreateChain(vertices, numberOfVertices);
     return static_cast<void*>(shape);
 }
-EXPORT void* GetPolygonShapeDef(float32* vertArray, float32 zPos, float32 zHeight) {
-    b2PolygonShape* shape = new b2PolygonShape();
-    int32 numberOfVertices = vertArray[0];
-    b2Vec2* vertices = new b2Vec2[numberOfVertices];
-    
-    for (int32 i = 1, j = 0; i < (vertArray[0] * 2); i += 2)
-        vertices[j++] = b2Vec2(vertArray[i], vertArray[i + 1]);
-    
-    shape->Set(vertices, numberOfVertices);
-    return static_cast<void*>(shape);
-}
 EXPORT void* GetEdgeShapeDef(float32 x1, float32 y1, float32 x2, float32 y2, float32 zPos, float32 zHeight) {
     b2Vec2 vec1 = b2Vec2(x1, y1);
     b2Vec2 vec2 = b2Vec2(x2, y2);
     b2EdgeShape* shape = new b2EdgeShape();
     shape->Set(vec1, vec2);
     return static_cast<void*>(shape);
-}
-EXPORT void* GetEllipseShapeDef(float32 outerRadius, float32 divisions, float32 zPos, float32 zHeight) {
-    /*b2ChainShape* chainShape;
-     std::vector<b2Vec2> vertices;
-     const float32 SPIKE_DEGREE = 2 * 3.14159265358979323846f / 180;
-     for (int32 idx = 0; idx < divisions; idx++) {
-     float32 angle = ((3.14159265358979323846f * 2) / divisions)*idx;
-     float32 xPos, yPos;
-     
-     xPos = outerRadius*cosf(angle);
-     yPos = outerRadius*sinf(angle);
-     vertices.push_back(b2Vec2(xPos, yPos));
-     }
-     vertices.push_back(vertices[0]);
-     chainShape->CreateChain(&vertices[0], vertices.size());
-     return static_cast<void*>(chainShape);*/
-    
-    b2PolygonShape* shape = new b2PolygonShape();
-    int32 numberOfVertices = divisions;
-    b2Vec2* vertices = new b2Vec2[numberOfVertices];
-    
-    for (int32 idx = 0; idx < divisions; idx++) {
-        float32 angle = ((3.14159265358979323846f * 2) / divisions)*idx;
-        float32 xPos, yPos;
-        
-        xPos = outerRadius*cos(angle);
-        yPos = outerRadius*sin(angle);
-        vertices[idx] = b2Vec2(xPos, yPos);
-    }
-    
-    shape->Set(vertices, numberOfVertices);
-    return static_cast<void*>(shape);
-    
 }
 EXPORT float32* GetPolyShapeCentroid(void* shapePointer) {
     float32 * positionArray = new float[2];
@@ -593,9 +491,9 @@ EXPORT float32* GetPolyShapeCentroid(void* shapePointer) {
     positionArray[1] = m_shape->m_centroid.y;
     return positionArray;
 }
-EXPORT void DestroyShape(int32 shapeIdx)
+EXPORT void DestroyShape(b2Shape::Type shapeType, int32 shapeIdx)
 {
-	pWorld->DestroyShape(shapeIdx);
+	pWorld->DestroyShape(shapeType, shapeIdx);
 }
 
 #pragma endregion
@@ -623,11 +521,6 @@ EXPORT Body* GetBody(int32 idx)
 {
 	return &pWorld->m_bodyBuffer[idx];
 }
-
-EXPORT void ApplyForceToCentreOfBody(Body* pBody, float32 impulseX, float32 impulseY) {
-    b2Vec2 impulse = b2Vec2(impulseX, impulseY);
-	pBody->ApplyForceToCenter(impulse, true);
-}
 EXPORT void SetBodyAwake(Body* pBody, bool isAwake)
 {
 	pBody->SetAwake(isAwake);
@@ -654,21 +547,25 @@ EXPORT void SetBodyRotation(Body* pBody, float32 rotation) {
 	pWorld->SetTransform(*pBody, pBody->GetPosition(), rotation);
 }
 
-EXPORT void ApplyAngularImpulseToBody(Body* pBody, float32 impulse, bool wake)
+EXPORT void ApplyForceToBody(int32 bodyIdx, b2Vec3 force, bool wake)
 {
-	pBody->ApplyAngularImpulse(impulse, wake);
+	pWorld->GetBody(bodyIdx).ApplyForceToCenter(force, wake);
 }
-EXPORT void ApplyForceToBody(Body* pBody, float32 forceX, float32 forceY, float32 posX, float32 posY, bool wake)
+EXPORT void ApplyImpulseToBody(int32 bodyIdx, b2Vec3 impulse, bool wake)
 {
-    b2Vec2 force = b2Vec2(forceX, forceY);
-    b2Vec2 position = b2Vec2(posX, posY);
-	pBody->ApplyForce(force, position, wake);
+	pWorld->GetBody(bodyIdx).ApplyImpulseToCenter(impulse, wake);
 }
-EXPORT void ApplyLinearImpulseToBody(Body* pBody, float32 forceX, float32 forceY, float32 posX, float32 posY, bool wake)
+EXPORT void ApplyAngularImpulseToBody(int32 bodyIdx, float32 impulse, bool wake)
 {
-    b2Vec2 force = b2Vec2(forceX, forceY);
-    b2Vec2 position = b2Vec2(posX, posY);
-	pBody->ApplyLinearImpulse(force, position, wake);
+	pWorld->GetBody(bodyIdx).ApplyAngularImpulse(impulse, wake);
+}
+EXPORT void ApplyForceToBodyAtPoint(int32 bodyIdx, b2Vec2 force, b2Vec2 pos, bool wake)
+{
+	pWorld->GetBody(bodyIdx).ApplyForce(force, pos, wake);
+}
+EXPORT void ApplyImpulseToBodyAtPoint(int32 bodyIdx, b2Vec3 impulse, b2Vec2 pos, bool wake)
+{
+	pWorld->GetBody(bodyIdx).ApplyLinearImpulse(impulse, pos, wake);
 }
 EXPORT void ApplyTorqueToBody(Body* pBody, float32 torque, bool wake)
 {
@@ -695,11 +592,13 @@ EXPORT void SetBodyVelocity(int32 idx, b2Vec3 vel)
 
 #pragma region Fixture
 
-EXPORT int32 AddFixture(int32 bodyIdx, int32 shapeIdx, bool isSensor, int32 groupIndex, uint16 categoryBits, uint16 maskBits)
+EXPORT int32 AddFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx,
+	bool isSensor, int32 groupIndex,uint16 categoryBits, uint16 maskBits)
 {
     b2FixtureDef fd;
 	fd.isSensor = isSensor;
 	fd.bodyIdx = bodyIdx;
+	fd.shapeType = shapeType;
     fd.shapeIdx = shapeIdx;
     int32 idx = pWorld->CreateFixture(fd);
 	Fixture& fixture = pWorld->GetFixture(idx);

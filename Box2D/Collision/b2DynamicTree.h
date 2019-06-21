@@ -235,7 +235,7 @@ inline void b2DynamicTree::RayCast(T& callback, const b2RayCastInput& input) con
 
 		const b2TreeNode& node = m_nodes[nodeId];
 
-		if (b2TestOverlap(node.aabb, segmentAABB) == false)
+		if (!b2TestOverlap(node.aabb, segmentAABB))
 			continue;
 
 		// Separating axis for segment (Gino, p80).

@@ -66,7 +66,7 @@ b2BlockAllocator::b2BlockAllocator()
 	memset(m_chunks, 0, m_chunkSpace * sizeof(b2Chunk));
 	memset(m_freeLists, 0, sizeof(m_freeLists));
 
-	if (s_blockSizeLookupInitialized == false)
+	if (!s_blockSizeLookupInitialized)
 	{
 		int32 j = 0;
 		for (int32 i = 1; i <= b2_maxBlockSize; ++i)

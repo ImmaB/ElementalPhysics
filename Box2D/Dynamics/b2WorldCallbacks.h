@@ -17,21 +17,20 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_WORLD_CALLBACKS_H
-#define B2_WORLD_CALLBACKS_H
+#pragma once
 
 #include <Box2D/Common/b2Settings.h>
 
 struct b2Vec2;
 struct b2Transform;
-class Fixture;
-class b2Body;
+struct Fixture;
+struct Body;
 class b2Joint;
 class b2Contact;
 class b2ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
-class b2ParticleGroup;
+struct b2ParticleGroup;
 class b2BodyMaterial;
 struct b2ParticleContact;
 struct b2PartBodyContact;
@@ -337,5 +336,3 @@ public:
 		return true;
 	}
 };
-
-#endif

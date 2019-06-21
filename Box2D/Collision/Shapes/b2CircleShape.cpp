@@ -20,9 +20,9 @@
 #include <Box2D/Collision/Shapes/b2CircleShape.h>
 #include <new>
 
-void b2CircleShape::Set(const b2ShapeDef& shapeDef)
+void b2CircleShape::Set(const b2Shape::Def& shapeDef)
 {
-	b2CircleShapeDef& circDef = (b2CircleShapeDef&)shapeDef;
+	const b2CircleShapeDef& circDef = (const b2CircleShapeDef&)shapeDef;
 	//m_type = Shape::e_circle;
 	m_radius = shapeDef.radius;
 	m_p = circDef.p;
