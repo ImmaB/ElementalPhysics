@@ -27,6 +27,7 @@
 #include <Box2D/Dynamics/b2TimeStep.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <Box2D/Particle/b2Material.h>
+#include <Box2D/Amp/ampAlgorithms.h>
 
 struct b2AABB;
 struct b2Color;
@@ -272,6 +273,7 @@ public:
 
 
 	vector<b2BodyMaterial> m_bodyMaterials;
+	ampArray<b2BodyMaterial> m_ampBodyMaterials;
 
 	int32 m_allMaterialFlags;
 
@@ -305,9 +307,28 @@ public:
 	template<typename T>
 	int32 InsertIntoBuffer(T& value, vector<T>& buf, set<int32>& freeIdxs);
 
-	const b2Shape& GetShape(const int32 fixtureIdx) const;
-	const b2Shape& GetShape(const Fixture& f) const;
-	const b2Shape& GetShape(b2Shape::Type type, int32 idx) const;
+	const inline b2Shape& GetShape(const int32 fixtureIdx) const
+	{
+		return GetShape(m_fixtureBuffer[fixtureIdx]);
+	}
+	const inline b2Shape& GetShape(const Fixture& f) const
+	{
+		return GetShape(f.m_shapeType, f.m_shapeIdx);
+	}
+	const inline b2Shape& GetShape(const b2Shape::Type type, const int32 idx) const
+	{
+		switch (type)
+		{
+		case b2Shape::e_chain:
+			return m_chainShapeBuffer[idx];
+		case b2Shape::e_circle:
+			return m_circleShapeBuffer[idx];
+		case b2Shape::e_edge:
+			return m_edgeShapeBuffer[idx];
+		case b2Shape::e_polygon:
+			return m_polygonShapeBuffer[idx];
+		}
+	}
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:

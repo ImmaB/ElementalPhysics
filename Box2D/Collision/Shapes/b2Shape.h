@@ -17,8 +17,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_SHAPE_H
-#define B2_SHAPE_H
+#pragma once
 
 #include <Box2D/Common/b2BlockAllocator.h>
 #include <Box2D/Common/b2Math.h>
@@ -44,10 +43,9 @@ struct b2MassData
 /// A shape is used for collision detection. You can create a shape however you like.
 /// Shapes used for simulation in b2World are created automatically when a b2Fixture
 /// is created. Shapes may encapsulate a one or more child shapes.
-class b2Shape
+struct b2Shape
 {
-public:
-	enum Type
+	enum Type : int32
 	{
 		e_circle = 0,
 		e_edge = 1,
@@ -62,6 +60,9 @@ public:
 		float32 height;
 		float32 radius;
 	};
+
+	Type m_type = Type::e_typeCount;
+	float32 m_radius = 0;
 
 	virtual void Set(const Def& shapeDef) {};
 
@@ -105,8 +106,4 @@ public:
 	/// @param massData returns the mass data for this shape.
 	/// @param density the density in kilograms per meter squared.
 	virtual b2MassData ComputeMass(float32 density) const = 0;
-
-	Type m_type = Type::e_typeCount;
-	float32 m_radius = 0;
 };
-#endif

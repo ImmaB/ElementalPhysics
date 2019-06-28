@@ -43,7 +43,7 @@ void b2DistanceProxy::Set(const b2Shape& subShape, int32 index)
 	case b2Shape::e_polygon:
 		{
 			const b2PolygonShape& polygon = (const b2PolygonShape&)subShape;
-			m_vertices = polygon.m_vertices.data();
+			m_vertices = polygon.m_vertices;
 			m_count = polygon.m_count;
 			m_radius = polygon.m_radius;
 		}
@@ -500,9 +500,7 @@ void b2Distance(b2DistanceOutput& output,
 
 		// If we have 3 points, then the origin is in the corresponding triangle.
 		if (simplex.m_count == 3)
-		{
 			break;
-		}
 
 		// Compute closest point.
 		b2Vec2 p = simplex.GetClosestPoint();
@@ -556,9 +554,7 @@ void b2Distance(b2DistanceOutput& output,
 
 		// If we found a duplicate support point we must exit to avoid cycling.
 		if (duplicate)
-		{
 			break;
-		}
 
 		// New vertex is ok and needed.
 		++simplex.m_count;

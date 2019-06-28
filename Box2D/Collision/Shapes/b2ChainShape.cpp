@@ -18,7 +18,6 @@
 */
 
 #include <Box2D/Collision/Shapes/b2ChainShape.h>
-#include <Box2D/Collision/Shapes/b2EdgeShape.h>
 #include <new>
 #include <memory.h>
 #include <string.h>
@@ -26,7 +25,6 @@
 b2ChainShape::~b2ChainShape()
 {
 	b2Free(m_vertices);
-	m_vertices = NULL;
 	m_count = 0;
 }
 
@@ -45,7 +43,6 @@ void b2ChainShape::CreateLoop(const b2Vec2* vertices, int32 count)
 	}
 
 	m_count = count + 1;
-	m_vertices = (b2Vec2*)b2Alloc(m_count * sizeof(b2Vec2));
 	memcpy(m_vertices, vertices, count * sizeof(b2Vec2));
 	m_vertices[count] = m_vertices[0];
 	m_prevVertex = m_vertices[m_count - 2];
@@ -56,8 +53,8 @@ void b2ChainShape::CreateLoop(const b2Vec2* vertices, int32 count)
 
 void b2ChainShape::CreateChain(const b2Vec2* vertices, int32 count)
 {
-	b2Assert(m_vertices == NULL && m_count == 0);
-	b2Assert(count >= 2);
+	b2Assert(m_count == 0);
+	b2Assert(count >= 2 && count <= b2_maxChainVertices);
 	for (int32 i = 1; i < count; ++i)
 	{
 #if B2_ASSERT_ENABLED
@@ -69,7 +66,6 @@ void b2ChainShape::CreateChain(const b2Vec2* vertices, int32 count)
 	}
 
 	m_count = count;
-	m_vertices = (b2Vec2*)b2Alloc(count * sizeof(b2Vec2));
 	memcpy(m_vertices, vertices, m_count * sizeof(b2Vec2));
 
 	m_hasPrevVertex = false;
@@ -165,9 +161,7 @@ bool b2ChainShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	int32 i1 = childIndex;
 	int32 i2 = childIndex + 1;
 	if (i2 == m_count)
-	{
 		i2 = 0;
-	}
 
 	edgeShape.m_vertex1 = m_vertices[i1];
 	edgeShape.m_vertex2 = m_vertices[i2];

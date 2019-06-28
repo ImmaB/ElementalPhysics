@@ -26,9 +26,11 @@ struct b2CircleShapeDef : public b2Shape::Def
 };
 
 /// A circle shape.
-class b2CircleShape : public b2Shape
+struct b2CircleShape : public b2Shape
 {
-public:
+	/// Position
+	b2Vec2 m_p;
+
 	void Set(const b2Shape::Def& shapeDef);
 
 	b2CircleShape();
@@ -66,21 +68,56 @@ public:
 
 	/// Get a vertex by index. Used by b2Distance.
 	const b2Vec2& GetVertex(int32 index) const;
+};
 
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-public:
-	/// Set position with direct floats.
-	void SetPosition(float32 x, float32 y) { m_p.Set(x, y); }
+struct AmpCircleShape
+{
+	int32 _vfptr[2];
+	b2Shape::Type m_type;
+	float32 m_radius;
 
-	/// Get x-coordinate of position.
-	float32 GetPositionX() const { return m_p.x; }
-
-	/// Get y-coordinate of position.
-	float32 GetPositionY() const { return m_p.y; }
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-	/// Position
 	b2Vec2 m_p;
+
+	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal) const restrict(amp)
+	{
+		b2Vec2 center = xf.p + b2Mul(xf.q, m_p);
+		b2Vec2 d = p - center;
+		float32 d1 = d.Length();
+		distance = d1 - m_radius;
+		normal = 1 / d1 * d;
+	}
+
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
+		const b2Transform& transform) const restrict(amp)
+	{
+		b2Vec2 position = transform.p + b2Mul(transform.q, m_p);
+		b2Vec2 s = input.p1 - position;
+		float32 b = b2Dot(s, s) - m_radius * m_radius;
+
+		// Solve quadratic equation.
+		b2Vec2 r = input.p2 - input.p1;
+		float32 c = b2Dot(s, r);
+		float32 rr = b2Dot(r, r);
+		float32 sigma = c * c - rr * b;
+
+		// Check for negative discriminant and short segment.
+		if (sigma < 0.0f || rr < b2_epsilon)
+			return false;
+
+		// Find the point of intersection of the line with the circle.
+		float32 a = -(c + ampSqrt(sigma));
+
+		// Is the intersection point on the segment?
+		if (0.0f <= a && a <= input.maxFraction * rr)
+		{
+			a /= rr;
+			output.fraction = a;
+			output.normal = s + a * r;
+			output.normal.Normalize();
+			return true;
+		}
+		return false;
+	}
 };
 
 inline b2CircleShape::b2CircleShape()

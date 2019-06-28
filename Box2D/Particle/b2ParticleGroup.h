@@ -21,13 +21,13 @@
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Collision/Shapes/b2Shape.h>
 
-class b2Shape;
+struct b2Shape;
 class b2World;
 class b2ParticleSystem;
 struct b2ParticleGroup;
 class b2ParticleColor;
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-class b2CircleShape;
+struct b2CircleShape;
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 /// @file

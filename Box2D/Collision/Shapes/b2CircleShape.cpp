@@ -80,9 +80,7 @@ bool b2CircleShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input
 
 	// Check for negative discriminant and short segment.
 	if (sigma < 0.0f || rr < b2_epsilon)
-	{
 		return false;
-	}
 
 	// Find the point of intersection of the line with the circle.
 	float32 a = -(c + b2Sqrt(sigma));
@@ -96,7 +94,6 @@ bool b2CircleShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input
 		output.normal.Normalize();
 		return true;
 	}
-
 	return false;
 }
 

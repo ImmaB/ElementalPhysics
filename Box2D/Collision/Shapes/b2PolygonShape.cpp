@@ -97,7 +97,7 @@ int32 b2PolygonShape::GetChildCount() const
 	return 1;
 }
 
-static b2Vec2 ComputeCentroid(const polyVec2s& vs, int32 count)
+static b2Vec2 ComputeCentroid(const b2Vec2 vs[b2_maxPolygonVertices], int32 count)
 {
 	b2Assert(count >= 3);
 
@@ -276,13 +276,13 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 {
 	B2_NOT_USED(childIndex);
 
-	b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+	const b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
 	float32 maxDistance = -FLT_MAX;
 	b2Vec2 normalForMaxDistance = pLocal;
 
 	for (int32 i = 0; i < m_count; ++i)
 	{
-		float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
+		const float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
 		if (dot > maxDistance)
 		{
 			maxDistance = dot;
@@ -296,8 +296,8 @@ void b2PolygonShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, flo
 		float32 minDistance2 = maxDistance * maxDistance;
 		for (int32 i = 0; i < m_count; ++i)
 		{
-			b2Vec2 distance = pLocal - m_vertices[i];
-			float32 distance2 = distance.LengthSquared();
+			const b2Vec2 distance = pLocal - m_vertices[i];
+			const float32 distance2 = distance.LengthSquared();
 			if (minDistance2 > distance2)
 			{
 				minDistance = distance;

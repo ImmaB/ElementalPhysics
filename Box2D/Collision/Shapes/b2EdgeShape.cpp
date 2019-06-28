@@ -70,7 +70,6 @@ void b2EdgeShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float3
 	float32 d1 = d.Length();
 	distance = d1;
 	normal = d1 > 0 ? 1 / d1 * d : b2Vec2_zero;
-
 }
 
 // p = p1 + t * d
@@ -100,15 +99,11 @@ bool b2EdgeShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	float32 denominator = b2Dot(normal, d);
 
 	if (denominator == 0.0f)
-	{
 		return false;
-	}
 
 	float32 t = numerator / denominator;
 	if (t < 0.0f || input.maxFraction < t)
-	{
 		return false;
-	}
 
 	b2Vec2 q = p1 + t * d;
 
@@ -117,25 +112,17 @@ bool b2EdgeShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	b2Vec2 r = v2 - v1;
 	float32 rr = b2Dot(r, r);
 	if (rr == 0.0f)
-	{
 		return false;
-	}
 
 	float32 s = b2Dot(q - v1, r) / rr;
 	if (s < 0.0f || 1.0f < s)
-	{
 		return false;
-	}
 
 	output.fraction = t;
 	if (numerator > 0.0f)
-	{
 		output.normal = -b2Mul(xf.q, normal);
-	}
 	else
-	{
 		output.normal = b2Mul(xf.q, normal);
-	}
 	return true;
 }
 

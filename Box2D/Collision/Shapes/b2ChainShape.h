@@ -17,12 +17,10 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_CHAIN_SHAPE_H
-#define B2_CHAIN_SHAPE_H
+#pragma once
 
 #include <Box2D/Collision/Shapes/b2Shape.h>
-
-class b2EdgeShape;
+#include <Box2D/Collision/Shapes/b2EdgeShape.h>
 
 /// A chain shape is a free form sequence of line segments.
 /// The chain has two-sided collision, so you can use inside and outside collision.
@@ -30,9 +28,17 @@ class b2EdgeShape;
 /// Since there may be many vertices, they are allocated using b2Alloc.
 /// Connectivity information is used to create smooth collisions.
 /// WARNING: The chain will not collide properly if there are self-intersections.
-class b2ChainShape : public b2Shape
+struct b2ChainShape : public b2Shape
 {
-public:
+	/// The vertices. Owned by this class.
+	b2Vec2 m_vertices[b2_maxChainVertices];
+
+	/// The vertex count.
+	int32 m_count;
+
+	b2Vec2 m_prevVertex, m_nextVertex;
+	int32 m_hasPrevVertex, m_hasNextVertex;
+
 	b2ChainShape();
 
 	/// The destructor frees the vertices using b2Free.
@@ -82,25 +88,82 @@ public:
 	/// Chains have zero mass.
 	/// @see b2Shape::ComputeMass
 	b2MassData ComputeMass(float32 density) const;
+};
 
+struct AmpChainShape
+{
+	int32 _vfptr[2];
+	b2Shape::Type m_type;
+	float32 m_radius;
 	/// The vertices. Owned by this class.
-	b2Vec2* m_vertices;
+	b2Vec2 m_vertices[b2_maxChainVertices];
 
 	/// The vertex count.
 	int32 m_count;
 
 	b2Vec2 m_prevVertex, m_nextVertex;
-	bool m_hasPrevVertex, m_hasNextVertex;
+	int32 m_hasPrevVertex, m_hasNextVertex;
+
+	void GetChildEdge(AmpEdgeShape& edge, int32 index) const restrict(amp)
+	{
+		edge.m_type = b2Shape::e_edge;
+		edge.m_radius = m_radius;
+
+		edge.m_vertex1 = m_vertices[index + 0];
+		edge.m_vertex2 = m_vertices[index + 1];
+
+		if (index > 0)
+		{
+			edge.m_vertex0 = m_vertices[index - 1];
+			edge.m_hasVertex0 = true;
+		}
+		else
+		{
+			edge.m_vertex0 = m_prevVertex;
+			edge.m_hasVertex0 = m_hasPrevVertex;
+		}
+		if (index < m_count - 2)
+		{
+			edge.m_vertex3 = m_vertices[index + 2];
+			edge.m_hasVertex3 = true;
+		}
+		else
+		{
+			edge.m_vertex3 = m_nextVertex;
+			edge.m_hasVertex3 = m_hasNextVertex;
+		}
+	}
+
+	void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
+		float32& distance, b2Vec2& normal, int32 childIndex) const restrict(amp)
+	{
+		AmpEdgeShape edge;
+		GetChildEdge(edge, childIndex);
+		edge.ComputeDistance(xf, p, distance, normal);
+	}
+
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
+		const b2Transform& xf, int32 childIndex) const restrict(amp)
+	{
+		AmpEdgeShape edgeShape;
+
+		int32 i1 = childIndex;
+		int32 i2 = childIndex + 1;
+		if (i2 == m_count)
+			i2 = 0;
+
+		edgeShape.m_vertex1 = m_vertices[i1];
+		edgeShape.m_vertex2 = m_vertices[i2];
+
+		return edgeShape.RayCast(output, input, xf);
+	}
 };
 
 inline b2ChainShape::b2ChainShape()
 {
 	m_type = b2Shape::e_chain;
 	m_radius = b2_polygonRadius;
-	m_vertices = NULL;
 	m_count = 0;
 	m_hasPrevVertex = false;
 	m_hasNextVertex = false;
 }
-
-#endif

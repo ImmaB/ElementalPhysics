@@ -5,7 +5,6 @@
 #include <math.h>
 #include <vector>
 #include <string.h>
-#include <string.h>
 
 #define EXPORT extern "C" __declspec(dllexport)
 
@@ -210,27 +209,55 @@ EXPORT int32 GetParticleIterations(float32 gravity, float32 particleRadius, floa
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
 }
 
+EXPORT bool ShouldSolveParticleSystem() { return pPartSys->ShouldSolve(); }
 
-EXPORT void SolveInit()
-{
-	pPartSys->SolveInit();
-}
-EXPORT void UpdateContacts(int32 iteration)
-{
-	pPartSys->UpdateContacts(false);
-}
-EXPORT void SolveIteration(int32 iteration)
-{
-	pPartSys->SolveIteration(iteration);
-}
-EXPORT void SolveIteration2(int32 iteration)
-{
-	pPartSys->SolveIteration2(iteration);
-}
-EXPORT void SolveEnd()
-{
-	pPartSys->SolveEnd();
-}
+EXPORT void SolveInit()	{ pPartSys->SolveInit(); }
+
+EXPORT void InitStep() { pPartSys->InitStep(); }
+EXPORT void UpdateContacts() { pPartSys->UpdateContacts(false); }
+EXPORT void ComputeWeight() { pPartSys->ComputeWeight(); }
+EXPORT void ComputeDepth() { pPartSys->ComputeDepth(); }
+EXPORT void UpdatePairsAndTriadsWithReactiveParticles() { pPartSys->UpdatePairsAndTriadsWithReactiveParticles(); }
+
+EXPORT void SolveForce() { pPartSys->SolveForce(); }
+EXPORT void SolveViscous() { pPartSys->SolveViscous(); }
+EXPORT void SolveRepulsive() { pPartSys->SolveRepulsive(); }
+EXPORT void SolvePowder() { pPartSys->SolvePowder(); }
+EXPORT void SolveTensile() { pPartSys->SolveTensile(); }
+EXPORT void SolveSolid() { pPartSys->SolveSolid(); }
+EXPORT void SolveGravity() { pPartSys->SolveGravity(); }
+EXPORT void SolveStaticPressure() { pPartSys->SolveStaticPressure(); }
+EXPORT void SolvePressure() { pPartSys->SolvePressure(); }
+EXPORT void SolveDamping() { pPartSys->SolveDamping(); }
+EXPORT void SolveExtraDamping() { pPartSys->SolveExtraDamping(); }
+EXPORT void SolveElastic() { pPartSys->SolveElastic(); }
+EXPORT void SolveSpring() { pPartSys->SolveSpring(); }
+EXPORT void LimitVelocity() { pPartSys->LimitVelocity(); }
+EXPORT void SolveRigidDamping() { pPartSys->SolveRigidDamping(); }
+EXPORT void SolveBarrier() { pPartSys->SolveBarrier(); }
+EXPORT void SolveCollision() { pPartSys->SolveCollision(); }
+EXPORT void SolveRigid() { pPartSys->SolveRigid(); }
+EXPORT void SolveWall() { pPartSys->SolveWall(); }
+EXPORT void CopyVelocities() { pPartSys->CopyVelocities(); }
+EXPORT void SolveAir() { pPartSys->SolveAir(); }
+
+EXPORT void SolveFlame() { pPartSys->SolveFlame(); }
+EXPORT void SolveIgnite() { pPartSys->SolveIgnite(); }
+EXPORT void SolveExtinguish() { pPartSys->SolveExtinguish(); }
+EXPORT void CopyHealths() { pPartSys->CopyHealths(); }
+EXPORT void SolveHeatConduct() { pPartSys->SolveHeatConduct(); }
+EXPORT void SolveLooseHeat() { pPartSys->SolveLooseHeat(); }
+EXPORT void CopyHeats() { pPartSys->CopyHeats(); }
+EXPORT void SolveChangeMat() { pPartSys->SolveChangeMat(); }
+
+EXPORT void SolveHealth() { pPartSys->SolveHealth(); }
+EXPORT void CopyBodies() { pPartSys->CopyBodies(); }
+
+EXPORT void SolvePosition() { pPartSys->SolvePosition(); }
+EXPORT void IncrementIteration() { pPartSys->IncrementIteration(); }
+
+EXPORT void SolveEnd() { pPartSys->SolveEnd(); }
+
 
 EXPORT void SetStaticPressureIterations(void* systemPointer,int32 iterations)
 {
@@ -453,7 +480,7 @@ EXPORT int32 AddPolygonShape(b2Vec2* vertices, int32 count)
 {
 	b2PolygonShapeDef sd;
 	sd.type = b2Shape::e_polygon;
-	std::memcpy(sd.vertices.data(), vertices, sizeof b2Vec2 * count);
+	std::memcpy(sd.vertices, vertices, sizeof b2Vec2 * count);
 	sd.count = count;
 	return pWorld->CreateShape(sd);
 }

@@ -17,16 +17,16 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_BODY_H
-#define B2_BODY_H
+#pragma once
 
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Collision/Shapes/b2Shape.h>
+#include <Box2D/Amp/ampAlgorithms.h>
 #include <memory>
 #include <vector>
 
 class b2Fixture;
-class b2BodyMaterial;
+struct b2BodyMaterial;
 class b2Joint;
 class b2Contact;
 class b2Controller;
@@ -186,7 +186,7 @@ struct Body
 
 	float32 m_sleepTime;
 
-	int32 m_materialIdx;
+	int32 m_matIdx;
 	float32 m_heat;
 
 	float32 m_health;
@@ -197,6 +197,7 @@ struct Body
 	/// low CPU cost.
 	/// @param flag set to true to wake the body, false to put it to sleep.
 	void SetAwake(bool flag);
+	void SetAwake(bool flag) restrict(amp);
 	/// Get the sleeping state of this body.
 	/// @return true if the body is awake.
 	bool IsAwake() const;
@@ -270,6 +271,7 @@ struct Body
 	/// @param point the world position of the point of application.
 	/// @param wake also wake up the body
 	void ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake);
+	void ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake) restrict(amp);
 
 	/// Apply an angular impulse.
 	/// @param impulse the angular impulse in units of kg*m*m/s
@@ -316,6 +318,7 @@ struct Body
 	/// @param a point in world coordinates.
 	/// @return the world velocity of a point.
 	b2Vec2 GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const;
+	b2Vec2 GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const restrict(amp);
 
 	/// Get the world velocity of a local point.
 	/// @param a point in local coordinates.
@@ -332,8 +335,10 @@ struct Body
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
-	void AddFlags(uint16 flags);
-	void RemFlags(uint16 flags);
+	void AddFlags(uint32 flags);
+	void AddFlags(uint32 flags) restrict(amp);
+	void RemFlags(uint32 flags);
+	void RemFlags(uint32 flags) restrict(amp);
 };
 
 /// A rigid body. These are created via b2World::CreateBody.
@@ -342,11 +347,19 @@ class b2Body
 public:
 };
 
-inline void Body::AddFlags(uint16 flags)
+inline void Body::AddFlags(uint32 flags)
 {
 	m_flags |= flags;
 }
-inline void Body::RemFlags(uint16 flags)
+inline void Body::AddFlags(uint32 flags) restrict(amp)
+{
+	m_flags |= flags;
+}
+inline void Body::RemFlags(uint32 flags)
+{
+	m_flags &= ~flags;
+}
+inline void Body::RemFlags(uint32 flags) restrict(amp)
 {
 	m_flags &= ~flags;
 }
@@ -440,6 +453,10 @@ inline b2Vec2 Body::GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) co
 {
 	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_sweep.c);
 }
+inline b2Vec2 Body::GetLinearVelocityFromWorldPoint(const b2Vec2& worldPoint) const restrict(amp)
+{
+	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_sweep.c);
+}
 
 inline b2Vec2 Body::GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) const
 {
@@ -459,6 +476,26 @@ inline bool Body::IsBullet() const
 }
 
 inline void Body::SetAwake(bool flag)
+{
+	if (flag)
+	{
+		if ((m_flags & b2_awakeBody) == 0)
+		{
+			m_flags |= b2_awakeBody;
+			m_sleepTime = 0.0f;
+		}
+	}
+	else
+	{
+		m_flags &= ~b2_awakeBody;
+		m_sleepTime = 0.0f;
+		m_linearVelocity.SetZero();
+		m_angularVelocity = 0.0f;
+		m_force.SetZero();
+		m_torque = 0.0f;
+	}
+}
+inline void Body::SetAwake(bool flag) restrict(amp)
 {
 	if (flag)
 	{
@@ -577,6 +614,21 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 		m_angularVelocity += m_invI * b2Cross(point - m_sweep.c, impulse);
 	}
 }
+inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake) restrict(amp)
+{
+	if (m_type != b2_dynamicBody)
+		return;
+
+	if (wake && (m_flags & b2_awakeBody) == 0)
+		SetAwake(true);
+
+	// Don't accumulate velocity if the body is sleeping
+	if (m_flags & b2_awakeBody)
+	{
+		amp::atomicAdd(m_linearVelocity, m_invMass * impulse);
+		amp::atomicAdd(m_angularVelocity, m_invI * b2Cross(point - m_sweep.c, impulse));
+	}
+}
 
 inline void Body::ApplyAngularImpulse(float32 impulse, bool wake)
 {
@@ -618,5 +670,3 @@ inline void b2Body::SetTransform(float32 positionX, float32 positionY, float32 a
 	SetTransform(b2Vec2(positionX, positionY), angle);
 }
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-#endif

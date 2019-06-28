@@ -26,9 +26,9 @@ static float32 b2FindMaxSeparation(int32* edgeIndex,
 {
 	int32 count1 = poly1.m_count;
 	int32 count2 = poly2.m_count;
-	const polyVec2s& n1s = poly1.m_normals;
-	const polyVec2s& v1s = poly1.m_vertices;
-	const polyVec2s& v2s = poly2.m_vertices;
+	const b2Vec2* n1s = poly1.m_normals;
+	const b2Vec2* v1s = poly1.m_vertices;
+	const b2Vec2* v2s = poly2.m_vertices;
 	b2Transform xf = b2MulT(xf2, xf1);
 
 	int32 bestIndex = 0;
@@ -65,11 +65,11 @@ static void b2FindIncidentEdge(b2ClipVertex c[2],
 							 const b2PolygonShape& poly1, const b2Transform& xf1, int32 edge1,
 							 const b2PolygonShape& poly2, const b2Transform& xf2)
 {
-	const polyVec2s& normals1 = poly1.m_normals;
+	const b2Vec2* normals1 = poly1.m_normals;
 
 	int32 count2 = poly2.m_count;
-	const polyVec2s& vertices2 = poly2.m_vertices;
-	const polyVec2s& normals2 = poly2.m_normals;
+	const b2Vec2* vertices2 = poly2.m_vertices;
+	const b2Vec2* normals2 = poly2.m_normals;
 
 	b2Assert(0 <= edge1 && edge1 < poly1.m_count);
 
@@ -162,7 +162,7 @@ void b2CollidePolygons(b2Manifold& manifold,
 	b2FindIncidentEdge(incidentEdge, *poly1, xf1, edge1, *poly2, xf2);
 
 	int32 count1 = poly1->m_count;
-	const polyVec2s& vertices1 = poly1->m_vertices;
+	const b2Vec2* vertices1 = poly1->m_vertices;
 
 	int32 iv1 = edge1;
 	int32 iv2 = edge1 + 1 < count1 ? edge1 + 1 : 0;

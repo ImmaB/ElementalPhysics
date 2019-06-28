@@ -16,8 +16,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_COLLISION_H
-#define B2_COLLISION_H
+#pragma once
 
 #include <Box2D/Common/b2Math.h>
 #include <limits.h>
@@ -26,10 +25,10 @@
 /// Structures and functions used for computing contact points, distance
 /// queries, and TOI queries.
 
-class b2Shape;
-class b2CircleShape;
-class b2EdgeShape;
-class b2PolygonShape;
+struct b2Shape;
+struct b2CircleShape;
+struct b2EdgeShape;
+struct b2PolygonShape;
 
 const uint8 b2_nullFeature = UCHAR_MAX;
 
@@ -146,6 +145,8 @@ struct b2ClipVertex
 /// Ray-cast input data. The ray extends from p1 to p1 + maxFraction * (p2 - p1).
 struct b2RayCastInput
 {
+	b2RayCastInput() {};
+	b2RayCastInput() restrict(amp) {};
 	b2Vec2 p1, p2;
 	float32 maxFraction;
 };
@@ -154,6 +155,8 @@ struct b2RayCastInput
 /// come from b2RayCastInput.
 struct b2RayCastOutput
 {
+	b2RayCastOutput() {};
+	b2RayCastOutput() restrict(amp) {};
 	b2Vec2 normal;
 	float32 fraction;
 };
@@ -330,5 +333,3 @@ inline bool b2TestOverlap(const b2AABB& a, const b2AABB& b)
 
 	return true;
 }
-
-#endif

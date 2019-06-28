@@ -17,14 +17,53 @@ inline int32 getTileCnt(const int32 value)
 
 namespace amp
 {
+	class CopyFuture
+	{
+	private:
+		ampCopyFuture m_future;
+
+	public:
+		void set(ampCopyFuture& future)
+		{
+			m_future = future;
+		}
+
+		void wait()
+		{
+			if (m_future.valid())
+				m_future.wait();
+		}
+	};
+
+	static ampAccelView getCpuAccelView()
+	{
+		return ampAccel(ampAccel::cpu_accelerator).default_view;
+	}
+	static ampAccelView getGpuAccelView()
+	{
+		return ampAccel(ampAccel::default_accelerator).default_view;
+	}
+
+	static int32 getTileCount(const int32 size)
+	{
+		return ((size + TILE_SIZE - 1) / TILE_SIZE);
+	}
+	static int32 getTilable(const int32 size)
+	{
+		return getTileCount(size) * TILE_SIZE;
+	}
+	static int32 getTilable(const int32 size, int32& tileCnt)
+	{
+		tileCnt = getTileCount(size);
+		return tileCnt * TILE_SIZE;
+	}
 	static ampExtent getTilableExtent(const int32 size)
 	{
-		return ampExtent(((size + TILE_SIZE - 1) / TILE_SIZE) * TILE_SIZE);
+		return ampExtent(getTilable(size));
 	}
-	static ampExtent getTilableExtent(const int32 size, int32 & tileCnt)
+	static ampExtent getTilableExtent(const int32 size, int32& tileCnt)
 	{
-		tileCnt = ((size + TILE_SIZE - 1) / TILE_SIZE);
-		return ampExtent(tileCnt * TILE_SIZE);
+		return ampExtent(getTilable(size, tileCnt));
 	}
 
 	template<typename T>
@@ -47,6 +86,12 @@ namespace amp
 	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 start, const int32 size)
 	{
 		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
+	}
+	template<typename T>
+	static void copy(const T* buffer, ampArray<T>& a, const int32 size)
+	{
+		if (size)
+			Concurrency::copy(buffer, buffer + size, a);
 	}
 	template<typename T>
 	static void copy(const ampArray<T>& a, const int32 idx, T& dest)
@@ -79,6 +124,12 @@ namespace amp
 			return Concurrency::copy_async(vec.data(), vec.data() + size, a);
 		else
 			return Concurrency::copy_async(vec.data(), vec.data() + vec.size(), a);
+	}
+	template<typename T>
+	static ampCopyFuture copyAsync(const T* buffer, ampArray<T>& a, const int32 size)
+	{
+		if (!size) return ampCopyFuture();
+		return Concurrency::copy_async(buffer, buffer + size, a);
 	}
 	template<typename T>
 	static ampCopyFuture copyAsync(const ampArray<T>& a, const int32 idx, T& dest)

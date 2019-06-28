@@ -163,6 +163,8 @@ typedef unsigned long long uint64;
 /// this too much because b2BlockAllocator has a maximum object size.
 #define b2_maxPolygonVertices	8
 
+#define b2_maxChainVertices		16
+
 /// This is used to fatten AABBs in the dynamic tree. This allows proxies
 /// to move by a small amount without triggering a tree adjustment.
 /// This is in meters.

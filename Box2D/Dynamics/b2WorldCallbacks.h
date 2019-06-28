@@ -31,7 +31,7 @@ class b2ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
 struct b2ParticleGroup;
-class b2BodyMaterial;
+struct b2BodyMaterial;
 struct b2ParticleContact;
 struct b2PartBodyContact;
 
@@ -188,10 +188,10 @@ public:
 
 	/// Called when a fixture and particle stop touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
-	virtual void EndContact(Fixture& fixture,
+	virtual void EndContact(int32 fixtureIdx,
 							b2ParticleSystem* particleSystem, int32 index)
 	{
-		B2_NOT_USED(fixture);
+		B2_NOT_USED(fixtureIdx);
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(index);
 	}

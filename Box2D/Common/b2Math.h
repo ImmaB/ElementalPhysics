@@ -211,12 +211,16 @@ struct b2Vec3
 	b2Vec3 operator -() const restrict(amp) { b2Vec3 v; v.Set(-x, -y, -z); return v; }
 
 	/// Add a vector to this vector.
-	void operator += (const b2Vec3 & v) { x += v.x; y += v.y; z += v.z; }
-	void operator += (const b2Vec3 & v) restrict(amp) { x += v.x; y += v.y; z += v.z; }
+	void operator += (const b2Vec3& v) { x += v.x; y += v.y; z += v.z; }
+	void operator += (const b2Vec3& v) restrict(amp) { x += v.x; y += v.y; z += v.z; }
+	void operator += (const b2Vec2& v) { x += v.x; y += v.y; }
+	void operator += (const b2Vec2& v) restrict(amp) { x += v.x; y += v.y; }
 
 	/// Subtract a vector from this vector.
-	void operator -= (const b2Vec3 & v) { x -= v.x; y -= v.y; z -= v.z; }
-	void operator -= (const b2Vec3 & v)  restrict(amp) { x -= v.x; y -= v.y; z -= v.z; }
+	void operator -= (const b2Vec3& v) { x -= v.x; y -= v.y; z -= v.z; }
+	void operator -= (const b2Vec3& v)  restrict(amp) { x -= v.x; y -= v.y; z -= v.z; }
+	void operator -= (const b2Vec2& v) { x -= v.x; y -= v.y; }
+	void operator -= (const b2Vec2& v)  restrict(amp) { x -= v.x; y -= v.y; }
 
 	/// Multiply this vector by a scalar.
 	void operator *= (float32 s) { x *= s; y *= s; z *= s; }

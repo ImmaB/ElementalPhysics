@@ -23,13 +23,13 @@
 #include <Box2D/Collision/Shapes/b2Shape.h>
 #include <array>
 
-using polyVec2s = std::array<b2Vec2, b2_maxPolygonVertices>;
+//using polyVec2s = std::array<b2Vec2, b2_maxPolygonVertices>;
 
 struct b2PolygonShapeDef : public b2Shape::Def
 {
 	b2Vec2 centroid;
-	polyVec2s vertices;
-	polyVec2s normals;
+	b2Vec2 vertices[b2_maxPolygonVertices];
+	b2Vec2 normals[b2_maxPolygonVertices];
 	int32 count;
 
 	void SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle);
@@ -39,9 +39,13 @@ struct b2PolygonShapeDef : public b2Shape::Def
 /// the left of each edge.
 /// Polygons have a maximum number of vertices equal to b2_maxPolygonVertices.
 /// In most cases you should not need many vertices for a convex polygon.
-class b2PolygonShape : public b2Shape
+struct b2PolygonShape : public b2Shape
 {
-public:
+	b2Vec2 m_centroid;
+	b2Vec2 m_vertices[b2_maxPolygonVertices];
+	b2Vec2 m_normals[b2_maxPolygonVertices];
+	int32 m_count;
+
 	/// Create a convex hull from the given array of local points.
 	/// The count must be in the range [3, b2_maxPolygonVertices].
 	/// @warning the points may be re-ordered, even if they form a convex polygon
@@ -95,25 +99,125 @@ public:
 	/// Validate convexity. This is a very time consuming operation.
 	/// @returns true if valid
 	bool Validate() const;
+};
 
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-public:
-	/// Set centroid with direct floats.
-	void SetCentroid(float32 x, float32 y);
-
-	/// SetAsBox with direct floats for center.
-	/// @see b2Shape::SetAsBox
-	void SetAsBox(float32 hx,
-								float32 hy,
-								float32 centerX,
-								float32 centerY,
-								float32 angle);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
+struct AmpPolygonShape
+{
+	int32 _vfptr[2];
+	b2Shape::Type m_type;
+	float32 m_radius;
 
 	b2Vec2 m_centroid;
-	polyVec2s m_vertices;
-	polyVec2s m_normals;
+	b2Vec2 m_vertices[b2_maxPolygonVertices];
+	b2Vec2 m_normals[b2_maxPolygonVertices];
 	int32 m_count;
+	int32 _placeholder;
+
+	void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
+		float32& distance, b2Vec2& normal) const restrict(amp)
+	{
+		const b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+		float32 maxDistance = -FLT_MAX;
+		b2Vec2 normalForMaxDistance = pLocal;
+
+		for (int32 i = 0; i < m_count; ++i)
+		{
+			float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
+			if (dot > maxDistance)
+			{
+				maxDistance = dot;
+				normalForMaxDistance = m_normals[i];
+			}
+		}
+
+		if (maxDistance > 0)
+		{
+			b2Vec2 minDistance = normalForMaxDistance;
+			float32 minDistance2 = maxDistance * maxDistance;
+			for (int32 i = 0; i < m_count; ++i)
+			{
+				const b2Vec2 distance = pLocal - m_vertices[i];
+				const float32 distance2 = distance.LengthSquared();
+				if (minDistance2 > distance2)
+				{
+					minDistance = distance;
+					minDistance2 = distance2;
+				}
+			}
+
+			distance = ampSqrt(minDistance2);
+			normal = b2Mul(xf.q, minDistance);
+			normal.Normalize();
+		}
+		else
+		{
+			distance = maxDistance;
+			normal = b2Mul(xf.q, normalForMaxDistance);
+		}
+	}
+
+	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
+		const b2Transform& xf) const restrict(amp)
+	{
+		// Put the ray into the polygon's frame of reference.
+		b2Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
+		b2Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
+		b2Vec2 d = p2 - p1;
+
+		float32 lower = 0.0f, upper = input.maxFraction;
+
+		int32 index = -1;
+
+		for (int32 i = 0; i < m_count; ++i)
+		{
+			// p = p1 + a * d
+			// dot(normal, p - v) = 0
+			// dot(normal, p1 - v) + a * dot(normal, d) = 0
+			float32 numerator = b2Dot(m_normals[i], m_vertices[i] - p1);
+			float32 denominator = b2Dot(m_normals[i], d);
+
+			if (denominator == 0.0f)
+			{
+				if (numerator < 0.0f)
+					return false;
+			}
+			else
+			{
+				// Note: we want this predicate without division:
+				// lower < numerator / denominator, where denominator < 0
+				// Since denominator < 0, we have to flip the inequality:
+				// lower < numerator / denominator <==> denominator * lower > numerator.
+				if (denominator < 0.0f && numerator < lower * denominator)
+				{
+					// Increase lower.
+					// The segment enters this half-space.
+					lower = numerator / denominator;
+					index = i;
+				}
+				else if (denominator > 0.0f && numerator < upper * denominator)
+				{
+					// Decrease upper.
+					// The segment exits this half-space.
+					upper = numerator / denominator;
+				}
+			}
+
+			// The use of epsilon here causes the assert on lower to trip
+			// in some cases. Apparently the use of epsilon was to make edge
+			// shapes work, but now those are handled separately.
+			//if (upper < lower - b2_epsilon)
+			if (upper < lower)
+				return false;
+		}
+
+		if (index >= 0)
+		{
+			output.fraction = lower;
+			output.normal = b2Mul(xf.q, m_normals[index]);
+			return true;
+		}
+		return false;
+	}
 };
 
 inline b2PolygonShape::b2PolygonShape()

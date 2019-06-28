@@ -17,17 +17,11 @@
 */
 #define NOMINMAX
 #include <Box2D/Particle/b2ParticleSystem.h>
-#include <Box2D/Particle/b2Particlegroup.h>
 #include <Box2D/Particle/b2VoronoiDiagram.h>
 #include <Box2D/Particle/b2ParticleAssembly.h>
 #include <Box2D/Common/b2BlockAllocator.h>
 #include <Box2D/Dynamics/b2World.h>
 #include <Box2D/Dynamics/b2WorldCallbacks.h>
-#include <Box2D/Dynamics/b2Body.h>
-#include <Box2D/Dynamics/b2Fixture.h>
-#include <Box2D/Collision/Shapes/b2Shape.h>
-#include <Box2D/Collision/Shapes/b2EdgeShape.h>
-#include <Box2D/Collision/Shapes/b2ChainShape.h>
 #include <algorithm>
 #include <intrin.h>
 #include <ppl.h>
@@ -300,10 +294,10 @@ public:
 };
 
 // Associates a fixture with a particle index.
-typedef LightweightPair<Fixture*,int32> FixtureParticle;
+typedef LightweightPair<int32, int32> FixtureParticle;
 
 // Associates a fixture with a particle index.
-typedef LightweightPair<int32,int32> ParticlePair;
+typedef LightweightPair<int32, int32> ParticlePair;
 
 }  // namespace
 
@@ -320,7 +314,6 @@ public:
 	// Initialize from a set of particle / body contacts for particles
 	// that have the b2_fixtureContactListenerParticle flag set.
 	void Initialize(const vector<b2PartBodyContact>& bodyContacts,
-					const vector<int32>& bodyContactIdxs,
 					const int32 numBodyContacts,
 					const uint32 * const particleFlagsBuffer);
 
@@ -405,19 +398,19 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef& def,
 	vector<Body>& bodyBuffer,
 	vector<Fixture>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
-	m_bodyBuffer(bodyBuffer),
-	m_fixtureBuffer(fixtureBuffer),
-	m_ampContacts(TILE_SIZE, m_gpuAccelView),
 	m_ampGroups(1, m_gpuAccelView),
-
-	m_stgBodyContactFloats(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	m_stgBodyContactVec3s(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
 
 	// Box2D
 	m_ampBodies(TILE_SIZE, m_gpuAccelView),
 	m_ampFixtures(TILE_SIZE, m_gpuAccelView),
+	m_ampChainShapes(TILE_SIZE, m_gpuAccelView),
+	m_ampCircleShapes(TILE_SIZE, m_gpuAccelView),
+	m_ampEdgeShapes(TILE_SIZE, m_gpuAccelView),
+	m_ampPolygonShapes(TILE_SIZE, m_gpuAccelView),
 
-	m_ampBodyContactPartIdxs(TILE_SIZE, m_gpuAccelView),
+	// Contacts
+	m_ampContacts(TILE_SIZE, m_gpuAccelView),
+	m_ampBodyContacts(TILE_SIZE, m_gpuAccelView),
 
 	// Particles
 	m_ampProxies(TILE_SIZE, m_gpuAccelView),
@@ -467,9 +460,9 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef& def,
 	m_ampTriads(TILE_SIZE, m_gpuAccelView),
 
 	//m_ampBodyCntacts(TILE_SIZE, m_gpuAccelView)
-	//m_positionBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	//m_velocityBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
-	//m_forceBuffer(TILE_SIZE, m_cpuAccelView, m_gpuAccelView),
+	//m_positionBuffer(TILE_SIZE, amp::cpuAccelView, m_gpuAccelView),
+	//m_velocityBuffer(TILE_SIZE, amp::cpuAccelView, m_gpuAccelView),
+	//m_forceBuffer(TILE_SIZE, amp::cpuAccelView, m_gpuAccelView),
 
 	m_world(world)
 {
@@ -482,7 +475,7 @@ b2ParticleSystem::b2ParticleSystem(const b2ParticleSystemDef& def,
 	m_needsUpdateAllGroupFlags = false;
 	m_hasForce = false;
 	m_hasDepth = false;
-	m_iterationIndex = 0;
+	m_iteration = 0;
 
 	SetStrictContactCheck(def.strictContactCheck);
 	SetDensity(def.density);
@@ -657,17 +650,19 @@ inline void b2ParticleSystem::AmpForEachParticle(const uint32 filterFlag, const 
 template<typename F>
 inline void b2ParticleSystem::AmpForEachContact(const F& function) const
 {
-	amp::forEach(m_contactCount, [=](const int32 i) restrict(amp)
+	auto& contacts = m_ampContacts;
+	amp::forEach(m_contactCount, [=, &contacts](const int32 i) restrict(amp)
 	{
-		function(i);
+		function(contacts[i]);
 	});
 }
 template<typename F>
 inline void b2ParticleSystem::AmpForEachBodyContact(const F& function) const
 {
-	amp::forEach(m_bodyContactCount, [=](const int32 i) restrict(amp)
+	auto& bodyContacts = m_ampBodyContacts;
+	amp::forEach(m_bodyContactCount, [=, &bodyContacts](const int32 i) restrict(amp)
 	{
-		function(i);
+		function(bodyContacts[i]);
 	});
 }
 template<typename F>
@@ -745,7 +740,6 @@ inline boolean b2ParticleSystem::AdjustCapacityToSize(int32& capacity, int32 siz
 
 void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 {
-	m_tilableExtent = amp::getTilableExtent(size, m_tileCnt);
 	if (!AdjustCapacityToSize(m_capacity, size, b2_minParticleBufferCapacity)) return;
 
 	ReallocateHandleBuffers(m_capacity);
@@ -822,10 +816,6 @@ void b2ParticleSystem::ResizeBodyContactBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_bodyContactCapacity, size, b2_minParticleBufferCapacity)) return;
 	m_bodyContactBuf.resize(m_bodyContactCapacity);
-	m_bodyContactPartIdxs.resize(m_bodyContactCapacity);
-	amp::resize(m_ampBodyContactPartIdxs, m_bodyContactCapacity);
-	amp::resizeStaging(m_stgBodyContactFloats, m_bodyContactCapacity);
-	amp::resizeStaging(m_stgBodyContactVec3s, m_bodyContactCapacity);
 }
 
 void b2ParticleSystem::ResizePairBuffers(int32 size)
@@ -857,13 +847,13 @@ int32 b2ParticleSystem::CreateParticleMaterial(const b2ParticleMaterialDef & def
 	m_partMatHeatConductivityBuf[idx] = def.heatConductivity;
 	m_world.m_allMaterialFlags |= def.matFlags;
 
-	amp::copy(m_partMatFlagsBuf, m_ampMatFlags, m_partMatCount);
-	amp::copy(m_partMatPartFlagsBuf, m_ampMatPartFlags, m_partMatCount);
-	amp::copy(m_partMatMassBuf, m_ampMatMasses, m_partMatCount);
-	amp::copy(m_partMatInvMassBuf, m_ampMatInvMasses, m_partMatCount);
-	amp::copy(m_partMatStabilityBuf, m_ampMatStabilities, m_partMatCount);
-	amp::copy(m_partMatInvStabilityBuf, m_ampMatInvStabilities, m_partMatCount);
-	amp::copy(m_partMatHeatConductivityBuf, m_ampMatHeatConductivities, m_partMatCount);
+	amp::copy(m_partMatFlagsBuf[idx], m_ampMatFlags, idx);
+	amp::copy(m_partMatPartFlagsBuf[idx], m_ampMatPartFlags, idx);
+	amp::copy(m_partMatMassBuf[idx], m_ampMatMasses, idx);
+	amp::copy(m_partMatInvMassBuf[idx], m_ampMatInvMasses, idx);
+	amp::copy(m_partMatStabilityBuf[idx], m_ampMatStabilities, idx);
+	amp::copy(m_partMatInvStabilityBuf[idx], m_ampMatInvStabilities, idx);
+	amp::copy(m_partMatHeatConductivityBuf[idx], m_ampMatHeatConductivities, idx);
 	return idx;
 }
 void b2ParticleSystem::PartMatChangeMats(int32 matIdx, float32 colderThan, int32 changeToColdMat,
@@ -877,6 +867,14 @@ void b2ParticleSystem::PartMatChangeMats(int32 matIdx, float32 colderThan, int32
 	m_partMatIgnitionPointBuf[matIdx]	= ignitionPoint;
 	m_partMatBurnToMatBuf[matIdx]		= burnToMat;
 	m_partMatIgnitionPointBuf[matIdx]	= ignitionPoint;
+
+	amp::copy(m_partMatFlagsBuf[matIdx], m_ampMatFlags, matIdx);
+	amp::copy(m_partMatPartFlagsBuf[matIdx], m_ampMatPartFlags, matIdx);
+	amp::copy(m_partMatMassBuf[matIdx], m_ampMatMasses, matIdx);
+	amp::copy(m_partMatInvMassBuf[matIdx], m_ampMatInvMasses, matIdx);
+	amp::copy(m_partMatStabilityBuf[matIdx], m_ampMatStabilities, matIdx);
+	amp::copy(m_partMatInvStabilityBuf[matIdx], m_ampMatInvStabilities, matIdx);
+	amp::copy(m_partMatHeatConductivityBuf[matIdx], m_ampMatHeatConductivities, matIdx);
 }
 
 /// Retrieve a handle to the particle at the specified index.
@@ -1525,38 +1523,43 @@ int32 b2ParticleSystem::CloneParticle(int32 oldIndex, int32 groupIdx)
 
 void b2ParticleSystem::UpdatePairsAndTriadsWithReactiveParticles()
 {
-	class ReactiveFilter : public ConnectionFilter
-	{
-		bool IsNecessary(int32 index) const
-		{
-			return (m_flagsBuffer[index] & b2_reactiveParticle) != 0;
-		}
-		const uint32* m_flagsBuffer;
-	public:
-		ReactiveFilter(uint32* flagsBuffer)
-		{
-			m_flagsBuffer = flagsBuffer;
-		}
-	} filter(m_flagsBuffer.data());
-	UpdatePairsAndTriads(0, m_count, filter);
+	if (!(m_allParticleFlags & b2_reactiveParticle)) return;
 
-	for (int32 i = 0; i < m_count; i++)
+	if (m_accelerate)
 	{
-		m_flagsBuffer[i] &= ~b2_reactiveParticle;
+		AmpUpdatePairsAndTriads(0, m_count);
+
+		auto& flags = m_ampFlags;
+		const uint32 remReactiveFlag = ~b2_reactiveParticle;
+		AmpForEachParticle([=, &flags](const int32 i) restrict(amp)
+		{
+			flags[i] &= remReactiveFlag;
+		});
+		m_ampCopyFutTriads.set(amp::copyAsync(m_triadBuffer, m_ampTriads, m_triadCount));
+	}
+	else
+	{
+		class ReactiveFilter : public ConnectionFilter
+		{
+			bool IsNecessary(int32 index) const
+			{
+				return (m_flagsBuffer[index] & b2_reactiveParticle) != 0;
+			}
+			const uint32* m_flagsBuffer;
+		public:
+			ReactiveFilter(uint32* flagsBuffer)
+			{
+				m_flagsBuffer = flagsBuffer;
+			}
+		} filter(m_flagsBuffer.data());
+		UpdatePairsAndTriads(0, m_count, filter);
+
+		for (int32 i = 0; i < m_count; i++)
+		{
+			m_flagsBuffer[i] &= ~b2_reactiveParticle;
+		}
 	}
 	m_allParticleFlags &= ~b2_reactiveParticle;
-}
-void b2ParticleSystem::AmpUpdatePairsAndTriadsWithReactiveParticles()
-{
-	AmpUpdatePairsAndTriads(0, m_count);
-
-	auto& flags = m_ampFlags;
-	const uint32 remReactiveFlag = ~b2_reactiveParticle;
-	AmpForEachParticle([=, &flags](const int32 i) restrict(amp)
-	{
-		flags[i] &= remReactiveFlag;
-	});
-	m_allParticleFlags &= remReactiveFlag;
 }
 
 static bool ParticleCanBeConnected(uint32 flags, b2ParticleGroup& group, int32 groupIdx)
@@ -1759,7 +1762,8 @@ void b2ParticleSystem::AmpUpdatePairsAndTriads(
 		const uint32 pairFlag = k_pairFlags;
 		ampArray<int32> cnts(contacts.extent, m_gpuAccelView);
 		amp::fill(cnts, 0);
-		AmpForEachContact([=, &oldPairs, &cnts, &contacts, &flags, &groupIdxs, &groups, &positions](const int32 i) restrict(amp)
+		amp::forEach(m_contactCount, [=, &contacts, &oldPairs, &cnts, &flags, &groupIdxs,
+			&groups, &positions](const int32 i) restrict(amp)
 		{
 			const b2ParticleContact& contact = contacts[i];
 			const int32 a = contact.idxA;
@@ -1956,285 +1960,291 @@ void b2ParticleSystem::ComputeWeight()
 	// that means dimensionless density
 	//memset(m_weightBuffer.data(), 0, sizeof(*(m_weightBuffer.data())) * m_count);
 	//m_weightBuffer.resize(m_capacity);
-	std::fill(m_weightBuffer.begin(), m_weightBuffer.begin() + m_count, 0);
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+
+	if (m_accelerate)
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		float32 w = contact.weight;
-		m_weightBuffer[a] += w;
+		auto& weights = m_ampWeights;
+		amp::fill(weights, 0.f, m_count);
+		AmpForEachContact([=, &weights](const b2ParticleContact& contact) restrict(amp)
+		{
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			amp::atomicAdd(weights[a], w);
+			amp::atomicAdd(weights[b], w);
+		});
+		m_futureUpdateBodyContacts.wait();
+		AmpForEachBodyContact([=, &weights](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			float32 w = contact.weight;
+			amp::atomicAdd(weights[a], w);
+		});
+		m_ampCopyFutWeights.set(amp::copyAsync(m_ampWeights, m_weightBuffer, m_count));
 	}
-	for (int32 k = 0; k < m_contactCount; k++)
+	else
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		float32 w = contact.weight;
-		m_weightBuffer[a] += w;
-		m_weightBuffer[b] += w;
+		std::fill(m_weightBuffer.begin(), m_weightBuffer.begin() + m_count, 0);
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			float32 w = contact.weight;
+			m_weightBuffer[a] += w;
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			m_weightBuffer[a] += w;
+			m_weightBuffer[b] += w;
+		}
 	}
-}
-void b2ParticleSystem::AmpComputeWeight()
-{
-	auto& weights = m_ampWeights;
-	auto& contacts = m_ampContacts;
-	amp::fill(weights, 0.f, m_count);
-	AmpForEachContact([=, &contacts, &weights](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact & contact = contacts[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		amp::atomicAdd(weights[a], w);
-		amp::atomicAdd(weights[b], w);
-	});
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		float32 w = contact.weight;
-		m_stgBodyContactFloats[k] = w;
-	}
-	AddBodyContactResults(weights, m_stgBodyContactFloats);
 }
 
 void b2ParticleSystem::ComputeDepth()
 {
-	vector<b2ParticleContact> contactGroups(m_contactCount);
-	int32 contactGroupsCount = 0;
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		const int32 groupAIdx = m_partGroupIdxBuffer[a];
-		const int32 groupBIdx = m_partGroupIdxBuffer[b];
-		if (groupAIdx != b2_invalidIndex && groupAIdx == groupBIdx &&
-			(m_groupBuffer[groupAIdx].m_groupFlags & b2_particleGroupNeedsUpdateDepth))
-		{
-			contactGroups[contactGroupsCount++] = contact;
-		}
-	}
-	vector<uint32> groupIdxsToUpdate(m_groupCount);
-	int32 groupsToUpdateCount = 0;
+	if (!(m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)) return;
+	if (!m_contactCount) return;
 
-	for (int k = 0; k < m_groupCount; k++)
+	if (m_accelerate)
 	{
-		b2ParticleGroup& group = m_groupBuffer[k];
-		if (group.m_firstIndex != b2_invalidIndex)
+		const float32 maxFloat = b2_maxFloat;
+		const float32 particleDiameter = m_particleDiameter;
+		ampArray<b2ParticleContact> contactGroups(m_contactCount, m_gpuAccelView);
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& contacts = m_ampContacts;
+		auto& groups = m_ampGroups;
+		const int32 contactTileCnt = amp::getTileCount(m_contactCount);
+		ampArray<int32> contactCnts(contactTileCnt, m_gpuAccelView);
+		amp::fill(contactCnts, 0);
+		ampArray2D<b2ParticleContact> localContacts(contactTileCnt, TILE_SIZE, m_gpuAccelView);
+		amp::forEachTiled(m_contactCount, [=, &contacts, &contactCnts, &localContacts,
+			&groups, &groupIdxs](const int32 gi, const int32 ti, const int32 li) restrict(amp)
 		{
-			if (group.m_groupFlags & b2_particleGroupNeedsUpdateDepth)
+			const b2ParticleContact& contact = contacts[gi];
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const int32 groupAIdx = groupIdxs[a];
+			const int32 groupBIdx = groupIdxs[b];
+		
+			tile_static uint32 cnt;
+			if (groupAIdx != b2_invalidIndex && groupAIdx == groupBIdx &&
+				(groups[groupAIdx].m_groupFlags & b2_particleGroupNeedsUpdateDepth))
 			{
-				groupIdxsToUpdate[groupsToUpdateCount++] = k;
-				SetGroupFlags(group,
-					group.m_groupFlags &
-					~b2_particleGroupNeedsUpdateDepth);
-				for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+				localContacts[ti][Concurrency::atomic_fetch_inc(&contactCnts[ti])] = contact;
+			}
+		});
+		const uint32 contactGroupsCount = amp::reduce(contactCnts, contactTileCnt,
+			[=, &contactCnts, &localContacts, &contactGroups](const int32 i, const int32 wi) restrict(amp)
+		{
+			for (uint32 j = 0; j < contactCnts[i]; j++)
+				contactGroups[wi + j] = localContacts[i][j];
+		});
+
+		vector<uint32> groupIdxsToUpdate(m_groupCount);
+		int32 groupsToUpdateCount = 0;
+
+		auto& accumulations = m_ampAccumulations;
+		for (int k = 0; k < m_groupCount; k++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[k];
+			if (group.m_firstIndex != b2_invalidIndex)
+			{
+				if (group.m_groupFlags & b2_particleGroupNeedsUpdateDepth)
 				{
-					m_accumulationBuf[i] = 0;
+					groupIdxsToUpdate[groupsToUpdateCount++] = k;
+					SetGroupFlags(group, group.m_groupFlags & ~b2_particleGroupNeedsUpdateDepth);
+					amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &accumulations](const int32 i) restrict(amp)
+					{
+						accumulations[i] = 0;
+					});
 				}
 			}
 		}
-	}
-	// Compute sum of weight of contacts except between different groups.
-	for (int32 k = 0; k < contactGroupsCount; k++)
-	{
-		const b2ParticleContact& contact = contactGroups[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		float32 w = contact.weight;
-		m_accumulationBuf[a] += w;
-		m_accumulationBuf[b] += w;
-	}
-	b2Assert(m_hasDepth);
-	for (int32 i = 0; i < groupsToUpdateCount; i++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
-		for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+		// Compute sum of weight of contacts except between different groups.
+		amp::forEach(contactGroupsCount, [=, &contactGroups, &accumulations](const int32 i) restrict(amp)
 		{
-			float32 w = m_accumulationBuf[i];
-			m_depthBuffer[i] = w < 0.8f ? 0 : b2_maxFloat;
+			const b2ParticleContact& contact = contactGroups[i];
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			amp::atomicAdd(accumulations[a], w);
+			amp::atomicAdd(accumulations[b], w);
+		});
+		b2Assert(m_hasDepth);
+		auto& depths = m_ampDepths;
+		for (int32 i = 0; i < groupsToUpdateCount; i++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
+			const uint32 startIdx = group.m_firstIndex;
+			amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &depths, &accumulations](const int32 i) restrict(amp)
+			{
+				const float32 w = accumulations[i];
+				depths[i] = w < 0.8f ? 0 : maxFloat;
+			});
 		}
+
+		// The number of iterations is equal to particle number from the deepest
+		// particle to the nearest surface particle, and in general it is smaller
+		// than sqrt of total particle number.
+		int32 iterationCount = (int32)b2Sqrt((float)m_count);
+
+		ampArrayView<uint32> ampUpdated(iterationCount);
+		amp::fill(ampUpdated, 0u);
+		for (int32 t = 0; t < iterationCount; t++)
+		{
+			amp::forEach(contactGroupsCount, [=, &depths, &contactGroups](const int32 i) restrict(amp)
+			{
+				const b2ParticleContact& contact = contactGroups[i];
+				const int32 a = contact.idxA;
+				const int32 b = contact.idxB;
+				const float32 r = 1 - contact.weight;
+				float32& ap0 = depths[a];
+				float32& bp0 = depths[b];
+				const float32 ap1 = bp0 + r;
+				const float32 bp1 = ap0 + r;
+				if (ap0 > ap1)
+				{
+					Concurrency::atomic_exchange(&ap0, ap1);
+					ampUpdated[t] = 1;
+				}
+				if (bp0 > bp1)
+				{
+					Concurrency::atomic_exchange(&bp0, bp1);
+					ampUpdated[t] = 1;
+				}
+			});
+			uint32 updated;
+			amp::copy(ampUpdated, t, updated);
+			if (!updated)
+				break;
+		}
+		for (int32 i = 0; i < groupsToUpdateCount; i++)
+		{
+			const b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
+			amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &depths](const int32 i) restrict(amp)
+			{
+				float32& p = depths[i];
+				if (p < maxFloat)
+					p *= particleDiameter;
+				else
+					p = 0;
+			});
+		}
+		m_ampCopyFutDepths.set(amp::copyAsync(m_ampDepths, m_depthBuffer, m_count));
 	}
-	// The number of iterations is equal to particle number from the deepest
-	// particle to the nearest surface particle, and in general it is smaller
-	// than sqrt of total particle number.
-	int32 iterationCount = (int32)b2Sqrt((float)m_count);
-	for (int32 t = 0; t < iterationCount; t++)
+	else
 	{
-		bool updated = false;
+		vector<b2ParticleContact> contactGroups(m_contactCount);
+		int32 contactGroupsCount = 0;
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			const int32 groupAIdx = m_partGroupIdxBuffer[a];
+			const int32 groupBIdx = m_partGroupIdxBuffer[b];
+			if (groupAIdx != b2_invalidIndex && groupAIdx == groupBIdx &&
+				(m_groupBuffer[groupAIdx].m_groupFlags & b2_particleGroupNeedsUpdateDepth))
+			{
+				contactGroups[contactGroupsCount++] = contact;
+			}
+		}
+		vector<uint32> groupIdxsToUpdate(m_groupCount);
+		int32 groupsToUpdateCount = 0;
+
+		for (int k = 0; k < m_groupCount; k++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[k];
+			if (group.m_firstIndex != b2_invalidIndex)
+			{
+				if (group.m_groupFlags & b2_particleGroupNeedsUpdateDepth)
+				{
+					groupIdxsToUpdate[groupsToUpdateCount++] = k;
+					SetGroupFlags(group,
+						group.m_groupFlags &
+						~b2_particleGroupNeedsUpdateDepth);
+					for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+					{
+						m_accumulationBuf[i] = 0;
+					}
+				}
+			}
+		}
+		// Compute sum of weight of contacts except between different groups.
 		for (int32 k = 0; k < contactGroupsCount; k++)
 		{
 			const b2ParticleContact& contact = contactGroups[k];
 			int32 a = contact.idxA;
 			int32 b = contact.idxB;
-			float32 r = 1 - contact.weight;
-			float32& ap0 = m_depthBuffer[a];
-			float32& bp0 = m_depthBuffer[b];
-			float32 ap1 = bp0 + r;
-			float32 bp1 = ap0 + r;
-			if (ap0 > ap1)
+			float32 w = contact.weight;
+			m_accumulationBuf[a] += w;
+			m_accumulationBuf[b] += w;
+		}
+		b2Assert(m_hasDepth);
+		for (int32 i = 0; i < groupsToUpdateCount; i++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
+			for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
 			{
-				ap0 = ap1;
-				updated = true;
-			}
-			if (bp0 > bp1)
-			{
-				bp0 = bp1;
-				updated = true;
+				float32 w = m_accumulationBuf[i];
+				m_depthBuffer[i] = w < 0.8f ? 0 : b2_maxFloat;
 			}
 		}
-		if (!updated)
+		// The number of iterations is equal to particle number from the deepest
+		// particle to the nearest surface particle, and in general it is smaller
+		// than sqrt of total particle number.
+		int32 iterationCount = (int32)b2Sqrt((float)m_count);
+		for (int32 t = 0; t < iterationCount; t++)
 		{
-			break;
-		}
-	}
-	for (int32 i = 0; i < groupsToUpdateCount; i++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
-		for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
-		{
-			float32& p = m_depthBuffer[i];
-			if (p < b2_maxFloat)
+			bool updated = false;
+			for (int32 k = 0; k < contactGroupsCount; k++)
 			{
-				p *= m_particleDiameter;
-			}
-			else
-			{
-				p = 0;
-			}
-		}
-	}
-}
-void b2ParticleSystem::AmpComputeDepth()
-{
-	if (!m_contactCount) return;
-
-	const float32 maxFloat = b2_maxFloat;
-	const float32 particleDiameter = m_particleDiameter;
-	ampArray<b2ParticleContact> contactGroups(m_contactCount, m_gpuAccelView);
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& contacts = m_ampContacts;
-	auto& groups = m_ampGroups;
-	ampArray<int32> contactCnts(m_contactTileCnt, m_gpuAccelView);
-	ampArray2D<b2ParticleContact> localContacts(m_contactTileCnt, TILE_SIZE, m_gpuAccelView);
-	amp::fill(contactCnts, 0);
-	amp::forEachTiled(m_contactCount, [=, &contacts, &contactCnts, &localContacts,
-		&groups, &groupIdxs](const int32 gi, const int32 ti, const int32 li) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[gi];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const int32 groupAIdx = groupIdxs[a];
-		const int32 groupBIdx = groupIdxs[b];
-		
-		tile_static uint32 cnt;
-		if (groupAIdx != b2_invalidIndex && groupAIdx == groupBIdx &&
-			(groups[groupAIdx].m_groupFlags & b2_particleGroupNeedsUpdateDepth))
-		{
-			localContacts[ti][Concurrency::atomic_fetch_inc(&contactCnts[ti])] = contact;
-		}
-	});
-	const uint32 contactGroupsCount = amp::reduce(contactCnts, m_contactTileCnt,
-		[=, &contactCnts, &localContacts, &contactGroups](const int32 i, const int32 wi) restrict(amp)
-	{
-		const uint32 cnt = contactCnts[i];
-		for (uint32 j = 0; j < cnt; j++)
-			contactGroups[wi + j] = localContacts[i][j];
-	});
-
-	vector<uint32> groupIdxsToUpdate(m_groupCount);
-	int32 groupsToUpdateCount = 0;
-
-	auto& accumulations = m_ampAccumulations;
-	for (int k = 0; k < m_groupCount; k++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[k];
-		if (group.m_firstIndex != b2_invalidIndex)
-		{
-			if (group.m_groupFlags & b2_particleGroupNeedsUpdateDepth)
-			{
-				groupIdxsToUpdate[groupsToUpdateCount++] = k;
-				SetGroupFlags(group, group.m_groupFlags & ~b2_particleGroupNeedsUpdateDepth);
-				amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &accumulations](const int32 i) restrict(amp)
+				const b2ParticleContact& contact = contactGroups[k];
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 r = 1 - contact.weight;
+				float32& ap0 = m_depthBuffer[a];
+				float32& bp0 = m_depthBuffer[b];
+				float32 ap1 = bp0 + r;
+				float32 bp1 = ap0 + r;
+				if (ap0 > ap1)
 				{
-					accumulations[i] = 0;
-				});
+					ap0 = ap1;
+					updated = true;
+				}
+				if (bp0 > bp1)
+				{
+					bp0 = bp1;
+					updated = true;
+				}
+			}
+			if (!updated)
+			{
+				break;
+			}
+		}
+		for (int32 i = 0; i < groupsToUpdateCount; i++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
+			for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+			{
+				float32& p = m_depthBuffer[i];
+				if (p < b2_maxFloat)
+				{
+					p *= m_particleDiameter;
+				}
+				else
+				{
+					p = 0;
+				}
 			}
 		}
 	}
-	// Compute sum of weight of contacts except between different groups.
-	amp::forEach(contactGroupsCount, [=, &contactGroups, &accumulations](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contactGroups[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		amp::atomicAdd(accumulations[a], w);
-		amp::atomicAdd(accumulations[b], w);
-	});
-	b2Assert(m_hasDepth);
-	auto& depths = m_ampDepths;
-	for (int32 i = 0; i < groupsToUpdateCount; i++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
-		const uint32 startIdx = group.m_firstIndex;
-		amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &depths, &accumulations](const int32 i) restrict(amp)
-		{
-			const float32 w = accumulations[i];
-			depths[i] = w < 0.8f ? 0 : maxFloat;
-		});
-	}
-
-	// The number of iterations is equal to particle number from the deepest
-	// particle to the nearest surface particle, and in general it is smaller
-	// than sqrt of total particle number.
-	int32 iterationCount = (int32)b2Sqrt((float)m_count);
-
-	ampArrayView<uint32> ampUpdated(iterationCount);
-	amp::fill(ampUpdated, 0u);
-	for (int32 t = 0; t < iterationCount; t++)
-	{
-		amp::forEach(contactGroupsCount, [=, &depths, &contactGroups](const int32 i) restrict(amp)
-		{
-			const b2ParticleContact& contact = contactGroups[i];
-			const int32 a = contact.idxA;
-			const int32 b = contact.idxB;
-			const float32 r = 1 - contact.weight;
-			float32& ap0 = depths[a];
-			float32& bp0 = depths[b];
-			const float32 ap1 = bp0 + r;
-			const float32 bp1 = ap0 + r;
-			if (ap0 > ap1)
-			{
-				Concurrency::atomic_exchange(&ap0, ap1);
-				ampUpdated[t] = 1;
-			}
-			if (bp0 > bp1)
-			{
-				Concurrency::atomic_exchange(&bp0, bp1);
-				ampUpdated[t] = 1;
-			}
-		});
-		uint32 updated;
-		amp::copy(ampUpdated, t, updated);
-		if (!updated)
-			break;
-	}
-	for (int32 i = 0; i < groupsToUpdateCount; i++)
-	{
-		const b2ParticleGroup& group = m_groupBuffer[groupIdxsToUpdate[i]];
-		amp::forEach(group.m_firstIndex, group.m_lastIndex, [=, &depths](const int32 i) restrict(amp)
-		{
-			float32& p = depths[i];
-			if (p < maxFloat)
-				p *= particleDiameter;
-			else
-				p = 0;
-		});
-	}
 }
-
 
 void b2ParticleSystem::AddFlagInsideShape(const uint32 flag, const int32 matIdx,
 	const b2Shape& shape, const b2Transform& transform)
@@ -2321,14 +2331,15 @@ void b2ParticleSystem::AmpForEachInsideBounds(const b2AABB& aabb, F& function)
 	});
 }
 template<typename F>
-void b2ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function)
+void b2ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function, bool skipSensors)
 {
-	int32 boundCnt = aabbs.size();
-	vector<b2TagBounds> tagBounds(boundCnt);
-	for (int32 i = 0; i < boundCnt; i++)
+	if (aabbs.empty()) return;
+	int32 boundCnt = 0;
+	vector<b2TagBounds> tagBounds(aabbs.size());
+	for (const b2AABBFixtureProxy& aabb : aabbs)
 	{
-		const b2AABBFixtureProxy& aabb = aabbs[i];
-		b2TagBounds& tb = tagBounds[i];
+		if (skipSensors && m_world.GetFixture(aabb.fixtureIdx).m_isSensor) continue;
+		b2TagBounds& tb = tagBounds[boundCnt];
 		tb.lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
 			m_inverseDiameter * aabb.lowerBound.y - 1);
 		tb.upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x + 1,
@@ -2337,35 +2348,36 @@ void b2ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& 
 		tb.xUpper = tb.upperTag & xMask;
 		tb.fixtureIdx = aabb.fixtureIdx;
 		tb.childIdx = aabb.childIdx;
+		boundCnt++;
 	}
 	ampArrayView<const b2TagBounds> ampTagBounds(boundCnt, tagBounds);
 
 	auto& proxies = m_ampProxies;
-	//AmpForEachParticle([=, &proxies](const int32 i) restrict(amp)
-	//{
-	//	const Proxy& proxy = proxies[i];
-	//	const uint32 xTag = proxy.tag & xMask;
-	//	for (int32 i = 0; i < boundCnt; i++)
-	//	{
-	//		const b2TagBounds& tb = ampTagBounds[i];
-	//		if (proxy.tag < tb.yLower || proxy.tag > tb.yUpper) continue;
-	//		if (xTag < tb.xLower || xTag > tb.xUpper) continue;
-	//		function(proxy.idx, i);
-	//	}
-	//});
-
-	auto& flags = m_ampFlags;
-	const uint32 zombieFlag = b2_zombieParticle;
-	amp::forEach2D<TILE_SIZE, 1>(m_count, boundCnt,
-		[=, &flags, &proxies](const int32 i, const int32 boundIdx) restrict(amp)
+	AmpForEachParticle([=, &proxies](const int32 i) restrict(amp)
 	{
-		if (flags[i] & zombieFlag) return;
 		const Proxy& proxy = proxies[i];
-		const b2TagBounds& tb = ampTagBounds[boundIdx];
-		if (proxy.tag < tb.lowerTag || proxy.tag > tb.upperTag) return;
-		if (const uint32 xTag = proxy.tag & xMask; xTag < tb.xLower || xTag > tb.xUpper) return;
-		function(proxy.idx, tb.fixtureIdx, tb.childIdx);
+		const uint32 xTag = proxy.tag & xMask;
+		for (int32 i = 0; i < boundCnt; i++)
+		{
+			const b2TagBounds& tb = ampTagBounds[i];
+			if (proxy.tag < tb.lowerTag || proxy.tag > tb.upperTag) continue;
+			if (xTag < tb.xLower || xTag > tb.xUpper) continue;
+			function(proxy.idx, tb.fixtureIdx, tb.childIdx);
+		}
 	});
+
+	//auto& flags = m_ampFlags;
+	//const uint32 zombieFlag = b2_zombieParticle;
+	//amp::forEach2D<TILE_SIZE, 1>(m_count, boundCnt,
+	//	[=, &flags, &proxies](const int32 i, const int32 boundIdx) restrict(amp)
+	//{
+	//	if (flags[i] & zombieFlag) return;
+	//	const Proxy& proxy = proxies[i];
+	//	const b2TagBounds& tb = ampTagBounds[boundIdx];
+	//	if (proxy.tag < tb.lowerTag || proxy.tag > tb.upperTag) return;
+	//	if (const uint32 xTag = proxy.tag & xMask; xTag < tb.xLower || xTag > tb.xUpper) return;
+	//	function(proxy.idx, tb.fixtureIdx, tb.childIdx);
+	//});
 }
 
 void b2ParticleSystem::FindContacts()
@@ -2532,8 +2544,7 @@ void b2ParticleSystem::AmpFindContacts(bool exceptZombie)
 	});
 	m_contactCount = amp::reduce(contactCnts, m_count, [=, &contactCnts, &contacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
 	{
-		const int32 cnt = contactCnts[i];
-		for (int32 j = 0; j < cnt; j++)
+		for (int32 j = 0; j < contactCnts[i]; j++)
 			contacts[wi + j] = localContacts[i][j];
 	});
 }
@@ -2822,9 +2833,11 @@ void b2ParticleSystem::AmpComputeAABB(b2AABB& aabb, bool addVel) const
 	const uint32 zombieFlag = b2_zombieParticle;
 	const float32 minFloat = -b2_maxFloat;
 	const float32 maxFloat = +b2_maxFloat;
-	ampArrayView<b2AABB> tileAABBs(b2Max(1, m_tileCnt/2));
-	amp::forEachTiledWithBarrier(m_capacity / 2, [=, &flags,
-		&positions,&velocities](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+	int32 tileCnt;
+	int32 halfCnt = amp::getTilable(cnt / 2, tileCnt);
+	ampArrayView<b2AABB> tileAABBs(b2Max(1, tileCnt));
+	amp::forEachTiledWithBarrier(halfCnt, [=, &flags,
+		&positions, &velocities](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 	{
 		const uint32 gi = tIdx.global[0];
 		const uint32 li = tIdx.local[0];
@@ -2884,7 +2897,7 @@ void b2ParticleSystem::AmpComputeAABB(b2AABB& aabb, bool addVel) const
 	});
 	aabb.lowerBound.x = aabb.lowerBound.y = maxFloat;
 	aabb.upperBound.x = aabb.upperBound.y = minFloat;
-	for (int i = 0; i < m_tileCnt / 2; i++)
+	for (int i = 0; i < tileCnt; i++)
 	{
 		aabb.lowerBound = b2Min(aabb.lowerBound, tileAABBs[i].lowerBound);
 		aabb.upperBound = b2Max(aabb.upperBound, tileAABBs[i].upperBound);
@@ -2955,7 +2968,6 @@ static int32 FindItemIndexInFixedSet(const TypedFixedSetAllocator<T>& set,
 // that have the b2_fixtureContactListenerParticle flag set.
 void FixtureParticleSet::Initialize(
 	const vector<b2PartBodyContact>& bodyContacts,
-	const vector<int32>& bodyContactIdxs,
 	const int32 numBodyContacts,
 	const uint32 * const particleFlagsBuffer)
 {
@@ -2968,14 +2980,14 @@ void FixtureParticleSet::Initialize(
 		{
 			FixtureParticle* const fixtureParticle = &set[i];
 			const b2PartBodyContact& bodyContact = bodyContacts[i];
-			const int32 partIdx = bodyContactIdxs[i];
+			const int32 partIdx = bodyContact.partIdx;
 			if (partIdx == b2_invalidIndex ||
 				!(particleFlagsBuffer[partIdx] &
 				  b2_fixtureContactListenerParticle))
 			{
 				continue;
 			}
-			fixtureParticle->first = bodyContact.fixture;
+			fixtureParticle->first = bodyContact.fixtureIdx;
 			fixtureParticle->second = partIdx;
 			insertedContacts++;
 		}
@@ -3060,7 +3072,7 @@ private:
 	// inside aabb of the fixture.
 	bool ReportFixture(int32 fixtureIdx)
 	{
-		Fixture& fixture = m_system.m_fixtureBuffer[fixtureIdx];
+		Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
 		if (fixture.m_isSensor) return true;
 
 		const b2Shape& b2Shape = m_world.GetShape(fixture);
@@ -3100,7 +3112,6 @@ void b2ParticleSystem::NotifyBodyContactListenerPreContact(
 		return;
 
 	fixtureSet->Initialize(m_bodyContactBuf,
-						   m_bodyContactPartIdxs,
 						   m_bodyContactCount,
 						   GetFlagsBuffer());
 }
@@ -3121,8 +3132,8 @@ void b2ParticleSystem::NotifyBodyContactListenerPostContact(
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[i];
 		FixtureParticle fixtureParticleToFind;
-		fixtureParticleToFind.first = contact.fixture;
-		fixtureParticleToFind.second = m_bodyContactPartIdxs[i];
+		fixtureParticleToFind.first = contact.fixtureIdx;
+		fixtureParticleToFind.second = contact.partIdx;
 		const int32 index = fixtureSet.Find(fixtureParticleToFind);
 		if (index >= 0)
 		{
@@ -3147,7 +3158,7 @@ void b2ParticleSystem::NotifyBodyContactListenerPostContact(
 		{
 			const FixtureParticle* const fixtureParticle =
 				&fixtureParticles[i];
-			contactListener->EndContact(*fixtureParticle->first, this,
+			contactListener->EndContact(fixtureParticle->first, this,
 										fixtureParticle->second);
 		}
 	}
@@ -3179,7 +3190,7 @@ void b2ParticleSystem::UpdateBodyContacts()
 	{
 		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
 		{
-			Fixture& fixture = m_system.m_fixtureBuffer[fixtureIdx];
+			Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
 			if (m_system.ShouldCollide(a, fixture))
 			{
 				b2Vec2 ap = b2Vec2(m_system.m_positionBuffer[a]);
@@ -3190,7 +3201,7 @@ void b2ParticleSystem::UpdateBodyContacts()
 				if (d < m_system.m_particleDiameter)
 				{
 					int32 bIdx = fixture.m_bodyIdx;
-					Body& b = m_system.m_bodyBuffer[bIdx];
+					Body& b = m_world.m_bodyBuffer[bIdx];
 					b2Vec2 bp = b.GetWorldCenter();
 					float32 bm = b.m_mass;
 					float32 bI =
@@ -3207,9 +3218,9 @@ void b2ParticleSystem::UpdateBodyContacts()
 					const uint32 bodyContactIdx = m_system.m_bodyContactCount++;
 					m_system.ResizeBodyContactBuffers(m_system.m_bodyContactCount);
 					b2PartBodyContact& contact = m_system.m_bodyContactBuf[bodyContactIdx];
-					m_system.m_bodyContactPartIdxs[bodyContactIdx] = a;
-					contact.body = &b;
-					contact.fixture = &fixture;
+					contact.partIdx = a;
+					contact.bodyIdx = bIdx;
+					contact.fixtureIdx = fixtureIdx;
 					contact.weight = 1 - d * m_system.m_inverseDiameter;
 					contact.normal = -n;
 					contact.mass = invM > 0 ? 1 / invM : 0;
@@ -3245,31 +3256,29 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 	FixtureParticleSet fixtureSet(&m_world.m_stackAllocator);
 	NotifyBodyContactListenerPreContact(&fixtureSet);
 
-	if (m_stuckThreshold > 0)
-	{
-		for (int32 i = 0; i < m_count; i++)
-		{
-			// Detect stuck particles, see comment in
-			// b2ParticleSystem::DetectStuckParticle()
-			m_bodyContactCountBuffer[i] = 0;
-			if (m_timestamp > (m_lastBodyContactStepBuffer[i] + 1))
-			{
-				m_consecutiveContactStepsBuffer[i] = 0;
-			}
-		}
-	}
+	//if (m_stuckThreshold > 0)
+	//{
+	//	for (int32 i = 0; i < m_count; i++)
+	//	{
+	//		// Detect stuck particles, see comment in
+	//		// b2ParticleSystem::DetectStuckParticle()
+	//		m_bodyContactCountBuffer[i] = 0;
+	//		if (m_timestamp > (m_lastBodyContactStepBuffer[i] + 1))
+	//		{
+	//			m_consecutiveContactStepsBuffer[i] = 0;
+	//		}
+	//	}
+	//}
 	m_bodyContactCount = 0;
 	m_stuckParticleCount = 0;
-
-	amp::copy(m_ampProxies, m_proxyBuffer, m_count);
-
+	
 	vector<b2AABBFixtureProxy> fixtureBounds;
 
 	b2AABB partsBounds;
 	AmpComputeAABB(partsBounds);
 	m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](int32 fixtureIdx)
 	{
-		Fixture& fixture = m_fixtureBuffer[fixtureIdx];
+		Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
 		if (fixture.m_isSensor) return;
 
 		const b2Shape& shape = m_world.GetShape(fixture);
@@ -3277,6 +3286,7 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 		for (int32 childIdx = 0; childIdx < childCount; childIdx++)
 			fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
 	});
+	if (fixtureBounds.empty()) return;
 
 	auto& groupIdxs = m_ampGroupIdxs;
 	auto& groups = m_ampGroups;
@@ -3295,53 +3305,92 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 		return false;
 	};
 
+	ampArray<int32> contactCnts(m_count, m_gpuAccelView);
+	amp::fill(contactCnts, 0);
+	ampArray2D<b2PartBodyContact> localContacts(m_count, (int32)fixtureBounds.size(), m_gpuAccelView);
+
+	WaitForCopyBox2DToGPU();
+
+	auto& chainShapes = m_ampChainShapes;
+	auto& circleShapes = m_ampCircleShapes;
+	auto& edgeShapes = m_ampEdgeShapes;
+	auto& polygonShapes = m_ampPolygonShapes;
+	const auto& computeDistance = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes]
+		(const Fixture& f, const b2Transform& xf, const b2Vec2& p, float32& d, b2Vec2& n, int32 childIndex) restrict(amp)
+	{
+		switch (f.m_shapeType)
+		{
+		case b2Shape::e_chain:
+			chainShapes[f.m_shapeIdx].ComputeDistance(xf, p, d, n, childIndex);
+			break;
+		case b2Shape::e_circle:
+			circleShapes[f.m_shapeIdx].ComputeDistance(xf, p, d, n);
+			break;
+		case b2Shape::e_edge:
+			edgeShapes[f.m_shapeIdx].ComputeDistance(xf, p, d, n);
+			break;
+		case b2Shape::e_polygon:
+			polygonShapes[f.m_shapeIdx].ComputeDistance(xf, p, d, n);
+			break;
+		}
+	};
+
+	const float32 partDiameter = m_particleDiameter;
+	const float32 invDiameter = m_inverseDiameter;
+	const uint32 wallFlag = b2_wallParticle;
 	auto& bodies = m_ampBodies;
 	auto& fixtures = m_ampFixtures;
 	auto& positions = m_ampPositions;
-	AmpForEachInsideBounds(fixtureBounds,
-		[=, &bodies, &fixtures, &positions](int32 a, int32 fixtureIdx, int32 childIdx) restrict(amp)
+	auto& flags = m_ampFlags;
+	auto& matIdxs = m_ampMatIdxs;
+	auto& matInvMasses = m_ampMatInvMasses;
+	AmpForEachInsideBounds(fixtureBounds, [=, &bodies, &fixtures, &positions, &flags, &matIdxs, &matInvMasses,
+		&contactCnts, &localContacts](int32 i, int32 fixtureIdx, int32 childIdx) restrict(amp)
 	{
-		//Fixture& fixture = fixtures[fixtureIdx];
-		//if (!shouldCollide(a, fixture)) return;
-		//
-		//const b2Vec2 ap = b2Vec2(positions[a]);
-		//float32 d;
-		//b2Vec2 n;
-		//m_world.ComputeDistance(fixture, ap, d, n, childIdx);
-		//if (d >= m_particleDiameter) return;
-		//
-		//Body& b = bodies[fixture.m_bodyIdx];
-		//b2Vec2 bp = b.GetWorldCenter();
-		//float32 bm = b.m_mass;
-		//float32 bI =
-		//	b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
-		//float32 invBm = bm > 0 ? 1 / bm : 0;
-		//float32 invBI = bI > 0 ? 1 / bI : 0;
-		//float32 invAm =
-		//	m_flagsBuffer[a] &
-		//	b2_wallParticle ? 0 : m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-		//b2Vec2 rp = ap - bp;
-		//float32 rpn = b2Cross(rp, n);
-		//float32 invM = invAm + invBm + invBI * rpn * rpn;
-		//
-		//const uint32 bodyContactIdx = m_bodyContactCount++;
-		//ResizeBodyContactBuffers(m_bodyContactCount);
-		//b2PartBodyContact& contact = m_bodyContactBuf[bodyContactIdx];
-		//m_bodyContactPartIdxs[bodyContactIdx] = a;
-		//contact.body = &b;
-		//contact.fixture = &fixture;
-		//contact.weight = 1 - d * m_inverseDiameter;
-		//contact.normal = -n;
-		//contact.mass = invM > 0 ? 1 / invM : 0;
-		//DetectStuckParticle(a);
+		Fixture& fixture = fixtures[fixtureIdx];
+		if (!shouldCollide(i, fixture)) return;
+		
+		const b2Vec2 ap = b2Vec2(positions[i]);
+		float32 d;
+		b2Vec2 n;
+		int32 bIdx = fixture.m_bodyIdx;
+		Body& b = bodies[bIdx];
+		computeDistance(fixture, b.m_xf, ap, d, n, childIdx);
+		if (d >= partDiameter) return;
+		
+		b2Vec2 bp = b.GetWorldCenter();
+		float32 bm = b.m_mass;
+		float32 bI =
+			b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
+		float32 invBm = bm > 0 ? 1 / bm : 0;
+		float32 invBI = bI > 0 ? 1 / bI : 0;
+		float32 invAm = flags[i] & wallFlag ? 0 : matInvMasses[matIdxs[i]];
+		b2Vec2 rp = ap - bp;
+		float32 rpn = b2Cross(rp, n);
+		float32 invM = invAm + invBm + invBI * rpn * rpn;
+		
+		b2PartBodyContact& contact = localContacts[i][contactCnts[i]++];
+		contact.partIdx = i;
+		contact.bodyIdx = bIdx;
+		contact.fixtureIdx = fixtureIdx;
+		contact.weight = 1 - d * invDiameter;
+		contact.normal = -n;
+		contact.mass = invM > 0 ? 1 / invM : 0;
+		//DetectStuckParticle(i); //TODO
+	});
+
+	auto& bodyContacts = m_ampBodyContacts;
+	m_bodyContactCount = amp::reduce(contactCnts, m_count,
+		[=, &contactCnts , &bodyContacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
+	{
+		for (int32 j = 0; j < contactCnts[i]; j++)
+			bodyContacts[wi + j] = localContacts[i][j];
 	});
 	
-
-
 	if (m_def.strictContactCheck)
 		RemoveSpuriousBodyContacts();
 	NotifyBodyContactListenerPostContact(fixtureSet);
-	amp::copy(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
+	//amp::copy(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
 }
 
 void b2ParticleSystem::RemoveSpuriousBodyContacts()
@@ -3388,26 +3437,26 @@ void b2ParticleSystem::RemoveSpuriousBodyContacts()
 	return m_bodyContactIdxBuffer[lhsIdx] < m_bodyContactIdxBuffer[lhsIdx];
 }*/
 
-void b2ParticleSystem::AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes)
-{
-	if (!m_bodyContactCount) return;
-	ampArrayView<const float32> add = bodyRes.section(0, m_bodyContactCount);
-	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
-	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
-	{
-		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
-	});
-}
-void b2ParticleSystem::AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes)
-{
-	if (!m_bodyContactCount) return;
-	ampArrayView<const b2Vec3> add = bodyRes.section(0, m_bodyContactCount);
-	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
-	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
-	{
-		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
-	});
-}
+//void b2ParticleSystem::AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes)
+//{
+//	if (!m_bodyContactCount) return;
+//	ampArrayView<const float32> add = bodyRes.section(0, m_bodyContactCount);
+//	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
+//	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
+//	{
+//		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
+//	});
+//}
+//void b2ParticleSystem::AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes)
+//{
+//	if (!m_bodyContactCount) return;
+//	ampArrayView<const b2Vec3> add = bodyRes.section(0, m_bodyContactCount);
+//	auto& bodyContactPartIdxs = m_ampBodyContactPartIdxs;
+//	amp::forEach(m_bodyContactCount, [=, &dst, &bodyContactPartIdxs](const int32 i) restrict(amp)
+//	{
+//		amp::atomicAdd(dst[bodyContactPartIdxs[i]], add[i]);
+//	});
+//}
 
 static inline bool IsSignificantForce(b2Vec3 force)
 {
@@ -3422,110 +3471,6 @@ static inline bool IsSignificantForce(b2Vec2 force) restrict(amp)
 	return force.x != 0 || force.y != 0;
 }
 
-void b2ParticleSystem::SolveCollision(const b2TimeStep& step)
-{
-	// This function detects particles which are crossing boundary of bodies
-	// and modifies velocities of them so that they will move just in front of
-	// boundary. This function function also applies the reaction force to
-	// bodies as precisely as the numerical stability is kept.
-	b2AABB aabb;
-	aabb.lowerBound.x = +b2_maxFloat;
-	aabb.lowerBound.y = +b2_maxFloat;
-	aabb.upperBound.x = -b2_maxFloat;
-	aabb.upperBound.y = -b2_maxFloat;
-	for (int32 i = 0; i < m_count; i++)
-	{
-		b2Vec2 v = b2Vec2(m_velocityBuffer[i]);
-		b2Vec2 p1 = b2Vec2(m_positionBuffer[i]);
-		b2Vec2 p2 = p1 + step.dt * v;
-		aabb.lowerBound = b2Min(aabb.lowerBound, b2Min(p1, p2));
-		aabb.upperBound = b2Max(aabb.upperBound, b2Max(p1, p2));
-	}
-	class SolveCollisionCallback : public b2FixtureParticleQueryCallback
-	{
-		// Call the contact filter if it's set, to determine whether to
-		// filter this contact.  Returns true if contact calculations should
-		// be performed, false otherwise.
-		/*inline bool ShouldCollide(b2Fixture * const fixture,
-								  int32 particleIndex)
-		{
-			if (m_contactFilter) {
-				const uint32* const flags = m_system->GetFlagsBuffer();
-				if (flags[particleIndex] & b2_fixtureContactFilterParticle) {
-					return m_contactFilter->ShouldCollide(fixture, m_system,
-														  particleIndex);
-				}
-			}
-			return true;
-		}*/
-
-		void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
-		{
-			Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
-			if (m_system.ShouldCollide(a, fixture))
-			{
-				Body& body = m_world.m_bodyBuffer[fixture.m_bodyIdx];
-				b2Vec2 ap = b2Vec2(m_system.m_positionBuffer[a]);
-				b2Vec2 av = b2Vec2(m_system.m_velocityBuffer[a]);
-				b2RayCastOutput output;
-				b2RayCastInput input;
-				if (m_system.m_iterationIndex == 0)
-				{
-					// Put 'ap' in the local space of the previous frame
-					b2Vec2 p1 = b2MulT(body.m_xf0, ap);
-					;
-					if (fixture.m_shapeType == b2Shape::e_circle)
-					{
-						// Make relative to the center of the circle
-						p1 -= body.GetLocalCenter();
-						// Re-apply rotation about the center of the
-						// circle
-						p1 = b2Mul(body.m_xf0.q, p1);
-						// Subtract rotation of the current frame
-						p1 = b2MulT(body.m_xf.q, p1);
-						// Return to local space
-						p1 += body.GetLocalCenter();
-					}
-					// Return to global space and apply rotation of current frame
-					input.p1 = b2Mul(body.m_xf, p1);
-				}
-				else
-				{
-					input.p1 = ap;
-				}
-				input.p2 = ap + m_step.dt * av;
-				input.maxFraction = 1;
-				if (m_world.RayCast(fixture, output, input, childIndex))
-				{
-					b2Vec2 n = output.normal;
-					b2Vec2 p =
-						(1 - output.fraction) * input.p1 +
-						output.fraction * input.p2 +
-						b2_linearSlop * n;
-					b2Vec2 v = m_step.inv_dt * (p - ap);
-					m_system.m_velocityBuffer[a] = b2Vec3(v);
-					b2Vec2 f = m_step.inv_dt *
-						m_system.m_partMatMassBuf[m_system.m_partMatIdxBuffer[a]] * (av - v);
-					m_system.ParticleApplyForce(a, f);
-				}
-			}
-		}
-
-		b2TimeStep m_step;
-		b2ContactFilter* m_contactFilter;
-
-	public:
-		SolveCollisionCallback(b2World& world,
-			b2ParticleSystem& system, const b2TimeStep& step, b2ContactFilter* contactFilter) :
-			b2FixtureParticleQueryCallback(world, system)
-		{
-			m_step = step;
-			m_contactFilter = contactFilter;
-		}
-	} callback(m_world, *this, step, GetFixtureContactFilter());
-	m_world.QueryAABB(&callback, aabb);
-}
-
 template <typename T>
 ampArray<T> AmpCreateArrFromPtr(T* ptr, uint32 elemCnt)
 {
@@ -3533,438 +3478,449 @@ ampArray<T> AmpCreateArrFromPtr(T* ptr, uint32 elemCnt)
 	return ampArray<T>(vec.begin(), vec.end());
 }
 
-void b2ParticleSystem::AmpSolveCollision(const b2TimeStep& step)
+// SolveCollision, SolveRigid and SolveWall should be called after
+// other force functions because they may require particles to have
+// specific velocities.
+void b2ParticleSystem::SolveCollision()
 {
 	// This function detects particles which are crossing boundary of bodies
 	// and modifies velocities of them so that they will move just in front of
 	// boundary. This function function also applies the reaction force to
 	// bodies as precisely as the numerical stability is kept.
+	const b2TimeStep& step = m_subStep;
 
-	vector<b2AABBFixtureProxy> fixtureBounds;
-
-	b2AABB aabb;
-	AmpComputeAABB(aabb, true);
-	m_world.AmpQueryAABB(aabb, [=, &fixtureBounds](int32 fixtureIdx)
+	if (m_accelerate)
 	{
-		Fixture& fixture = m_fixtureBuffer[fixtureIdx];
-		if (fixture.m_isSensor) return;
+		vector<b2AABBFixtureProxy> fixtureBounds;
 
-		const b2Shape& shape = m_world.GetShape(fixture);
-		int32 childCount = shape.GetChildCount();
-
-		for (int32 childIdx = 0; childIdx < childCount; childIdx++)
-			fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
-	});
-
-
-	auto& positions = m_ampPositions;
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& groups    = m_ampGroups;
-	const auto& shouldCollide = [=, &positions, &groupIdxs, &groups](const Fixture& f, int32 i) restrict(amp) -> bool
-	{
-		if (!f.TestZPos(positions[i].z))
-			return false;
-		if (f.m_filter.groupIndex >= 0)
-			return true;
-		const int32 groupIdx = groupIdxs[i];
-		if (groupIdx == -1)
-			return false;
-		const int32 partColGroup = groups[groupIdx].m_collisionGroup;
-		if (!partColGroup || !(partColGroup < 0))
-			return true;
-		if (partColGroup != f.m_filter.groupIndex)
-			return true;
-		return false;
-	};
-
-	const int32 iterationIdx = m_iterationIndex;
-	const uint32 wallFlag = b2_wallParticle;
-	const float32 stepInvDt = m_step.inv_dt;
-	const float32 stepDt = m_step.dt;
-	const float32 linearSlop = b2_linearSlop;
-
-	auto& bodies = m_ampBodies;
-	auto& fixtures = m_ampFixtures;
-	auto& velocities = m_ampVelocities;
-	auto& forces = m_ampForces;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	auto& flags = m_ampFlags;
-	AmpForEachInsideBounds(fixtureBounds,
-		[=, &bodies, &fixtures, &positions](int32 a, int32 fixtureIdx, int32 childIdx) restrict(amp)
-	{
-		/*const Fixture& fixture = fixtures[fixtureIdx];
-		if (fixture.m_isSensor) return;
-		
-		const Body& body = bodies[fixture.m_bodyIdx];
-		const b2Vec2& bodyLocalCentre = body.GetLocalCenter();
-		const b2Transform& bodyTransform = body.m_xf;
-		const b2Transform& bodyTransform0 = body.m_xf0;
-		const float32 fixtureZMin = fixture.m_zPos;
-		const float32 fixtureZMax = fixtureZMin + fixture.m_height;
-		
-		float32 circleRadius;
-		b2Vec2 circleMiddle, edgeV1, edgeV2;
-		b2Vec2* vertsPtr = nullptr;
-		b2Vec2* normsPtr = nullptr;
-		uint32 vertsCnt = 0;
-		const b2Shape& shape = m_world.GetShape(fixture);
-		const auto shapeType = shape.m_type;
-		switch (shapeType)
+		b2AABB aabb;
+		AmpComputeAABB(aabb, true);
+		m_world.AmpQueryAABB(aabb, [=, &fixtureBounds](int32 fixtureIdx)
 		{
-		case b2Shape::e_circle:
-			circleMiddle = ((b2CircleShape&)shape).m_p;
-			circleRadius = ((b2CircleShape&)shape).m_radius;
-			break;
-		case b2Shape::e_edge:
-			edgeV1 = ((b2EdgeShape&)shape).m_vertex1;
-			edgeV2 = ((b2EdgeShape&)shape).m_vertex2;
-			break;
-		case b2Shape::e_polygon:
-			vertsCnt = ((b2PolygonShape&)shape).m_count;
-			vertsPtr = ((b2PolygonShape&)shape).m_vertices.data();
-			normsPtr = ((b2PolygonShape&)shape).m_normals.data();
-			break;
-		case b2Shape::e_chain:
-			vertsCnt = ((b2ChainShape&)shape).m_count;
-			vertsPtr = ((b2ChainShape&)shape).m_vertices;
-			break;
+			Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
+			if (fixture.m_isSensor) return;
+
+			const b2Shape& shape = m_world.GetShape(fixture);
+			int32 childCount = shape.GetChildCount();
+
+			for (int32 childIdx = 0; childIdx < childCount; childIdx++)
+				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
+		});
+
+		auto& positions = m_ampPositions;
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& groups    = m_ampGroups;
+		const auto& shouldCollide = [=, &groupIdxs, &groups](const Fixture& f, int32 i) restrict(amp) -> bool
+		{
+			if (f.m_filter.groupIndex >= 0)
+				return true;
+			const int32 groupIdx = groupIdxs[i];
+			if (groupIdx == -1)
+				return false;
+			const int32 partColGroup = groups[groupIdx].m_collisionGroup;
+			if (!partColGroup || !(partColGroup < 0))
+				return true;
+			if (partColGroup != f.m_filter.groupIndex)
+				return true;
+			return false;
+		};
+
+		auto& chainShapes = m_ampChainShapes;
+		auto& circleShapes = m_ampCircleShapes;
+		auto& edgeShapes = m_ampEdgeShapes;
+		auto& polygonShapes = m_ampPolygonShapes;
+		const auto& rayCast = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes](const Fixture& f,
+			b2RayCastOutput& output, const b2RayCastInput& input, const b2Transform& xf, int32 childIdx) restrict(amp) -> bool
+		{
+			switch (f.m_shapeType)
+			{
+			case b2Shape::e_chain:
+				return chainShapes[f.m_shapeIdx].RayCast(output, input, xf, childIdx);
+			case b2Shape::e_circle:
+				return circleShapes[f.m_shapeIdx].RayCast(output, input, xf);
+			case b2Shape::e_edge:
+				return edgeShapes[f.m_shapeIdx].RayCast(output, input, xf);
+			case b2Shape::e_polygon:
+				return polygonShapes[f.m_shapeIdx].RayCast(output, input, xf);
+			}
+		};
+
+		const uint32 wallFlag = b2_wallParticle;
+		auto& flags = m_ampFlags;
+		auto& forces = m_ampForces;
+		const auto& particleApplyForce = [=, &flags, &forces](int32 index, const b2Vec2& force) restrict(amp)
+		{
+			if (IsSignificantForce(force) &&
+				!(flags[index] & wallFlag))
+			{
+				amp::atomicAdd(forces[index], force);
+			}
+		};
+
+		const int32 iteration = m_iteration;
+		const float32 stepInvDt = m_step.inv_dt;
+		const float32 stepDt = m_step.dt;
+		const float32 linearSlop = b2_linearSlop;
+
+		auto& bodies = m_ampBodies;
+		auto& fixtures = m_ampFixtures;
+		auto& velocities = m_ampVelocities;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachInsideBounds(fixtureBounds, [=, &bodies, &fixtures, &positions, &velocities,
+			&matIdxs, &matMasses](int32 a, int32 fixtureIdx, int32 childIdx) restrict(amp)
+		{
+			const Fixture& fixture = fixtures[fixtureIdx];
+			if (!fixture.TestZPos(positions[a].z) || !shouldCollide(fixture, a)) return;
+			const b2Vec2 ap = positions[a];
+			const Body& body = bodies[fixture.m_bodyIdx];
+		
+			b2Vec2 av = b2Vec2(velocities[a]);
+			b2RayCastOutput output;
+			b2RayCastInput input;
+			if (iteration == 0)
+			{
+				// Put 'ap' in the local space of the previous frame
+				b2Vec2 p1 = b2MulT(body.m_xf0, ap);
+				if (fixture.m_shapeType == b2Shape::e_circle)
+				{
+					// Make relative to the center of the circle
+					p1 -= body.GetLocalCenter();
+					// Re-apply rotation about the center of the
+					// circle
+					p1 = b2Mul(body.m_xf0.q, p1);
+					// Subtract rotation of the current frame
+					p1 = b2MulT(body.m_xf.q, p1);
+					// Return to local space
+					p1 += body.GetLocalCenter();
+				}
+				// Return to global space and apply rotation of current frame
+				input.p1 = b2Mul(body.m_xf, p1);
+			}
+			else
+				input.p1 = ap;
+			input.p2 = ap + stepDt * av;
+			input.maxFraction = 1;
+			if (!rayCast(fixture, output, input, body.m_xf, childIdx)) return;
+			b2Vec2 n = output.normal;
+			b2Vec2 p =
+				(1 - output.fraction) * input.p1 +
+				output.fraction * input.p2 +
+				b2_linearSlop * n;
+			b2Vec2 v = stepInvDt * (p - ap);
+			velocities[a].x = v.x;
+			velocities[a].y = v.y;
+			b2Vec2 f = stepInvDt *
+				matMasses[matIdxs[a]] * (av - v);
+			particleApplyForce(a, f);
+		}, true);
+	}
+	else
+	{
+		b2AABB aabb;
+		aabb.lowerBound.x = +b2_maxFloat;
+		aabb.lowerBound.y = +b2_maxFloat;
+		aabb.upperBound.x = -b2_maxFloat;
+		aabb.upperBound.y = -b2_maxFloat;
+		for (int32 i = 0; i < m_count; i++)
+		{
+			b2Vec2 v = b2Vec2(m_velocityBuffer[i]);
+			b2Vec2 p1 = b2Vec2(m_positionBuffer[i]);
+			b2Vec2 p2 = p1 + step.dt * v;
+			aabb.lowerBound = b2Min(aabb.lowerBound, b2Min(p1, p2));
+			aabb.upperBound = b2Max(aabb.upperBound, b2Max(p1, p2));
 		}
-		ampArray<b2Vec2> verts = vertsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, vertsPtr) : ampArray<b2Vec2>(1);
-		ampArray<b2Vec2> norms = normsPtr != nullptr ? ampArray<b2Vec2>(vertsCnt, normsPtr) : ampArray<b2Vec2>(1);
-		int32 childCount = shape.GetChildCount();
-		int32 childIndex = 0;
-		
-		struct AmpRayCastInput
+		class SolveCollisionCallback : public b2FixtureParticleQueryCallback
 		{
-			AmpRayCastInput() restrict(amp) {}
-			b2Vec2 p1, p2;
-			float32 maxFraction;
-		};
-		struct AmpRayCastOutput
-		{
-			AmpRayCastOutput() restrict(amp) {}
-			b2Vec2 normal;
-			float32 fraction;
-		};
-		
-		const auto& raycastCircle = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-		{
-			b2Vec2 position = bodyTransform.p + b2Mul(bodyTransform.q, circleMiddle);
-			b2Vec2 s = input.p1 - position;
-			float32 b = b2Dot(s, s) - circleRadius * circleRadius;
-		
-			// Solve quadratic equation.
-			b2Vec2 r = input.p2 - input.p1;
-			float32 c = b2Dot(s, r);
-			float32 rr = b2Dot(r, r);
-			float32 sigma = c * c - rr * b;
-		
-			// Check for negative discriminant and short segment.
-			if (sigma < 0.0f || rr < 1.192092896e-07F) // == b2_epsilon
-				return false;
-		
-			// Find the point of intersection of the line with the circle.
-			float32 a = -(c + ampSqrt(sigma));
-		
-			// Is the intersection point on the segment?
-			if (0.0f <= a && a <= input.maxFraction * rr)
+			void ReportFixtureAndParticle(int32 fixtureIdx, int32 childIndex, int32 a)
 			{
-				a /= rr;
-				output.fraction = a;
-				output.normal = s + a * r;
-				output.normal.Normalize();
-				return true;
+				Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
+				if (m_system.ShouldCollide(a, fixture))
+				{
+					Body& body = m_world.m_bodyBuffer[fixture.m_bodyIdx];
+					b2Vec2 ap = b2Vec2(m_system.m_positionBuffer[a]);
+					b2Vec2 av = b2Vec2(m_system.m_velocityBuffer[a]);
+					b2RayCastOutput output;
+					b2RayCastInput input;
+					if (m_system.m_iteration == 0)
+					{
+						// Put 'ap' in the local space of the previous frame
+						b2Vec2 p1 = b2MulT(body.m_xf0, ap);
+						;
+						if (fixture.m_shapeType == b2Shape::e_circle)
+						{
+							// Make relative to the center of the circle
+							p1 -= body.GetLocalCenter();
+							// Re-apply rotation about the center of the
+							// circle
+							p1 = b2Mul(body.m_xf0.q, p1);
+							// Subtract rotation of the current frame
+							p1 = b2MulT(body.m_xf.q, p1);
+							// Return to local space
+							p1 += body.GetLocalCenter();
+						}
+						// Return to global space and apply rotation of current frame
+						input.p1 = b2Mul(body.m_xf, p1);
+					}
+					else
+					{
+						input.p1 = ap;
+					}
+					input.p2 = ap + m_step.dt * av;
+					input.maxFraction = 1;
+					if (m_world.RayCast(fixture, output, input, childIndex))
+					{
+						b2Vec2 n = output.normal;
+						b2Vec2 p =
+							(1 - output.fraction) * input.p1 +
+							output.fraction * input.p2 +
+							b2_linearSlop * n;
+						b2Vec2 v = m_step.inv_dt * (p - ap);
+						m_system.m_velocityBuffer[a] = b2Vec3(v);
+						b2Vec2 f = m_step.inv_dt *
+							m_system.m_partMatMassBuf[m_system.m_partMatIdxBuffer[a]] * (av - v);
+						m_system.ParticleApplyForce(a, f);
+					}
+				}
 			}
-			return false;
-		};
-		const auto& raycastEdge = [=](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-		{
-			// Put the ray into the edge's frame of reference.
-			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-			b2Vec2 d = p2 - p1;
-		
-			b2Vec2 e = edgeV2 - edgeV1;
-			b2Vec2 normal(e.y, -e.x);
-			normal.Normalize();
-		
-			// q = p1 + t * d
-			// dot(normal, q - v1) = 0
-			// dot(normal, p1 - v1) + t * dot(normal, d) = 0
-			float32 numerator = b2Dot(normal, edgeV1 - p1);
-			float32 denominator = b2Dot(normal, d);
-		
-			if (denominator == 0.0f)
-				return false;
-		
-			float32 t = numerator / denominator;
-			if (t < 0.0f || input.maxFraction < t)
-				return false;
-		
-			b2Vec2 q = p1 + t * d;
-		
-			// q = v1 + s * r
-			// s = dot(q - v1, r) / dot(r, r)
-			b2Vec2 r = edgeV2 - edgeV1;
-			float32 rr = b2Dot(r, r);
-			if (rr == 0.0f)
-				return false;
-		
-			float32 s = b2Dot(q - edgeV1, r) / rr;
-			if (s < 0.0f || 1.0f < s)
-				return false;
-		
-			output.fraction = t;
-			if (numerator > 0.0f)
-				output.normal = -b2Mul(bodyTransform.q, normal);
-			else
-				output.normal = b2Mul(bodyTransform.q, normal);
-			return true;
-		};
-		const auto& raycastPolygon = [=, &verts, &norms](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-		{
-			// Put the ray into the polygon's frame of reference.
-			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-			b2Vec2 d = p2 - p1;
-		
-			float32 lower = 0.0f, upper = input.maxFraction;
-		
-			int32 index = -1;
-		
-			for (int32 i = 0; i < vertsCnt; ++i)
+
+			b2TimeStep m_step;
+			b2ContactFilter* m_contactFilter;
+
+		public:
+			SolveCollisionCallback(b2World& world,
+				b2ParticleSystem& system, const b2TimeStep& step, b2ContactFilter* contactFilter) :
+				b2FixtureParticleQueryCallback(world, system)
 			{
-				// p = p1 + a * d
-				// dot(normal, p - v) = 0
-				// dot(normal, p1 - v) + a * dot(normal, d) = 0
-				float32 numerator = b2Dot(norms[i], verts[i] - p1);
-				float32 denominator = b2Dot(norms[i], d);
-		
-				if (denominator == 0.0f)
-				{
-					if (numerator < 0.0f)
-					{
-						return false;
-					}
-				}
-				else
-				{
-					// Note: we want this predicate without division:
-					// lower < numerator / denominator, where denominator < 0
-					// Since denominator < 0, we have to flip the inequality:
-					// lower < numerator / denominator <==> denominator * lower > numerator.
-					if (denominator < 0.0f && numerator < lower * denominator)
-					{
-						// Increase lower.
-						// The segment enters this half-space.
-						lower = numerator / denominator;
-						index = i;
-					}
-					else if (denominator > 0.0f && numerator < upper * denominator)
-					{
-						// Decrease upper.
-						// The segment exits this half-space.
-						upper = numerator / denominator;
-					}
-				}
-		
-				// The use of epsilon here causes the assert on lower to trip
-				// in some cases. Apparently the use of epsilon was to make edge
-				// shapes work, but now those are handled separately.
-				//if (upper < lower - b2_epsilon)
-				if (upper < lower)
-					return false;
+				m_step = step;
+				m_contactFilter = contactFilter;
 			}
-			if (index >= 0)
-			{
-				output.fraction = lower;
-				output.normal = b2Mul(bodyTransform.q, norms[index]);
-				return true;
-			}
-		
-			return false;
-		};
-		const auto& raycastChain = [=, &verts](const AmpRayCastInput & input, AmpRayCastOutput & output) restrict(amp) -> bool
-		{
-			int32 i1 = childIndex;
-			int32 i2 = childIndex + 1;
-			if (i2 == vertsCnt)
-				i2 = 0;
-		
-			// edgeShape Raycast
-			const b2Vec2& v1 = verts[i1];
-			const b2Vec2& v2 = verts[i2];
-		
-			// Put the ray into the edge's frame of reference.
-			b2Vec2 p1 = b2MulT(bodyTransform.q, input.p1 - bodyTransform.p);
-			b2Vec2 p2 = b2MulT(bodyTransform.q, input.p2 - bodyTransform.p);
-			b2Vec2 d = p2 - p1;
-		
-			b2Vec2 e = v2 - v1;
-			b2Vec2 normal(e.y, -e.x);
-			normal.Normalize();
-		
-			// q = p1 + t * d
-			// dot(normal, q - v1) = 0
-			// dot(normal, p1 - v1) + t * dot(normal, d) = 0
-			float32 numerator = b2Dot(normal, v1 - p1);
-			float32 denominator = b2Dot(normal, d);
-		
-			if (denominator == 0.0f)
-				return false;
-		
-			float32 t = numerator / denominator;
-			if (t < 0.0f || input.maxFraction < t)
-				return false;
-		
-			b2Vec2 q = p1 + t * d;
-		
-			// q = v1 + s * r
-			// s = dot(q - v1, r) / dot(r, r)
-			b2Vec2 r = v2 - v1;
-			float32 rr = b2Dot(r, r);
-			if (rr == 0.0f)
-				return false;
-		
-			float32 s = b2Dot(q - v1, r) / rr;
-			if (s < 0.0f || 1.0f < s)
-				return false;
-		
-			output.fraction = t;
-			if (numerator > 0.0f)
-				output.normal = -b2Mul(bodyTransform.q, normal);
-			else
-				output.normal = b2Mul(bodyTransform.q, normal);
-			return true;
-		};
-		for (; childIndex < childCount; childIndex++)
-		{
-			b2AABB aabb = m_world.GetAABB(fixture, childIndex);
-			AmpForEachInsideBounds(aabb,
-				[=, &positions, &velocities, &forces, &matIdxs, &matMasses, &flags](int32 a) restrict(amp)
-			{
-				if (!shouldCollide(a)) return;
-				const b2Vec2& ap = b2Vec2(positions[a]);
-				const b2Vec2& av = b2Vec2(velocities[a]);
-				AmpRayCastOutput output;
-				AmpRayCastInput input;
-				if (iterationIdx == 0)
-				{
-					// Put 'ap' in the local space of the previous frame
-					b2Vec2 p1 = b2MulT(bodyTransform0, ap);
-					if (shapeType == 0) // Circle
-					{
-						// Make relative to the center of the circle
-						p1 -= bodyLocalCentre;
-						// Re-apply rotation about the center of the
-						// circle
-						p1 = b2Mul(bodyTransform0.q, p1);
-						// Subtract rotation of the current frame
-						p1 = b2MulT(bodyTransform.q, p1);
-						// Return to local space
-						p1 += bodyLocalCentre;
-					}
-					// Return to global space and apply rotation of current frame
-					input.p1 = b2Mul(bodyTransform, p1);
-				}
-				else
-				{
-					input.p1 = ap;
-				}
-				input.p2 = ap + stepDt * av;
-				input.maxFraction = 1;
-				switch (shapeType)
-				{
-				case 0: // Circle
-					if (!raycastCircle(input, output)) return;
-					break;
-				case 1: // Edge
-					if (!raycastEdge(input, output)) return;
-					break;
-				case 2: // Polygon
-					if (!raycastPolygon(input, output)) return;
-					break;
-				case 3: // Chain
-					if (!raycastChain(input, output)) return;
-					break;
-				}
-				b2Vec2 n = output.normal;
-				b2Vec2 p =
-					(1 - output.fraction) * input.p1 +
-					output.fraction * input.p2 +
-					linearSlop * n;
-				b2Vec2 v = stepInvDt * (p - ap);
-				velocities[a] = b2Vec3(v, 0);
-				b2Vec2 f = stepInvDt * matMasses[matIdxs[a]] * (av - v);
-				if (IsSignificantForce(f) && !(flags[a] & wallFlag))
-				forces[a] += b2Vec3(f, 0);
-			});
-		}*/
-	});
+		} callback(m_world, *this, step, GetFixtureContactFilter());
+		m_world.QueryAABB(&callback, aabb);
+	}
 }
 
-void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
+void b2ParticleSystem::SolveBarrier()
 {
 	// If a particle is passing between paired barrier particles,
 	// its velocity will be decelerated to avoid passing.
-	for (int32 i = 0; i < m_count; i++)
+	if (!(m_allParticleFlags & b2_barrierParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
+	const uint32 filterFlags = b2_barrierParticle | b2_wallParticle;
+	const uint32 barrierFilterFlag = b2_barrierParticle;
+	const uint32 wallFilterFlag = b2_wallParticle;
+	const uint32 zombieFlag = b2_zombieParticle;
+
+	if (m_accelerate)
 	{
-		uint32 flags = m_flagsBuffer[i];
-		static const uint32 k_barrierWallFlags =
-										b2_barrierParticle | b2_wallParticle;
-		if ((flags & k_barrierWallFlags) == k_barrierWallFlags)
+		const int32 cnt = m_count;
+		auto& flags = m_ampFlags;
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle([=, &flags, &velocities](const int32 i) restrict(amp)
 		{
-			m_velocityBuffer[i].SetZero();
-		}
-	}
-	float32 tmax = b2_barrierCollisionTime * step.dt;
-	for (int32 k = 0; k < m_pairCount; k++)
-	{
-		const b2ParticlePair& pair = m_pairBuffer[k];
-		if (pair.flags & b2_barrierParticle)
+			if ((flags[i] & filterFlags) == filterFlags)
+				velocities[i].SetZero();
+		});
+		const float32 tmax = b2_barrierCollisionTime * step.dt;
+		auto& pairs = m_ampPairs;
+		auto& positions = m_ampPositions;
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& groups = m_ampGroups;
+
+		const int32 timeStamp = m_timestamp;
+		auto&  matMasses = m_ampMatMasses;
+		const auto UpdateStatistics = [=, &positions, &velocities, &matMasses, &flags](const b2ParticleGroup & group) restrict(amp)
 		{
-			int32 a = pair.indexA;
-			int32 b = pair.indexB;
-			b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
+			if (group.m_timestamp == timeStamp) return;
+			const float32 m = matMasses[group.m_matIdx];
+			const int32& firstIdx = group.m_firstIndex;
+			const int32& lastIdx = group.m_lastIndex;
+			float32& mass = group.m_mass = 0;
+			b2Vec2& center = group.m_center;
+			b2Vec2& linVel = group.m_linearVelocity;
+			center.SetZero();
+			linVel.SetZero();
+			for (int32 i = firstIdx; i < lastIdx; i++)
+			{
+				if (flags[i] & zombieFlag) continue;
+				mass += m;
+				center += m * (b2Vec2)positions[i];
+				linVel += m * (b2Vec2)velocities[i];
+			}
+			if (mass > 0)
+			{
+				center *= 1 / mass;
+				linVel *= 1 / mass;
+			}
+			float32& inertia = group.m_inertia = 0;
+			float32& angVel = group.m_angularVelocity = 0;
+			for (int32 i = firstIdx; i < lastIdx; i++)
+			{
+				if (flags[i] & zombieFlag) continue;
+				b2Vec2 p = (b2Vec2)positions[i] - center;
+				b2Vec2 v = (b2Vec2)velocities[i] - linVel;
+				inertia += m * b2Dot(p, p);
+				angVel += m * b2Cross(p, v);
+			}
+			if (inertia > 0)
+			{
+				angVel *= 1 / inertia;
+			}
+			group.m_timestamp = timeStamp;
+		};
+
+		const uint32 rigidGroupFlag = b2_rigidParticleGroup;
+		const auto GetLinearVelocity = [=, &velocities](
+			const b2ParticleGroup & group, int32 particleIndex,
+			const b2Vec2 & point) restrict(amp) -> b2Vec2
+		{
+			if (group.m_groupFlags & rigidGroupFlag)
+			{
+				UpdateStatistics(group);
+				return group.m_linearVelocity + b2Cross(group.m_angularVelocity, point - group.m_center);
+			}
+			else
+				return velocities[particleIndex];
+		};
+		auto& proxies = m_ampProxies;
+		const auto TagLowerBound = [=, &proxies](uint32 first, uint32 last, uint32 tag) restrict(amp) -> int32
+		{
+			int32 i, step;
+			int32 count = last - first;
+
+			while (count > 0) {
+				i = first;
+				step = count / 2;
+				i += step;
+				if (proxies[i].tag < tag) {
+					first = ++i;
+					count -= step + 1;
+				}
+				else
+					count = step;
+			}
+			return first;
+		};
+		const auto TagUpperBound = [=, &proxies](uint32 first, uint32 last, uint32 tag) restrict(amp) -> int32
+		{
+			int32 i, step;
+			int32 count = last - first;
+
+			while (count > 0) {
+				i = first;
+				step = count / 2;
+				i += step;
+				if (!(proxies[i].tag < tag)) {
+					first = ++i;
+					count -= step + 1;
+				}
+				else
+					count = step;
+			}
+			return first;
+		};
+
+		struct AmpInsideBoundsEnumerator
+		{
+			/// Construct an enumerator with bounds of tags and a range of proxies.
+			AmpInsideBoundsEnumerator(
+				uint32 lower, uint32 upper,
+				int32 first, int32 last) restrict(amp)
+			{
+				m_xLower = lower & xMask;
+				m_xUpper = upper & xMask;
+				m_yLower = lower & yMask;
+				m_yUpper = upper & yMask;
+				m_first = first;
+				m_last = last;
+			};
+			/// The lower and upper bound of x component in the tag.
+			uint32 m_xLower, m_xUpper;
+			/// The lower and upper bound of y component in the tag.
+			uint32 m_yLower, m_yUpper;
+			/// The range of proxies.
+			int32 m_first;
+			int32 m_last;
+		};
+
+		const float32 invDiameter = m_inverseDiameter;
+		const auto GetInsideBoundsEnumerator = [=](const b2AABB & aabb)
+			restrict(amp) -> AmpInsideBoundsEnumerator
+		{
+			uint32 lowerTag = computeTag(invDiameter * aabb.lowerBound.x - 1,
+				invDiameter * aabb.lowerBound.y - 1);
+			uint32 upperTag = computeTag(invDiameter * aabb.upperBound.x + 1,
+				invDiameter * aabb.upperBound.y + 1);
+
+			const int32 first = TagLowerBound(0, cnt, lowerTag);
+			const int32 last  = TagUpperBound(first, cnt, upperTag);
+
+			return AmpInsideBoundsEnumerator(lowerTag, upperTag, first, last);
+		};
+
+		const auto GetNext = [=, &proxies](AmpInsideBoundsEnumerator& ibe) restrict(amp) -> int32
+		{
+			while (ibe.m_first < ibe.m_last)
+			{
+				uint32 xTag = proxies[ibe.m_first].tag & xMask;
+				if (xTag >= ibe.m_xLower && xTag <= ibe.m_xUpper)
+				{
+					return proxies[ibe.m_first++].idx;
+				}
+				ibe.m_first++;
+			}
+			return -1;
+		};
+
+		auto& forces = m_ampForces;
+		AmpForEachPair([=, &pairs, &flags, &groups, &positions, &velocities,
+			&groupIdxs, &matIdxs, &matMasses, &forces](const int32 i) restrict(amp)
+		{
+			const b2ParticlePair& pair = pairs[i];
+			if (!(pair.flags & barrierFilterFlag)) return;
+			const int32 a = pair.indexA;
+			const int32 b = pair.indexB;
+			const b2Vec2 pa = positions[a];
+			const b2Vec2 pb = positions[b];
 			b2AABB aabb;
 			aabb.lowerBound = b2Min(pa, pb);
 			aabb.upperBound = b2Max(pa, pb);
-			int32 aGroupIdx = m_partGroupIdxBuffer[a];
-			int32 bGroupIdx = m_partGroupIdxBuffer[b];
-			b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
-			b2ParticleGroup& bGroup = m_groupBuffer[bGroupIdx];
-			b2Vec2 va = GetLinearVelocity(aGroup, a, pa);
-			b2Vec2 vb = GetLinearVelocity(bGroup, b, pb);
-			b2Vec2 pba = pb - pa;
-			b2Vec2 vba = vb - va;
-			InsideBoundsEnumerator enumerator = GetInsideBoundsEnumerator(aabb);
+			const int32 aGroupIdx = groupIdxs[a];
+			const int32 bGroupIdx = groupIdxs[b];
+			b2ParticleGroup& aGroup = groups[aGroupIdx];
+			b2ParticleGroup& bGroup = groups[bGroupIdx];
+			const b2Vec2 va = GetLinearVelocity(aGroup, a, pa);
+			const b2Vec2 vb = GetLinearVelocity(bGroup, b, pb);
+			const b2Vec2 pba = pb - pa;
+			const b2Vec2 vba = vb - va;
+			AmpInsideBoundsEnumerator& enumerator = GetInsideBoundsEnumerator(aabb);
 			int32 c;
-			while ((c = enumerator.GetNext()) >= 0)
+			while ((c = GetNext(enumerator)) >= 0)
 			{
-				b2Vec2 pc = b2Vec2(m_positionBuffer[c]);
-				int32 cGroupIdx = m_partGroupIdxBuffer[c];
+				b2Vec2 pc = positions[c];
+				int32 cGroupIdx = groupIdxs[c];
 				if (aGroupIdx != cGroupIdx && bGroupIdx != cGroupIdx)
 				{
-					b2ParticleGroup& cGroup = m_groupBuffer[cGroupIdx];
-					b2Vec2 vc = GetLinearVelocity(cGroup, c, pc);
+					b2ParticleGroup& cGroup = groups[cGroupIdx];
+					const b2Vec2 vc = GetLinearVelocity(cGroup, c, pc);
 					// Solve the equation below:
 					//   (1-s)*(pa+t*va)+s*(pb+t*vb) = pc+t*vc
 					// which expresses that the particle c will pass a line
 					// connecting the particles a and b at the time of t.
 					// if s is between 0 and 1, c will pass between a and b.
-					b2Vec2 pca = pc - pa;
-					b2Vec2 vca = vc - va;
-					float32 e2 = b2Cross(vba, vca);
-					float32 e1 = b2Cross(pba, vca) - b2Cross(pca, vba);
-					float32 e0 = b2Cross(pba, pca);
+					const b2Vec2 pca = pc - pa;
+					const b2Vec2 vca = vc - va;
+					const float32 e2 = b2Cross(vba, vca);
+					const float32 e1 = b2Cross(pba, vca) - b2Cross(pca, vba);
+					const float32 e0 = b2Cross(pba, pca);
 					float32 s, t;
 					b2Vec2 qba, qca;
 					if (e2 == 0)
 					{
 						if (e1 == 0) continue;
-						t = - e0 / e1;
+						t = -e0 / e1;
 						if (!(t >= 0 && t < tmax)) continue;
 						qba = pba + t * vba;
 						qca = pca + t * vca;
@@ -3973,11 +3929,11 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 					}
 					else
 					{
-						float32 det = e1 * e1 - 4 * e0 * e2;
+						const float32 det = e1 * e1 - 4 * e0 * e2;
 						if (det < 0) continue;
-						float32 sqrtDet = b2Sqrt(det);
-						float32 t1 = (- e1 - sqrtDet) / (2 * e2);
-						float32 t2 = (- e1 + sqrtDet) / (2 * e2);
+						const float32 sqrtDet = ampSqrt(det);
+						float32 t1 = (-e1 - sqrtDet) / (2 * e2);
+						float32 t2 = (-e1 + sqrtDet) / (2 * e2);
 						if (t1 > t2) b2Swap(t1, t2);
 						t = t1;
 						qba = pba + t * vba;
@@ -3995,324 +3951,171 @@ void b2ParticleSystem::SolveBarrier(const b2TimeStep& step)
 					}
 					// Apply a force to particle c so that it will have the
 					// interpolated velocity at the collision point on line ab.
-					b2Vec2 dv = va + s * vba - vc;
-					b2Vec2 f = m_partMatMassBuf[m_partMatIdxBuffer[c]] * dv;
-					if (IsRigidGroup(cGroup))
+					const b2Vec2 dv = va + s * vba - vc;
+					const b2Vec2 f = matMasses[matIdxs[c]] * dv;
+					if (cGroup.m_groupFlags & rigidGroupFlag)
 					{
 						// If c belongs to a rigid group, the force will be
 						// distributed in the group->
-						float32 mass = GetMass(cGroup);
-						float32 inertia = GetInertia(cGroup);
+						const float32 mass = cGroup.m_mass;
+						const float32 inertia = cGroup.m_inertia;
 						if (mass > 0)
 						{
 							cGroup.m_linearVelocity += 1 / mass * f;
 						}
 						if (inertia > 0)
 							cGroup.m_angularVelocity +=
-								b2Cross(pc - GetCenter(cGroup), f) / inertia;
+							b2Cross(pc - cGroup.m_center, f) / inertia;
 					}
 					else
 					{
-						m_velocityBuffer[c] += dv;
+						amp::atomicAdd(velocities[c], dv);
 					}
 					// Apply a reversed force to particle c after particle
 					// movement so that momentum will be preserved.
 					b2Vec2 force = -step.inv_dt * f;
-					ParticleApplyForce(c, force);
+					if (IsSignificantForce(force) && flags[c] & wallFilterFlag)
+						amp::atomicAdd(forces[c], force);
+				}
+			}
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			uint32 flags = m_flagsBuffer[i];
+			static const uint32 k_barrierWallFlags =
+				b2_barrierParticle | b2_wallParticle;
+			if ((flags & k_barrierWallFlags) == k_barrierWallFlags)
+			{
+				m_velocityBuffer[i].SetZero();
+			}
+		}
+		float32 tmax = b2_barrierCollisionTime * step.dt;
+		for (int32 k = 0; k < m_pairCount; k++)
+		{
+			const b2ParticlePair& pair = m_pairBuffer[k];
+			if (pair.flags & b2_barrierParticle)
+			{
+				int32 a = pair.indexA;
+				int32 b = pair.indexB;
+				b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
+				b2AABB aabb;
+				aabb.lowerBound = b2Min(pa, pb);
+				aabb.upperBound = b2Max(pa, pb);
+				int32 aGroupIdx = m_partGroupIdxBuffer[a];
+				int32 bGroupIdx = m_partGroupIdxBuffer[b];
+				b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
+				b2ParticleGroup& bGroup = m_groupBuffer[bGroupIdx];
+				b2Vec2 va = GetLinearVelocity(aGroup, a, pa);
+				b2Vec2 vb = GetLinearVelocity(bGroup, b, pb);
+				b2Vec2 pba = pb - pa;
+				b2Vec2 vba = vb - va;
+				InsideBoundsEnumerator enumerator = GetInsideBoundsEnumerator(aabb);
+				int32 c;
+				while ((c = enumerator.GetNext()) >= 0)
+				{
+					b2Vec2 pc = b2Vec2(m_positionBuffer[c]);
+					int32 cGroupIdx = m_partGroupIdxBuffer[c];
+					if (aGroupIdx != cGroupIdx && bGroupIdx != cGroupIdx)
+					{
+						b2ParticleGroup& cGroup = m_groupBuffer[cGroupIdx];
+						b2Vec2 vc = GetLinearVelocity(cGroup, c, pc);
+						// Solve the equation below:
+						//   (1-s)*(pa+t*va)+s*(pb+t*vb) = pc+t*vc
+						// which expresses that the particle c will pass a line
+						// connecting the particles a and b at the time of t.
+						// if s is between 0 and 1, c will pass between a and b.
+						b2Vec2 pca = pc - pa;
+						b2Vec2 vca = vc - va;
+						float32 e2 = b2Cross(vba, vca);
+						float32 e1 = b2Cross(pba, vca) - b2Cross(pca, vba);
+						float32 e0 = b2Cross(pba, pca);
+						float32 s, t;
+						b2Vec2 qba, qca;
+						if (e2 == 0)
+						{
+							if (e1 == 0) continue;
+							t = -e0 / e1;
+							if (!(t >= 0 && t < tmax)) continue;
+							qba = pba + t * vba;
+							qca = pca + t * vca;
+							s = b2Dot(qba, qca) / b2Dot(qba, qba);
+							if (!(s >= 0 && s <= 1)) continue;
+						}
+						else
+						{
+							float32 det = e1 * e1 - 4 * e0 * e2;
+							if (det < 0) continue;
+							float32 sqrtDet = b2Sqrt(det);
+							float32 t1 = (-e1 - sqrtDet) / (2 * e2);
+							float32 t2 = (-e1 + sqrtDet) / (2 * e2);
+							if (t1 > t2) b2Swap(t1, t2);
+							t = t1;
+							qba = pba + t * vba;
+							qca = pca + t * vca;
+							s = b2Dot(qba, qca) / b2Dot(qba, qba);
+							if (!(t >= 0 && t < tmax && s >= 0 && s <= 1))
+							{
+								t = t2;
+								if (!(t >= 0 && t < tmax)) continue;
+								qba = pba + t * vba;
+								qca = pca + t * vca;
+								s = b2Dot(qba, qca) / b2Dot(qba, qba);
+								if (!(s >= 0 && s <= 1)) continue;
+							}
+						}
+						// Apply a force to particle c so that it will have the
+						// interpolated velocity at the collision point on line ab.
+						b2Vec2 dv = va + s * vba - vc;
+						b2Vec2 f = m_partMatMassBuf[m_partMatIdxBuffer[c]] * dv;
+						if (IsRigidGroup(cGroup))
+						{
+							// If c belongs to a rigid group, the force will be
+							// distributed in the group->
+							float32 mass = GetMass(cGroup);
+							float32 inertia = GetInertia(cGroup);
+							if (mass > 0)
+							{
+								cGroup.m_linearVelocity += 1 / mass * f;
+							}
+							if (inertia > 0)
+								cGroup.m_angularVelocity +=
+								b2Cross(pc - GetCenter(cGroup), f) / inertia;
+						}
+						else
+						{
+							m_velocityBuffer[c] += dv;
+						}
+						// Apply a reversed force to particle c after particle
+						// movement so that momentum will be preserved.
+						b2Vec2 force = -step.inv_dt * f;
+						ParticleApplyForce(c, force);
+					}
 				}
 			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveBarrier(const b2TimeStep& step)
+
+bool b2ParticleSystem::ShouldSolve()
 {
-	// If a particle is passing between paired barrier particles,
-	// its velocity will be decelerated to avoid passing.
-
-	const uint32 filterFlags = b2_barrierParticle | b2_wallParticle;
-	const uint32 barrierFilterFlag = b2_barrierParticle;
-	const uint32 wallFilterFlag = b2_wallParticle;
-	const uint32 zombieFlag = b2_zombieParticle;
-	const uint32 cnt = m_count;
-	auto& flags = m_ampFlags;
-	auto& velocities = m_ampVelocities;
-
-	AmpForEachParticle([=, &flags, &velocities](const int32 i) restrict(amp)
-	{
-		if ((flags[i] & filterFlags) == filterFlags)
-			velocities[i].SetZero();
-	});
-	const float32 tmax = b2_barrierCollisionTime * step.dt;
-	auto& pairs = m_ampPairs;
-	auto& positions = m_ampPositions;
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& groups = m_ampGroups;
-
-	const int32 timeStamp = m_timestamp;
-	auto&  matMasses = m_ampMatMasses;
-	const auto UpdateStatistics = [=, &positions, &velocities, &matMasses, &flags](const b2ParticleGroup & group) restrict(amp)
-	{
-		if (group.m_timestamp == timeStamp) return;
-		const float32 m = matMasses[group.m_matIdx];
-		const int32& firstIdx = group.m_firstIndex;
-		const int32& lastIdx = group.m_lastIndex;
-		float32& mass = group.m_mass = 0;
-		b2Vec2& center = group.m_center;
-		b2Vec2& linVel = group.m_linearVelocity;
-		center.SetZero();
-		linVel.SetZero();
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			if (flags[i] & zombieFlag) continue;
-			mass += m;
-			center += m * (b2Vec2)positions[i];
-			linVel += m * (b2Vec2)velocities[i];
-		}
-		if (mass > 0)
-		{
-			center *= 1 / mass;
-			linVel *= 1 / mass;
-		}
-		float32& inertia = group.m_inertia = 0;
-		float32& angVel = group.m_angularVelocity = 0;
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			if (flags[i] & zombieFlag) continue;
-			b2Vec2 p = (b2Vec2)positions[i] - center;
-			b2Vec2 v = (b2Vec2)velocities[i] - linVel;
-			inertia += m * b2Dot(p, p);
-			angVel += m * b2Cross(p, v);
-		}
-		if (inertia > 0)
-		{
-			angVel *= 1 / inertia;
-		}
-		group.m_timestamp = timeStamp;
-	};
-
-	const uint32 rigidGroupFlag = b2_rigidParticleGroup;
-	const auto GetLinearVelocity = [=, &velocities](
-		const b2ParticleGroup & group, int32 particleIndex,
-		const b2Vec2 & point) restrict(amp) -> b2Vec2
-	{
-		if (group.m_groupFlags & rigidGroupFlag)
-		{
-			UpdateStatistics(group);
-			return group.m_linearVelocity + b2Cross(group.m_angularVelocity, point - group.m_center);
-		}
-		else
-			return velocities[particleIndex];
-	};
-	auto& proxies = m_ampProxies;
-	const auto TagLowerBound = [=, &proxies](uint32 first, uint32 last, uint32 tag) restrict(amp) -> int32
-	{
-		int32 i, step;
-		int32 count = last - first;
-
-		while (count > 0) {
-			i = first;
-			step = count / 2;
-			i += step;
-			if (proxies[i].tag < tag) {
-				first = ++i;
-				count -= step + 1;
-			}
-			else
-				count = step;
-		}
-		return first;
-	};
-	const auto TagUpperBound = [=, &proxies](uint32 first, uint32 last, uint32 tag) restrict(amp) -> int32
-	{
-		int32 i, step;
-		int32 count = last - first;
-
-		while (count > 0) {
-			i = first;
-			step = count / 2;
-			i += step;
-			if (!(proxies[i].tag < tag)) {
-				first = ++i;
-				count -= step + 1;
-			}
-			else
-				count = step;
-		}
-		return first;
-	};
-
-	struct AmpInsideBoundsEnumerator
-	{
-		/// Construct an enumerator with bounds of tags and a range of proxies.
-		AmpInsideBoundsEnumerator(
-			uint32 lower, uint32 upper,
-			int32 first, int32 last) restrict(amp)
-		{
-			m_xLower = lower & xMask;
-			m_xUpper = upper & xMask;
-			m_yLower = lower & yMask;
-			m_yUpper = upper & yMask;
-			m_first = first;
-			m_last = last;
-		};
-		/// The lower and upper bound of x component in the tag.
-		uint32 m_xLower, m_xUpper;
-		/// The lower and upper bound of y component in the tag.
-		uint32 m_yLower, m_yUpper;
-		/// The range of proxies.
-		int32 m_first;
-		int32 m_last;
-	};
-
-	const float32 invDiameter = m_inverseDiameter;
-	const auto GetInsideBoundsEnumerator = [=](const b2AABB & aabb)
-		restrict(amp) -> AmpInsideBoundsEnumerator
-	{
-		uint32 lowerTag = computeTag(invDiameter * aabb.lowerBound.x - 1,
-			invDiameter * aabb.lowerBound.y - 1);
-		uint32 upperTag = computeTag(invDiameter * aabb.upperBound.x + 1,
-			invDiameter * aabb.upperBound.y + 1);
-
-		const int32 first = TagLowerBound(0, cnt, lowerTag);
-		const int32 last  = TagUpperBound(first, cnt, upperTag);
-
-		return AmpInsideBoundsEnumerator(lowerTag, upperTag, first, last);
-	};
-
-	const auto GetNext = [=, &proxies](AmpInsideBoundsEnumerator& ibe) restrict(amp) -> int32
-	{
-		while (ibe.m_first < ibe.m_last)
-		{
-			uint32 xTag = proxies[ibe.m_first].tag & xMask;
-			if (xTag >= ibe.m_xLower && xTag <= ibe.m_xUpper)
-			{
-				return proxies[ibe.m_first++].idx;
-			}
-			ibe.m_first++;
-		}
-		return -1;
-	};
-
-	auto& forces = m_ampForces;
-	AmpForEachPair([=, &pairs, &flags, &groups, &positions, &velocities,
-		&groupIdxs, &matIdxs, &matMasses, &forces](const int32 i) restrict(amp)
-	{
-		const b2ParticlePair& pair = pairs[i];
-		if (!(pair.flags & barrierFilterFlag)) return;
-		const int32 a = pair.indexA;
-		const int32 b = pair.indexB;
-		const b2Vec2 pa = positions[a];
-		const b2Vec2 pb = positions[b];
-		b2AABB aabb;
-		aabb.lowerBound = b2Min(pa, pb);
-		aabb.upperBound = b2Max(pa, pb);
-		const int32 aGroupIdx = groupIdxs[a];
-		const int32 bGroupIdx = groupIdxs[b];
-		b2ParticleGroup& aGroup = groups[aGroupIdx];
-		b2ParticleGroup& bGroup = groups[bGroupIdx];
-		const b2Vec2 va = GetLinearVelocity(aGroup, a, pa);
-		const b2Vec2 vb = GetLinearVelocity(bGroup, b, pb);
-		const b2Vec2 pba = pb - pa;
-		const b2Vec2 vba = vb - va;
-		AmpInsideBoundsEnumerator& enumerator = GetInsideBoundsEnumerator(aabb);
-		int32 c;
-		while ((c = GetNext(enumerator)) >= 0)
-		{
-			b2Vec2 pc = positions[c];
-			int32 cGroupIdx = groupIdxs[c];
-			if (aGroupIdx != cGroupIdx && bGroupIdx != cGroupIdx)
-			{
-				b2ParticleGroup& cGroup = groups[cGroupIdx];
-				const b2Vec2 vc = GetLinearVelocity(cGroup, c, pc);
-				// Solve the equation below:
-				//   (1-s)*(pa+t*va)+s*(pb+t*vb) = pc+t*vc
-				// which expresses that the particle c will pass a line
-				// connecting the particles a and b at the time of t.
-				// if s is between 0 and 1, c will pass between a and b.
-				const b2Vec2 pca = pc - pa;
-				const b2Vec2 vca = vc - va;
-				const float32 e2 = b2Cross(vba, vca);
-				const float32 e1 = b2Cross(pba, vca) - b2Cross(pca, vba);
-				const float32 e0 = b2Cross(pba, pca);
-				float32 s, t;
-				b2Vec2 qba, qca;
-				if (e2 == 0)
-				{
-					if (e1 == 0) continue;
-					t = -e0 / e1;
-					if (!(t >= 0 && t < tmax)) continue;
-					qba = pba + t * vba;
-					qca = pca + t * vca;
-					s = b2Dot(qba, qca) / b2Dot(qba, qba);
-					if (!(s >= 0 && s <= 1)) continue;
-				}
-				else
-				{
-					const float32 det = e1 * e1 - 4 * e0 * e2;
-					if (det < 0) continue;
-					const float32 sqrtDet = ampSqrt(det);
-					float32 t1 = (-e1 - sqrtDet) / (2 * e2);
-					float32 t2 = (-e1 + sqrtDet) / (2 * e2);
-					if (t1 > t2) b2Swap(t1, t2);
-					t = t1;
-					qba = pba + t * vba;
-					qca = pca + t * vca;
-					s = b2Dot(qba, qca) / b2Dot(qba, qba);
-					if (!(t >= 0 && t < tmax && s >= 0 && s <= 1))
-					{
-						t = t2;
-						if (!(t >= 0 && t < tmax)) continue;
-						qba = pba + t * vba;
-						qca = pca + t * vca;
-						s = b2Dot(qba, qca) / b2Dot(qba, qba);
-						if (!(s >= 0 && s <= 1)) continue;
-					}
-				}
-				// Apply a force to particle c so that it will have the
-				// interpolated velocity at the collision point on line ab.
-				const b2Vec2 dv = va + s * vba - vc;
-				const b2Vec2 f = matMasses[matIdxs[c]] * dv;
-				if (cGroup.m_groupFlags & rigidGroupFlag)
-				{
-					// If c belongs to a rigid group, the force will be
-					// distributed in the group->
-					const float32 mass = cGroup.m_mass;
-					const float32 inertia = cGroup.m_inertia;
-					if (mass > 0)
-					{
-						cGroup.m_linearVelocity += 1 / mass * f;
-					}
-					if (inertia > 0)
-						cGroup.m_angularVelocity +=
-						b2Cross(pc - cGroup.m_center, f) / inertia;
-				}
-				else
-				{
-					amp::atomicAdd(velocities[c], dv);
-				}
-				// Apply a reversed force to particle c after particle
-				// movement so that momentum will be preserved.
-				b2Vec2 force = -step.inv_dt * f;
-				if (IsSignificantForce(force) && flags[c] & wallFilterFlag)
-					amp::atomicAdd(forces[c], force);
-			}
-		}
-	});
+	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
+		return false;
+	return true;
 }
-
 
 void b2ParticleSystem::SolveInit() 
 {
-	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
-		return;
 
 	//if (!m_expireTimeBuf.empty())
 	//	SolveLifetimes(m_step);
+	m_iteration = 0;
 	if (m_accelerate)
 	{
-		m_ampCopyFutBodies = amp::copyAsync(m_bodyBuffer, m_ampBodies);
-		m_ampCopyFutFixtures = amp::copyAsync(m_fixtureBuffer, m_ampFixtures);
+		CopyBox2DToGPUAsync();
 		if (m_needsUpdateAllParticleFlags)
 			AmpUpdateAllParticleFlags();
 	}
@@ -4328,27 +4131,22 @@ void b2ParticleSystem::SolveInit()
 
 }
 
+void b2ParticleSystem::InitStep()
+{
+	++m_timestamp;
+	m_subStep = m_step;
+	m_subStep.dt /= m_step.particleIterations;
+	m_subStep.inv_dt *= m_step.particleIterations;
+}
+
 void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 {
-	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
-		return;
-
 	if (m_accelerate)
 	{
 		AmpUpdateProxies();
 		AmpSortProxies();
-		concurrency::parallel_invoke(
-			[&] { AmpFindContacts(exceptZombie); },
-			[&] {
-				m_ampCopyFutBodies.wait();
-				m_ampCopyFutFixtures.wait();
-				AmpUpdateBodyContacts();
-			}
-		);
-		//AmpFindContacts(exceptZombie);
-		//AmpUpdateBodyContacts();
-		m_bodyContactTilableExtent = amp::getTilableExtent(m_bodyContactCount);
-		m_contactTilableExtent = amp::getTilableExtent(m_contactCount, m_contactTileCnt);
+		m_futureUpdateBodyContacts = std::async(launch::async, &b2ParticleSystem::AmpUpdateBodyContacts, this);
+		AmpFindContacts(exceptZombie);
 	}
 	else
 	{
@@ -4361,224 +4159,15 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 	}
 }
 
-void b2ParticleSystem::SolveIteration(int32 iteration)
-{
-	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
-		return;
-	
-	m_iterationIndex = iteration;
-	++m_timestamp;
-	m_subStep = m_step;
-	m_subStep.dt /= m_step.particleIterations;
-	m_subStep.inv_dt *= m_step.particleIterations;
-
-	if (m_accelerate)
-	{
-		AmpComputeWeight();
-		m_ampCopyFutWeights = amp::copyAsync(m_ampWeights, m_weightBuffer, m_count);
-		if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-		{
-			AmpComputeDepth();
-			m_ampCopyFutDepths = amp::copyAsync(m_ampDepths, m_depthBuffer, m_count);
-		}
-		if (m_allParticleFlags & b2_reactiveParticle)
-		{
-			AmpUpdatePairsAndTriadsWithReactiveParticles();
-			m_ampCopyFutTriads = amp::copyAsync(m_triadBuffer, m_ampTriads, m_triadCount);
-		}
-		if (m_hasForce)
-		{
-			AmpSolveForce(m_subStep);
-			amp::copy(m_ampForces, m_forceBuffer, m_count);
-		}
-		if (m_allParticleFlags & b2_viscousParticle)
-			AmpSolveViscous();
-		if (m_allParticleFlags & b2_repulsiveParticle)
-			AmpSolveRepulsive(m_subStep);
-		if (m_allParticleFlags & b2_powderParticle)
-			AmpSolvePowder(m_subStep);
-		if (m_allParticleFlags & b2_tensileParticle)
-			AmpSolveTensile(m_subStep);
-		if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-			m_ampCopyFutDepths.wait();
-		if (m_allGroupFlags & b2_solidParticleGroup)
-			AmpSolveSolid(m_subStep);
-
-		AmpSolveGravity(m_subStep);
-
-		if (m_allParticleFlags & b2_staticPressureParticle)
-			AmpSolveStaticPressure(m_subStep);
-		AmpSolvePressure(m_subStep);
-		AmpSolveDamping(m_subStep);
-		if (m_allParticleFlags & k_extraDampingFlags)
-			AmpSolveExtraDamping();
-
-		// SolveElastic and SolveSpring refer the current velocities for
-		// numerical stability, they should be called as late as possible.
-		if (m_allParticleFlags & b2_reactiveParticle)
-			m_ampCopyFutTriads.wait();
-		if (m_allParticleFlags & b2_elasticParticle)
-			AmpSolveElastic(m_subStep);
-
-		if (m_allParticleFlags & b2_springParticle)
-			AmpSolveSpring(m_subStep);
-		AmpLimitVelocity(m_subStep);
-
-		if (m_allGroupFlags & b2_rigidParticleGroup)
-			AmpSolveRigidDamping();
-		if (m_allParticleFlags & b2_barrierParticle)
-			AmpSolveBarrier(m_subStep);
-
-		// SolveCollision, SolveRigid and SolveWall should be called after
-		// other force functions because they may require particles to have
-		// specific velocities.
-		AmpSolveCollision(m_subStep);
-	}
-	else
-	{
-		ComputeWeight();
-		if (m_allGroupFlags & b2_particleGroupNeedsUpdateDepth)
-			ComputeDepth();
-		if (m_allParticleFlags & b2_reactiveParticle)
-			UpdatePairsAndTriadsWithReactiveParticles();
-		if (m_hasForce)
-			SolveForce(m_subStep);
-		if (m_allParticleFlags & b2_viscousParticle)
-			SolveViscous();
-		if (m_allParticleFlags & b2_repulsiveParticle)
-			SolveRepulsive(m_subStep);
-		if (m_allParticleFlags & b2_powderParticle)
-			SolvePowder(m_subStep);
-		if (m_allParticleFlags & b2_tensileParticle)
-			SolveTensile(m_subStep);
-		if (m_allGroupFlags & b2_solidParticleGroup)
-			SolveSolid(m_subStep);
-		///if (m_allParticleFlags & b2_colorMixingParticle)
-		///	SolveColorMixing();
-
-		SolveGravity(m_subStep);
-
-		if (m_allParticleFlags & b2_staticPressureParticle)
-			SolveStaticPressure(m_subStep);
-		SolvePressure(m_subStep);
-		SolveDamping(m_subStep);
-		///SolveSlowDown(subStep);
-		if (m_allParticleFlags & k_extraDampingFlags)
-			SolveExtraDamping();
-	}
-
-	// WATER
-	//if (m_allParticleFlags & b2_waterParticle)
-	//	SolveWater();
-	//SolveFreeze();
-}
-void b2ParticleSystem::SolveIteration2(int32 iteration)
-{
-	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
-		return;
-
-	if (m_accelerate)
-	{
-		if (m_allGroupFlags & b2_rigidParticleGroup)
-			AmpSolveRigid(m_subStep);
-		if (m_allParticleFlags & b2_wallParticle)
-			AmpSolveWall();
-		m_ampCopyFutVelocities = amp::copyAsync(m_ampVelocities, m_velocityBuffer, m_count);
-
-		// FIRE
-		if (m_allParticleFlags & b2_flameParticle)
-		{
-			AmpSolveFlame(m_subStep);
-			if (m_world.m_allMaterialFlags & b2_flammableMaterial)
-				AmpSolveIgnite();
-			if (m_world.m_allMaterialFlags & b2_extinguishingMaterial)
-				AmpSolveExtinguish();
-		}
-		m_ampCopyFutHealths = amp::copyAsync(m_ampHealths, m_healthBuffer, m_count);
-
-		// HEAT MANAGEMENT
-		if (m_world.m_allMaterialFlags & b2_heatConductingMaterial)
-			AmpSolveHeatConduct(m_subStep);
-		if (m_allParticleFlags & b2_heatLoosingParticle)
-			AmpSolveLooseHeat(m_subStep);
-		m_ampCopyFutHeats = amp::copyAsync(m_ampHeats, m_heatBuffer, m_count);
-		AmpSolveChangeMat();
-		m_ampCopyFutMatIdxs = amp::copyAsync(m_ampMatIdxs, m_partMatIdxBuffer, m_count);
-
-		// AIR
-		if (m_allParticleFlags & b2_airParticle)
-			AmpSolveAir();
-
-		AmpSolveHealth();
-		m_ampCopyFutFlags = amp::copyAsync(m_ampFlags, m_flagsBuffer, m_count);
-
-		// The particle positions can be updated only at the end of m_subStep.
-		AmpSolvePosition(m_subStep);
-		m_ampCopyFutPositions = amp::copyAsync(m_ampPositions, m_positionBuffer, m_count);
-	}
-	else
-	{
-		// SolveElastic and SolveSpring refer the current velocities for
-		// numerical stability, they should be called as late as possible.
-		if (m_allParticleFlags & b2_elasticParticle)
-			SolveElastic(m_subStep);
-		if (m_allParticleFlags & b2_springParticle)
-			SolveSpring(m_subStep);
-
-		LimitVelocity(m_subStep);
-
-		if (m_allGroupFlags & b2_rigidParticleGroup)
-			SolveRigidDamping();
-		if (m_allParticleFlags & b2_barrierParticle)
-			SolveBarrier(m_subStep);
-
-		// SolveCollision, SolveRigid and SolveWall should be called after
-		// other force functions because they may require particles to have
-		// specific velocities.
-		SolveCollision(m_subStep);
-		if (m_allGroupFlags & b2_rigidParticleGroup)
-			SolveRigid(m_subStep);
-		if (m_allParticleFlags & b2_wallParticle)
-			SolveWall();
-
-		// FIRE
-		if (m_allParticleFlags & b2_flameParticle)
-		{
-			SolveFlame(m_subStep);
-			if (m_world.m_allMaterialFlags & b2_flammableMaterial)
-				SolveIgnite();
-			if (m_world.m_allMaterialFlags & b2_extinguishingMaterial)
-				SolveExtinguish();
-		}
-
-		// HEAT MANAGEMENT
-		if (m_world.m_allMaterialFlags & b2_heatConductingMaterial)
-			SolveHeatConduct(m_subStep);
-		if (m_allParticleFlags & b2_heatLoosingParticle)
-			SolveLooseHeat(m_subStep);
-		SolveChangeMat();
-
-		// AIR
-		if (m_allParticleFlags & b2_airParticle)
-			SolveAir();
-
-
-		SolveHealth();
-
-		// The particle positions can be updated only at the end of m_subStep.
-		SolvePosition(m_subStep);
-	}
-
-}
 
 void b2ParticleSystem::SolveEnd() 
 {
-	if (!m_world.m_stepComplete || m_count == 0 || m_step.dt <= 0.0f || m_paused)
-		return;
-	if (m_allParticleFlags & b2_zombieParticle)
-		AmpSolveZombie();
 	if (m_accelerate && m_count)
 	{
+		if (m_allParticleFlags & b2_zombieParticle)
+			AmpSolveZombie();
+		m_ampCopyFutBodies.wait();
+		m_ampCopyFutDepths.wait();
 		m_ampCopyFutWeights.wait();
 		m_ampCopyFutVelocities.wait();
 		m_ampCopyFutHealths.wait();
@@ -4670,62 +4259,60 @@ void b2ParticleSystem::UpdateAllGroupFlags()
 	m_needsUpdateAllGroupFlags = false;
 }
 
-void b2ParticleSystem::LimitVelocity(const b2TimeStep& step)
+void b2ParticleSystem::LimitVelocity()
 {
-	float32 criticalVelocitySquared = GetCriticalVelocitySquared(step);
-	for (int32 i = 0; i < m_count; i++)
+	const b2TimeStep& step = m_subStep;
+	const float32 criticalVelocitySquared = GetCriticalVelocitySquared(step);
+	if (m_accelerate)
 	{
-		b2Vec2 v = b2Vec2(m_velocityBuffer[i]);
-		float32 v2 = b2Dot(v, v);
-		if (v2 > criticalVelocitySquared)
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle([=, &velocities](const int32 i) restrict(amp)
 		{
-			float32 s = b2Sqrt(criticalVelocitySquared / v2);
-			m_velocityBuffer[i] *= s;
-
+			const b2Vec3 v = velocities[i];
+			const float32 v2 = b2Dot(v, v);
+			if (v2 <= criticalVelocitySquared) return;
+			const float32 s = ampSqrt(criticalVelocitySquared / v2);
+			velocities[i] *= s;
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			b2Vec2 v = b2Vec2(m_velocityBuffer[i]);
+			float32 v2 = b2Dot(v, v);
+			if (v2 > criticalVelocitySquared)
+			{
+				float32 s = b2Sqrt(criticalVelocitySquared / v2);
+				m_velocityBuffer[i] *= s;
+			}
 		}
 	}
 }
-void b2ParticleSystem::AmpLimitVelocity(const b2TimeStep& step)
-{
-	const uint32 cnt = m_count;
-	const float32 criticalVelocitySquared = GetCriticalVelocitySquared(step);
-	auto& velocities = m_ampVelocities;
-	AmpForEachParticle([=, &velocities](const int32 i) restrict(amp)
-	{
-		const b2Vec3 v = velocities[i];
-		const float32 v2 = b2Dot(v, v);
-		if (v2 <= criticalVelocitySquared) return;
-		const float32 s = ampSqrt(criticalVelocitySquared / v2);
-		velocities[i] *= s;
-	});
-}
 
-void b2ParticleSystem::SolveGravity(const b2TimeStep& step)
+void b2ParticleSystem::SolveGravity()
 {
-	b2Vec2 gravity = step.dt * m_def.gravityScale * m_world.GetGravity();
-	for (int32 i = 0; i < m_count; i++)
+	const b2Vec3 gravity = m_subStep.dt * m_def.gravityScale * m_world.GetGravity();
+
+	if (m_accelerate)
 	{
-		m_velocityBuffer[i] += gravity;
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle([=, &velocities](const int32 i) restrict(amp)
+		{
+			velocities[i] += gravity;
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			m_velocityBuffer[i] += gravity;
+		}
 	}
 }
-void b2ParticleSystem::AmpSolveGravity(const b2TimeStep& step)
-{
-	const b2Vec3 gravity = step.dt * m_def.gravityScale * m_world.GetGravity();
-	const uint32 cnt = m_count;
-	auto& velocities = m_ampVelocities;
-	AmpForEachParticle([=, &velocities](const int32 i) restrict(amp)
-	{
-		velocities[i] += gravity;
-	});
-}
 
-void b2ParticleSystem::SolveStaticPressure(const b2TimeStep& step)
+void b2ParticleSystem::SolveStaticPressure()
 {
-	RequestBuffer(m_staticPressureBuf, hasStaticPressureBuf);
-	float32 criticalPressure = GetCriticalPressure(step);
-	float32 pressurePerWeight = m_def.staticPressureStrength * criticalPressure;
-	float32 maxPressure = b2_maxParticlePressure * criticalPressure;
-	float32 relaxation = m_def.staticPressureRelaxation;
 	/// Compute pressure satisfying the modified Poisson equation:
 	///     Sum_for_j((p_i - p_j) * w_ij) + relaxation * p_i =
 	///     pressurePerWeight * (w_i - b2_minParticleWeight)
@@ -4736,341 +4323,334 @@ void b2ParticleSystem::SolveStaticPressure(const b2TimeStep& step)
 	///     p_i and p_j are static pressure of particle i and j
 	///     w_ij is contact weight between particle i and j
 	///     w_i is sum of contact weight of particle i
-	for (int32 t = 0; t < m_def.staticPressureIterations; t++)
-	{
-		memset(m_accumulationBuf.data(), 0,
-			sizeof(*m_accumulationBuf.data()) * m_count);
-		for (int32 k = 0; k < m_contactCount; k++)
-		{
-			const b2ParticleContact& contact = m_partContactBuf[k];
-			if (contact.flags & b2_staticPressureParticle)
-			{
-				int32 a = contact.idxA;
-				int32 b = contact.idxB;
-				float32 w = contact.weight;
-				m_accumulationBuf[a] +=
-					w * m_staticPressureBuf[b]; // a <- b
-				m_accumulationBuf[b] +=
-					w * m_staticPressureBuf[a]; // b <- a
-			}
-		}
-		for (int32 i = 0; i < m_count; i++)
-		{
-			float32 w = m_weightBuffer[i];
-			if (m_flagsBuffer[i] & b2_staticPressureParticle)
-			{
-				float32 wh = m_accumulationBuf[i];
-				float32 h =
-					(wh + pressurePerWeight * (w - b2_minParticleWeight)) /
-					(w + relaxation);
-				m_staticPressureBuf[i] = b2Clamp(h, 0.0f, maxPressure);
-			}
-			else
-			{
-				m_staticPressureBuf[i] = 0;
-			}
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveStaticPressure(const b2TimeStep& step)
-{
+	if (!(m_allParticleFlags & b2_staticPressureParticle)) return;
 	if (!m_contactCount) return;
-	const uint32 cnt = m_count;
 
-	AmpRequestBuffer(m_ampStaticPressures, hasStaticPressureBuf);
-
+	const b2TimeStep& step = m_subStep;
 	const float32 criticalPressure = GetCriticalPressure(step);
 	const float32 pressurePerWeight = m_def.staticPressureStrength * criticalPressure;
 	const float32 maxPressure = b2_maxParticlePressure * criticalPressure;
 	const float32 relaxation = m_def.staticPressureRelaxation;
 	const float32 minWeight = b2_minParticleWeight;
-	/// Compute pressure satisfying the modified Poisson equation:
-	///     Sum_for_j((p_i - p_j) * w_ij) + relaxation * p_i =
-	///     pressurePerWeight * (w_i - b2_minParticleWeight)
-	/// by iterating the calculation:
-	///     p_i = (Sum_for_j(p_j * w_ij) + pressurePerWeight *
-	///           (w_i - b2_minParticleWeight)) / (w_i + relaxation)
-	/// where
-	///     p_i and p_j are static pressure of particle i and j
-	///     w_ij is contact weight between particle i and j
-	///     w_i is sum of contact weight of particle i
 
-	const uint32 filterFlag = b2_staticPressureParticle;
-	auto& staticPressures = m_ampStaticPressures;
-	auto& accumulations = m_ampAccumulations;
-	auto& weights = m_ampWeights;
-	auto& flags = m_ampFlags;
-	auto& contacts = m_ampContacts;
-	for (int32 t = 0; t < m_def.staticPressureIterations; t++)
+	if (m_accelerate)
 	{
-		amp::fill(accumulations, 0.0f, m_count);
-		AmpForEachContact([=, &contacts, &accumulations,
-			&staticPressures](const int32 i) restrict(amp)
+		AmpRequestBuffer(m_ampStaticPressures, hasStaticPressureBuf);
+		const uint32 filterFlag = b2_staticPressureParticle;
+		auto& staticPressures = m_ampStaticPressures;
+		auto& accumulations = m_ampAccumulations;
+		auto& weights = m_ampWeights;
+		auto& flags = m_ampFlags;
+		for (int32 t = 0; t < m_def.staticPressureIterations; t++)
 		{
-			const b2ParticleContact& contact = contacts[i];
-			if (!(contact.flags & filterFlag)) return;
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			float32 w = contact.weight;
-			amp::atomicAdd(accumulations[a], w * staticPressures[b]);	// a <- b
-			amp::atomicAdd(accumulations[b], w * staticPressures[a]);	// b <- a
-		});
-		AmpForEachParticle([=, &flags, &weights, &accumulations,
-			&staticPressures](const int32 i) restrict(amp)
-		{
-			const float32 w = weights[i];
-			if (flags[i] & b2_staticPressureParticle)
+			amp::fill(accumulations, 0.0f, m_count);
+			AmpForEachContact([=, &accumulations,
+				&staticPressures](const b2ParticleContact& contact) restrict(amp)
 			{
-				const float32 wh = accumulations[i];
-				const float32 h =
-					(wh + pressurePerWeight * (w - minWeight)) /
-					(w + relaxation);
-				staticPressures[i] = b2Clamp(h, 0.0f, maxPressure);
+				if (!(contact.flags & filterFlag)) return;
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 w = contact.weight;
+				amp::atomicAdd(accumulations[a], w * staticPressures[b]);	// a <- b
+				amp::atomicAdd(accumulations[b], w * staticPressures[a]);	// b <- a
+			});
+			AmpForEachParticle([=, &flags, &weights, &accumulations,
+				&staticPressures](const int32 i) restrict(amp)
+			{
+				const float32 w = weights[i];
+				if (flags[i] & b2_staticPressureParticle)
+				{
+					const float32 wh = accumulations[i];
+					const float32 h =
+						(wh + pressurePerWeight * (w - minWeight)) /
+						(w + relaxation);
+					staticPressures[i] = b2Clamp(h, 0.0f, maxPressure);
+				}
+				else
+					staticPressures[i] = 0;
+			});
+		}
+	}
+	else
+	{
+		RequestBuffer(m_staticPressureBuf, hasStaticPressureBuf);
+		for (int32 t = 0; t < m_def.staticPressureIterations; t++)
+		{
+			memset(m_accumulationBuf.data(), 0,
+				sizeof(*m_accumulationBuf.data()) * m_count);
+			for (int32 k = 0; k < m_contactCount; k++)
+			{
+				const b2ParticleContact& contact = m_partContactBuf[k];
+				if (contact.flags & b2_staticPressureParticle)
+				{
+					int32 a = contact.idxA;
+					int32 b = contact.idxB;
+					float32 w = contact.weight;
+					m_accumulationBuf[a] +=
+						w * m_staticPressureBuf[b]; // a <- b
+					m_accumulationBuf[b] +=
+						w * m_staticPressureBuf[a]; // b <- a
+				}
 			}
-			else
-				staticPressures[i] = 0;
-		});
-	}
-}
-
-void b2ParticleSystem::SolvePressure(const b2TimeStep& step)
-{
-	// calculates pressure as a linear function of density
-	float32 criticalPressure = GetCriticalPressure(step);
-	float32 pressurePerWeight = m_def.pressureStrength * criticalPressure;
-	float32 maxPressure = b2_maxParticlePressure * criticalPressure;
-	for (int32 i = 0; i < m_count; i++)
-	{
-		float32 w = m_weightBuffer[i];
-		float32 h = pressurePerWeight * b2Max(0.0f, w - b2_minParticleWeight);
-		m_accumulationBuf[i] = b2Min(h, maxPressure);
-	}
-	// ignores particles which have their own repulsive force
-	if (m_allParticleFlags & k_noPressureFlags)
-	{
-		for (int32 i = 0; i < m_count; i++)
-		{
-			if (m_flagsBuffer[i] & k_noPressureFlags)
+			for (int32 i = 0; i < m_count; i++)
 			{
-				m_accumulationBuf[i] = 0;
+				float32 w = m_weightBuffer[i];
+				if (m_flagsBuffer[i] & b2_staticPressureParticle)
+				{
+					float32 wh = m_accumulationBuf[i];
+					float32 h =
+						(wh + pressurePerWeight * (w - b2_minParticleWeight)) /
+						(w + relaxation);
+					m_staticPressureBuf[i] = b2Clamp(h, 0.0f, maxPressure);
+				}
+				else
+				{
+					m_staticPressureBuf[i] = 0;
+				}
 			}
 		}
 	}
-	// static pressure
-	if (m_allParticleFlags & b2_staticPressureParticle)
-	{
-		b2Assert(m_staticPressureBuffer);
-		for (int32 i = 0; i < m_count; i++)
-		{
-			if (m_flagsBuffer[i] & b2_staticPressureParticle)
-			{
-				m_accumulationBuf[i] += m_staticPressureBuf[i];
-			}
-		}
-	}
-	// applies pressure between each particles in contact
-	float32 velocityPerPressure = step.dt / (m_def.density * m_particleDiameter);
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-		float32 h = m_accumulationBuf[a] + pressurePerWeight * w;
-		b2Vec2 f = velocityPerPressure * w * m * h * n;
-		float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-		m_velocityBuffer[a] -= invMass * f;
-		b->ApplyLinearImpulse(f, p, true);
-	}
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		float32 h = m_accumulationBuf[a] + m_accumulationBuf[b];
-		b2Vec2 f = velocityPerPressure * w * m * h * n;
-		DistributeForce(a, b, f);
-	}
+
+	
 }
-void b2ParticleSystem::AmpSolvePressure(const b2TimeStep& step)
+
+void b2ParticleSystem::SolvePressure()
 {
+	const b2TimeStep& step = m_subStep;
 	const float32 minWeight = b2_minParticleWeight;
 
 	// calculates pressure as a linear function of density
 	const float32 criticalPressure = GetCriticalPressure(step);
 	const float32 pressurePerWeight = m_def.pressureStrength * criticalPressure;
 	const float32 maxPressure = b2_maxParticlePressure * criticalPressure;
-	auto& weights = m_ampWeights;
-	auto& accumulations = m_ampAccumulations;
-
-	AmpForEachParticle([=, &weights, &accumulations](const int32 i) restrict(amp)
-	{
-		const float32 w = weights[i];
-		const float32 h = pressurePerWeight * b2Max(0.0f, w - minWeight);
-		accumulations[i] = b2Min(h, maxPressure);
-	});
-	// ignores particles which have their own repulsive force
-	if (m_allParticleFlags & k_noPressureFlags)
-	{
-		AmpForEachParticle(k_noPressureFlags, [=, &accumulations](const int32 i) restrict(amp)
-		{
-			accumulations[i] = 0;
-		});
-	}
-	// static pressure
-	if (m_allParticleFlags & b2_staticPressureParticle)
-	{
-		auto& staticPressures = m_ampStaticPressures;
-		AmpForEachParticle(b2_staticPressureParticle, [=, &accumulations, &staticPressures](const int32 i) restrict(amp)
-		{
-			accumulations[i] += staticPressures[i];
-		});
-	}
-
-	// applies pressure between each particles in contact
 	const float32 velocityPerPressure = step.dt / (m_def.density * m_particleDiameter);
-	auto& contacts = m_ampContacts;
-	auto& velocities = m_ampVelocities;
-	auto& matMasses = m_ampMatMasses;
-	auto& matIdxs = m_ampMatIdxs;
-	AmpForEachContact([=, &contacts, &velocities, &accumulations, 
-		&matMasses, &matIdxs](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const float32 h = accumulations[a] + accumulations[b];
-		const b2Vec3 f = velocityPerPressure * w * m * h * n;
-		amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
-	});
 
-	ampArrayView<const float32> cpuAccumulations = accumulations.section(0, m_count);
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+	if (m_accelerate)
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-		float32 h = cpuAccumulations[a] + pressurePerWeight * w;
-		b2Vec2 f = velocityPerPressure * w * m * h * n;
-		float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-		//m_stgBodyContactVec3s[k] = -(invMass * f);
-		m_stgBodyContactVec3s[k] = -(invMass * f);
-		b->ApplyLinearImpulse(f, p, true);
+		auto& weights = m_ampWeights;
+		auto& accumulations = m_ampAccumulations;
+
+		AmpForEachParticle([=, &weights, &accumulations](const int32 i) restrict(amp)
+		{
+			const float32 w = weights[i];
+			const float32 h = pressurePerWeight * b2Max(0.0f, w - minWeight);
+			accumulations[i] = b2Min(h, maxPressure);
+		});
+		// ignores particles which have their own repulsive force
+		if (m_allParticleFlags & k_noPressureFlags)
+		{
+			AmpForEachParticle(k_noPressureFlags, [=, &accumulations](const int32 i) restrict(amp)
+			{
+				accumulations[i] = 0;
+			});
+		}
+		// static pressure
+		if (m_allParticleFlags & b2_staticPressureParticle)
+		{
+			auto& staticPressures = m_ampStaticPressures;
+			AmpForEachParticle(b2_staticPressureParticle, [=, &accumulations, &staticPressures](const int32 i) restrict(amp)
+			{
+				accumulations[i] += staticPressures[i];
+			});
+		}
+
+		// applies pressure between each particles in contact
+		auto& velocities = m_ampVelocities;
+		auto& matMasses = m_ampMatMasses;
+		auto& matIdxs = m_ampMatIdxs;
+		AmpForEachContact([=, &velocities, &accumulations, 
+			&matMasses, &matIdxs](const b2ParticleContact& contact) restrict(amp)
+		{
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const float32 h = accumulations[a] + accumulations[b];
+			const b2Vec3 f = velocityPerPressure * w * m * h * n;
+			amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+
+		auto& bodies = m_ampBodies;
+		auto& positions = m_ampPositions;
+		auto& matInvMasses = m_ampMatInvMasses;
+		AmpForEachBodyContact([=, &bodies, &positions, &accumulations,
+			&velocities, &matIdxs, &matInvMasses](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			Body& b = bodies(contact.bodyIdx);
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			b2Vec2 p = b2Vec2(positions[a]);
+			float32 h = accumulations[a] + pressurePerWeight * w;
+			b2Vec2 f = velocityPerPressure * w * m * h * n;
+			float32 invMass = matInvMasses[matIdxs[a]];
+			amp::atomicSub(velocities[a], invMass * f);
+			b.ApplyLinearImpulse(f, p, true);
+		});
 	}
-	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			float32 w = m_weightBuffer[i];
+			float32 h = pressurePerWeight * b2Max(0.0f, w - b2_minParticleWeight);
+			m_accumulationBuf[i] = b2Min(h, maxPressure);
+		}
+		// ignores particles which have their own repulsive force
+		if (m_allParticleFlags & k_noPressureFlags)
+		{
+			for (int32 i = 0; i < m_count; i++)
+			{
+				if (m_flagsBuffer[i] & k_noPressureFlags)
+				{
+					m_accumulationBuf[i] = 0;
+				}
+			}
+		}
+		// static pressure
+		if (m_allParticleFlags & b2_staticPressureParticle)
+		{
+			b2Assert(m_staticPressureBuffer);
+			for (int32 i = 0; i < m_count; i++)
+			{
+				if (m_flagsBuffer[i] & b2_staticPressureParticle)
+				{
+					m_accumulationBuf[i] += m_staticPressureBuf[i];
+				}
+			}
+		}
+		// applies pressure between each particles in contact
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			Body& b = m_world.GetBody(contact.bodyIdx);
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+			float32 h = m_accumulationBuf[a] + pressurePerWeight * w;
+			b2Vec2 f = velocityPerPressure * w * m * h * n;
+			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+			m_velocityBuffer[a] -= invMass * f;
+			b.ApplyLinearImpulse(f, p, true);
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			float32 h = m_accumulationBuf[a] + m_accumulationBuf[b];
+			b2Vec2 f = velocityPerPressure * w * m * h * n;
+			DistributeForce(a, b, f);
+		}
+	}
 }
 
-void b2ParticleSystem::SolveDamping(const b2TimeStep& step)
+void b2ParticleSystem::SolveDamping()
 {
 	// reduces normal velocity of each contact
-	const float32 linearDamping = m_def.dampingStrength;
-	const float32 quadraticDamping = 1 / GetCriticalVelocity(step);
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-		b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				   b2Vec2(m_velocityBuffer[a]);
-		float32 vn = b2Dot(v, n);
-		if (vn < 0)
-		{
-			float32 damping =
-				b2Max(linearDamping * w, b2Min(- quadraticDamping * vn, 0.5f));
-			b2Vec2 f = damping * m * vn * n;
-			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			m_velocityBuffer[a] += invMass * f;
-			b->ApplyLinearImpulse(-f, p, true);
-		}
-	}
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		b2Vec2 v = b2Vec2(m_velocityBuffer[b] - m_velocityBuffer[a]);
-		float32 vn = b2Dot(v, n);
-		if (vn < 0)
-		{
-			float32 damping =
-				b2Max(linearDamping * w, b2Min(- quadraticDamping * vn, 0.5f));
-			b2Vec2 f = damping * m * vn * n;
-			DistributeForceDamp(a, b, f);
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveDamping(const b2TimeStep& step)
-{
-	// reduces normal velocity of each contact
+	const b2TimeStep& step = m_subStep;
 	const float32 linearDamping = m_def.dampingStrength;
 	const float32 quadraticDamping = 1 / GetCriticalVelocity(step);
 
-	auto& velocities = m_ampVelocities;
-	auto& contacts = m_ampContacts;
-	auto& matMasses = m_ampMatMasses;
-	auto& matIdxs = m_ampMatIdxs;
-	AmpForEachContact([=, &contacts, &velocities, &matMasses,
-		&matIdxs](const int32 i) restrict(amp)
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = contacts[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const b2Vec3 v = velocities[b] - velocities[a];
-		const float32 vn = b2Dot(v, n);
-		if (vn >= 0) return;
-		const float32 damping = b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
-		const b2Vec3 f = damping * m * vn * n;
-		amp::atomicAdd(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicSub(velocities[b], matMasses[matIdxs[a]] * f);
-	});
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		b2Vec3& stgVec3 = m_stgBodyContactVec3s[k] = b2Vec2_zero;
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		float32 w = contact.weight;
-		float32 m = contact.mass;
-		b2Vec2 n = contact.normal;
-		b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-		b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-			b2Vec2(m_velocityBuffer[a]);
-		float32 vn = b2Dot(v, n);
-		if (vn < 0)
+		auto& velocities = m_ampVelocities;
+		auto& matMasses = m_ampMatMasses;
+		auto& matIdxs = m_ampMatIdxs;
+		AmpForEachContact([=, &velocities, &matMasses,
+			&matIdxs](const b2ParticleContact& contact) restrict(amp)
 		{
-			float32 damping =
-				b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
-			b2Vec2 f = damping * m * vn * n;
-			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			stgVec3 = invMass * f;
-			b->ApplyLinearImpulse(-f, p, true);
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const b2Vec3 v = velocities[b] - velocities[a];
+			const float32 vn = b2Dot(v, n);
+			if (vn >= 0) return;
+			const float32 damping = b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
+			const b2Vec3 f = damping * m * vn * n;
+			amp::atomicAdd(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicSub(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+
+		auto& bodies = m_ampBodies;
+		auto& positions = m_ampPositions;
+		auto& matInvMasses = m_ampMatInvMasses;
+		AmpForEachBodyContact([=, &bodies, &positions, &velocities,
+			&matIdxs, &matInvMasses](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			Body& b = bodies[contact.bodyIdx];
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			b2Vec2 p = b2Vec2(positions[a]);
+			b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+				b2Vec2(velocities[a]);
+			float32 vn = b2Dot(v, n);
+			if (vn < 0)
+			{
+				float32 damping =
+					b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
+				b2Vec2 f = damping * m * vn * n;
+				float32 invMass = matInvMasses[matIdxs[a]];
+				amp::atomicAdd(velocities[a], invMass * f);
+				b.ApplyLinearImpulse(-f, p, true);
+			}
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			Body& b = m_world.GetBody(contact.bodyIdx);
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+			b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+				b2Vec2(m_velocityBuffer[a]);
+			float32 vn = b2Dot(v, n);
+			if (vn < 0)
+			{
+				float32 damping =
+					b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
+				b2Vec2 f = damping * m * vn * n;
+				float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+				m_velocityBuffer[a] += invMass * f;
+				b.ApplyLinearImpulse(-f, p, true);
+			}
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			float32 w = contact.weight;
+			float32 m = contact.mass;
+			b2Vec2 n = contact.normal;
+			b2Vec2 v = b2Vec2(m_velocityBuffer[b] - m_velocityBuffer[a]);
+			float32 vn = b2Dot(v, n);
+			if (vn < 0)
+			{
+				float32 damping =
+					b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
+				b2Vec2 f = damping * m * vn * n;
+				DistributeForceDamp(a, b, f);
+			}
 		}
 	}
-	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
 }
 
 void b2ParticleSystem::SolveSlowDown(const b2TimeStep& step)
@@ -5163,327 +4743,301 @@ inline void b2ParticleSystem::ApplyDamping(
 		m_velocityBuffer[particleIndex] += vel;
 	}
 }
-inline void b2ParticleSystem::AmpApplyDamping(
-	float32 invMass, float32 invInertia, float32 tangentDistance,
-	bool isRigidGroup, b2ParticleGroup& group, int32 contactIndex,
-	float32 impulse, const b2Vec2& normal)
-{
-	if (isRigidGroup)
-	{
-		group.m_linearVelocity += impulse * invMass * normal;
-		group.m_angularVelocity += impulse * tangentDistance * invInertia;
-	}
-	else
-	{
-		b2Vec2 vel = impulse * invMass * normal;
-		m_stgBodyContactVec3s[contactIndex] = vel;
-	}
-}
 
 void b2ParticleSystem::SolveRigidDamping()
 {
 	// Apply impulse to rigid particle groups colliding with other objects
 	// to reduce relative velocity at the colliding point.
-	float32 damping = m_def.dampingStrength;
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		int32 aGroupIdx = m_partGroupIdxBuffer[a];
-		b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
-		if (IsRigidGroup(aGroup))
-		{
-			Body* b = contact.body;
-			b2Vec2 n = contact.normal;
-			float32 w = contact.weight;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				GetLinearVelocityFromWorldPoint(aGroup, p);
-			float32 vn = b2Dot(v, n);
-			if (vn < 0)
-				// The group's average velocity at particle position 'p' is pushing
-				// the particle into the body.
-			{
-				float32 invMassA, invInertiaA, tangentDistanceA;
-				float32 invMassB, invInertiaB, tangentDistanceB;
-				InitDampingParameterWithRigidGroupOrParticle(
-					invMassA, invInertiaA, tangentDistanceA,
-					true, aGroup, a, p, n);
-				InitDampingParameter(
-					invMassB, invInertiaB, tangentDistanceB,
-					b->m_mass,
-					// Calculate b->m_I from public functions of b2Body.
-					b->GetInertia() -
-					b->m_mass * b->GetLocalCenter().LengthSquared(),
-					b->GetWorldCenter(),
-					p, n);
-				float32 f = damping * b2Min(w, 1.0f) * ComputeDampingImpulse(
-					invMassA, invInertiaA, tangentDistanceA,
-					invMassB, invInertiaB, tangentDistanceB,
-					vn);
-				ApplyDamping(
-					invMassA, invInertiaA, tangentDistanceA,
-					true, aGroup, a, f, n);
-				b->ApplyLinearImpulse(-f * n, p, true);
-			}
-		}
-	}
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		b2Vec2 n = contact.normal;
-		float32 w = contact.weight;
-		int32 aGroupIdx = m_partGroupIdxBuffer[a];
-		int32 bGroupIdx = m_partGroupIdxBuffer[b];
-		b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
-		b2ParticleGroup& bGroup = m_groupBuffer[bGroupIdx];
-		bool aRigid = IsRigidGroup(aGroup);
-		bool bRigid = IsRigidGroup(bGroup);
-		if (aGroupIdx != bGroupIdx && (aRigid || bRigid))
-		{
-			b2Vec2 p =
-				0.5f * b2Vec2(m_positionBuffer[a] + m_positionBuffer[b]);
-			b2Vec2 v =
-				GetLinearVelocity(bGroup, b, p) -
-				GetLinearVelocity(aGroup, a, p);
-			float32 vn = b2Dot(v, n);
-			if (vn < 0)
-			{
-				float32 invMassA, invInertiaA, tangentDistanceA;
-				float32 invMassB, invInertiaB, tangentDistanceB;
-				InitDampingParameterWithRigidGroupOrParticle(
-					invMassA, invInertiaA, tangentDistanceA,
-					aRigid, aGroup, a,
-					p, n);
-				InitDampingParameterWithRigidGroupOrParticle(
-					invMassB, invInertiaB, tangentDistanceB,
-					bRigid, bGroup, b,
-					p, n);
-				float32 f = damping * w * ComputeDampingImpulse(
-					invMassA, invInertiaA, tangentDistanceA,
-					invMassB, invInertiaB, tangentDistanceB,
-					vn);
-				ApplyDamping(
-					invMassA, invInertiaA, tangentDistanceA,
-					aRigid, aGroup, a, f, n);
-				ApplyDamping(
-					invMassB, invInertiaB, tangentDistanceB,
-					bRigid, bGroup, b, -f, n);
-			}
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveRigidDamping()
-{
-	// Apply impulse to rigid particle groups colliding with other objects
-	// to reduce relative velocity at the colliding point.
+	if (!(m_allGroupFlags & b2_rigidParticleGroup)) return;
+
 	const float32 damping = m_def.dampingStrength;
 	const uint32 filterFlag = b2_rigidParticleGroup;
 	const uint32 wallFlag = b2_wallParticle;
-	auto& velocities = m_ampVelocities;
 	const int32 timeStamp = m_timestamp;
-	auto& contacts = m_ampContacts;
-	auto& positions = m_ampPositions;
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& groups = m_ampGroups;
-	auto& matMasses = m_ampMatMasses;
-		
-	const auto AmpUpdateStatistics = [=, &positions, &velocities,
-		&matMasses](const b2ParticleGroup& group) restrict(amp)
-	{
-		if (group.m_timestamp == timeStamp) return;
-		const float32 m = matMasses[group.m_matIdx];
-		const int32 & firstIdx = group.m_firstIndex;
-		const int32 & lastIdx = group.m_lastIndex;
-		float32 & mass = group.m_mass = 0;
-		b2Vec2 & center = group.m_center;
-		b2Vec2 & linVel = group.m_linearVelocity;
-		center.SetZero();
-		linVel.SetZero();
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			mass += m;
-			center += m * (b2Vec2)positions[i];
-			linVel += m * (b2Vec2)velocities[i];
-		}
-		if (mass > 0)
-		{
-			center *= 1 / mass;
-			linVel *= 1 / mass;
-		}
-		float32& inertia = group.m_inertia = 0;
-		float32& angVel = group.m_angularVelocity = 0;
-		for (int32 i = firstIdx; i < lastIdx; i++)
-		{
-			b2Vec2 p = (b2Vec2)positions[i] - center;
-			b2Vec2 v = (b2Vec2)velocities[i] - linVel;
-			inertia += m * b2Dot(p, p);
-			angVel += m * b2Cross(p, v);
-		}
-		if (inertia > 0)
-		{
-			angVel *= 1 / inertia;
-		}
-		group.m_timestamp = timeStamp;
-	};
 
-	const auto AmpGetLinearVelocity = [=, &velocities](
-		const bool isRigid, const b2ParticleGroup& group, int32 particleIndex,
-		const b2Vec2& point) restrict(amp) -> b2Vec2
+	if (m_accelerate)
 	{
-		if (isRigid)
+		auto& velocities = m_ampVelocities;
+		auto& positions = m_ampPositions;
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& groups = m_ampGroups;
+		auto& matMasses = m_ampMatMasses;
+		
+		const auto& AmpUpdateStatistics = [=, &positions, &velocities,
+			&matMasses](const b2ParticleGroup& group) restrict(amp)
+		{
+			if (group.m_timestamp == timeStamp) return;
+			const float32 m = matMasses[group.m_matIdx];
+			const int32 & firstIdx = group.m_firstIndex;
+			const int32 & lastIdx = group.m_lastIndex;
+			float32 & mass = group.m_mass = 0;
+			b2Vec2 & center = group.m_center;
+			b2Vec2 & linVel = group.m_linearVelocity;
+			center.SetZero();
+			linVel.SetZero();
+			for (int32 i = firstIdx; i < lastIdx; i++)
+			{
+				mass += m;
+				center += m * (b2Vec2)positions[i];
+				linVel += m * (b2Vec2)velocities[i];
+			}
+			if (mass > 0)
+			{
+				center *= 1 / mass;
+				linVel *= 1 / mass;
+			}
+			float32& inertia = group.m_inertia = 0;
+			float32& angVel = group.m_angularVelocity = 0;
+			for (int32 i = firstIdx; i < lastIdx; i++)
+			{
+				b2Vec2 p = (b2Vec2)positions[i] - center;
+				b2Vec2 v = (b2Vec2)velocities[i] - linVel;
+				inertia += m * b2Dot(p, p);
+				angVel += m * b2Cross(p, v);
+			}
+			if (inertia > 0)
+			{
+				angVel *= 1 / inertia;
+			}
+			group.m_timestamp = timeStamp;
+		};
+
+		const auto AmpGetLinearVelocity = [=](const b2ParticleGroup& group,
+			const b2Vec2& point) restrict(amp) -> b2Vec2
 		{
 			AmpUpdateStatistics(group);
 			return group.m_linearVelocity + b2Cross(group.m_angularVelocity, point - group.m_center);
-		}
-		else
-			return velocities[particleIndex];
-	};
+		};
 
-	const auto AmpInitDampingParameter = [=](
-		float32& invMass, float32& invInertia, float32& tangentDistance,
-		float32 mass, float32 inertia, const b2Vec2& center,
-		const b2Vec2& point, const b2Vec2 & normal) restrict(amp)
-	{
-		invMass = mass > 0 ? 1 / mass : 0;
-		invInertia = inertia > 0 ? 1 / inertia : 0;
-		tangentDistance = b2Cross(point - center, normal);
-	};
+		const auto AmpInitDampingParameter = [=](
+			float32& invMass, float32& invInertia, float32& tangentDistance,
+			float32 mass, float32 inertia, const b2Vec2& center,
+			const b2Vec2& point, const b2Vec2 & normal) restrict(amp)
+		{
+			invMass = mass > 0 ? 1 / mass : 0;
+			invInertia = inertia > 0 ? 1 / inertia : 0;
+			tangentDistance = b2Cross(point - center, normal);
+		};
 
-	auto& matIdxs = m_ampMatIdxs;
-	auto& flags = m_ampFlags;
-	const auto AmpInitDampingParameterWithRigidGroupOrParticle = [=, &matIdxs, &matMasses, &flags](
-		float32& invMass, float32& invInertia, float32& tangentDistance,
-		uint32 isRigid, const b2ParticleGroup& group, int32 particleIndex,
-		const b2Vec2& point, const b2Vec2& normal) restrict(amp)
-	{
-		if (isRigid)
+		auto& matIdxs = m_ampMatIdxs;
+		auto& flags = m_ampFlags;
+		const auto AmpInitDampingParameterWithRigidGroupOrParticle = [=, &matIdxs, &matMasses, &flags](
+			float32& invMass, float32& invInertia, float32& tangentDistance,
+			uint32 isRigid, const b2ParticleGroup& group, int32 particleIndex,
+			const b2Vec2& point, const b2Vec2& normal) restrict(amp)
 		{
-			AmpInitDampingParameter(
-				invMass, invInertia, tangentDistance,
-				group.m_mass, group.m_inertia, group.m_center,
-				point, normal);
-		}
-		else
+			if (isRigid)
+			{
+				AmpInitDampingParameter(
+					invMass, invInertia, tangentDistance,
+					group.m_mass, group.m_inertia, group.m_center,
+					point, normal);
+			}
+			else
+			{
+				AmpInitDampingParameter(
+					invMass, invInertia, tangentDistance,
+					flags[particleIndex] & wallFlag ? 0 : matMasses[matIdxs[particleIndex]],
+					0, point, point, normal);
+			}
+		};
+		const auto AmpComputeDampingImpulse = [=](
+			float32 invMassA, float32 invInertiaA, float32 tangentDistanceA,
+			float32 invMassB, float32 invInertiaB, float32 tangentDistanceB,
+			float32 normalVelocity) restrict(amp) -> float32
 		{
-			AmpInitDampingParameter(
-				invMass, invInertia, tangentDistance,
-				flags[particleIndex] & wallFlag ? 0 : matMasses[matIdxs[particleIndex]],
-				0, point, point, normal);
-		}
-	};
-	const auto AmpComputeDampingImpulse = [=](
-		float32 invMassA, float32 invInertiaA, float32 tangentDistanceA,
-		float32 invMassB, float32 invInertiaB, float32 tangentDistanceB,
-		float32 normalVelocity) restrict(amp) -> float32
-	{
-		const float32 invMass =
-			invMassA + invInertiaA * tangentDistanceA * tangentDistanceA +
-			invMassB + invInertiaB * tangentDistanceB * tangentDistanceB;
-		return invMass > 0 ? normalVelocity / invMass : 0;
-	};
-	const auto ApplyDamping = [=, &velocities](
-		float32 invMass, float32 invInertia, float32 tangentDistance,
-		uint32 isRigid, b2ParticleGroup& group, int32 particleIndex,
-		float32 impulse, const b2Vec2& normal) restrict(amp)
-	{
-		if (isRigid)
+			const float32 invMass =
+				invMassA + invInertiaA * tangentDistanceA * tangentDistanceA +
+				invMassB + invInertiaB * tangentDistanceB * tangentDistanceB;
+			return invMass > 0 ? normalVelocity / invMass : 0;
+		};
+		const auto ApplyDamping = [=, &velocities](
+			float32 invMass, float32 invInertia, float32 tangentDistance,
+			uint32 isRigid, b2ParticleGroup& group, int32 particleIndex,
+			float32 impulse, const b2Vec2& normal) restrict(amp)
 		{
-			group.m_linearVelocity += impulse * invMass * normal;
-			group.m_angularVelocity += impulse * tangentDistance * invInertia;
-		}
-		else
+			if (isRigid)
+			{
+				group.m_linearVelocity += impulse * invMass * normal;
+				group.m_angularVelocity += impulse * tangentDistance * invInertia;
+			}
+			else
+			{
+				const b2Vec2 vel = impulse * invMass * normal;
+				amp::atomicAdd(velocities[particleIndex], vel);
+			}
+		};
+		AmpForEachContact([=, &groups, &groupIdxs,
+			&positions, &velocities](const b2ParticleContact& contact) restrict(amp)
 		{
-			const b2Vec2 vel = impulse * invMass * normal;
-			amp::atomicAdd(velocities[particleIndex], vel);
-		}
-	};
-	AmpForEachContact([=, &contacts, &groups, &groupIdxs,
-		&positions](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const b2Vec3 n = contact.normal;
-		const float32 w = contact.weight;
-		const int32 aGroupIdx = groupIdxs[a];
-		const int32 bGroupIdx = groupIdxs[b];
-		b2ParticleGroup& aGroup = groups[aGroupIdx];
-		b2ParticleGroup& bGroup = groups[bGroupIdx];
-		const uint32 aRigid = aGroup.m_groupFlags & filterFlag;
-		const uint32 bRigid = aGroup.m_groupFlags & filterFlag;
-		if (aGroupIdx == bGroupIdx || !(aRigid || bRigid)) return;
-		const b2Vec2 p = 0.5f * positions[a] + positions[b];
-		const b2Vec2 v = AmpGetLinearVelocity(bRigid, bGroup, b, p) -
-						 AmpGetLinearVelocity(aRigid, aGroup, a, p);
-		const float32 vn = b2Dot(v, n);
-		if (vn >= 0) return;
-		float32 invMassA, invInertiaA, tangentDistanceA;
-		float32 invMassB, invInertiaB, tangentDistanceB;
-		AmpInitDampingParameterWithRigidGroupOrParticle(
-			invMassA, invInertiaA, tangentDistanceA,
-			aRigid, aGroup, a, p, n);
-		AmpInitDampingParameterWithRigidGroupOrParticle(
-			invMassB, invInertiaB, tangentDistanceB,
-			bRigid, bGroup, b, p, n);
-		const float32 f = damping * w * AmpComputeDampingImpulse(
-			invMassA, invInertiaA, tangentDistanceA,
-			invMassB, invInertiaB, tangentDistanceB,
-			vn);
-		ApplyDamping(
-			invMassA, invInertiaA, tangentDistanceA,
-			aRigid, aGroup, a, f, n);
-		ApplyDamping(
-			invMassB, invInertiaB, tangentDistanceB,
-			bRigid, bGroup, b, -f, n);
-	});
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		b2Vec3& stgVec3 = m_stgBodyContactVec3s[k] = b2Vec3_zero;
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		int32 aGroupIdx = m_partGroupIdxBuffer[a];
-		b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
-		if (IsRigidGroup(aGroup))
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const b2Vec3 n = contact.normal;
+			const float32 w = contact.weight;
+			const int32 aGroupIdx = groupIdxs[a];
+			const int32 bGroupIdx = groupIdxs[b];
+			b2ParticleGroup& aGroup = groups[aGroupIdx];
+			b2ParticleGroup& bGroup = groups[bGroupIdx];
+			const uint32 aRigid = aGroup.m_groupFlags & filterFlag;
+			const uint32 bRigid = aGroup.m_groupFlags & filterFlag;
+			if (aGroupIdx == bGroupIdx || !(aRigid || bRigid)) return;
+			const b2Vec2 p = 0.5f * positions[a] + positions[b];
+			const b2Vec2 v = (bRigid ? AmpGetLinearVelocity(bGroup, p) : velocities[b]) -
+							 (aRigid ? AmpGetLinearVelocity(aGroup, p) : velocities[a]);
+			const float32 vn = b2Dot(v, n);
+			if (vn >= 0) return;
+			float32 invMassA, invInertiaA, tangentDistanceA;
+			float32 invMassB, invInertiaB, tangentDistanceB;
+			AmpInitDampingParameterWithRigidGroupOrParticle(
+				invMassA, invInertiaA, tangentDistanceA,
+				aRigid, aGroup, a, p, n);
+			AmpInitDampingParameterWithRigidGroupOrParticle(
+				invMassB, invInertiaB, tangentDistanceB,
+				bRigid, bGroup, b, p, n);
+			const float32 f = damping * w * AmpComputeDampingImpulse(
+				invMassA, invInertiaA, tangentDistanceA,
+				invMassB, invInertiaB, tangentDistanceB,
+				vn);
+			ApplyDamping(
+				invMassA, invInertiaA, tangentDistanceA,
+				aRigid, aGroup, a, f, n);
+			ApplyDamping(
+				invMassB, invInertiaB, tangentDistanceB,
+				bRigid, bGroup, b, -f, n);
+		});
+
+		auto& bodies = m_ampBodies;
+		AmpForEachBodyContact([=, &groupIdxs, &groups, &bodies,
+			&positions](const b2PartBodyContact& contact) restrict(amp)
 		{
-			Body* b = contact.body;
+			int32 a = contact.partIdx;
+			b2ParticleGroup& aGroup = groups[groupIdxs[a]];
+			if (!(aGroup.m_groupFlags & filterFlag)) return;
+			Body& b = bodies[contact.bodyIdx];
 			b2Vec2 n = contact.normal;
 			float32 w = contact.weight;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				GetLinearVelocityFromWorldPoint(aGroup, p);
+			b2Vec2 p = b2Vec2(positions[a]);
+			b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+				AmpGetLinearVelocity(aGroup, p);
 			float32 vn = b2Dot(v, n);
-			if (vn < 0)
-				// The group's average velocity at particle position 'p' is pushing
-				// the particle into the body.
+			if (vn >= 0) return;
+			// The group's average velocity at particle position 'p' is pushing
+			// the particle into the body.
+			float32 invMassA, invInertiaA, tangentDistanceA;
+			float32 invMassB, invInertiaB, tangentDistanceB;
+			AmpInitDampingParameterWithRigidGroupOrParticle(
+				invMassA, invInertiaA, tangentDistanceA, true,
+				aGroup, a, p, n);
+			AmpInitDampingParameter(
+				invMassB, invInertiaB, tangentDistanceB,
+				b.m_mass,
+				// Calculate b.m_I from public functions of b2Body.
+				b.GetInertia() -
+				b.m_mass * b.GetLocalCenter().LengthSquared(),
+				b.GetWorldCenter(),
+				p, n);
+			float32 f = damping * b2Min(w, 1.0f) * AmpComputeDampingImpulse(
+				invMassA, invInertiaA, tangentDistanceA,
+				invMassB, invInertiaB, tangentDistanceB,
+				vn);
+			ApplyDamping(
+				invMassA, invInertiaA, tangentDistanceA,
+				true, aGroup, a, f, n);
+			b.ApplyLinearImpulse(-f * n, p, true);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			int32 aGroupIdx = m_partGroupIdxBuffer[a];
+			b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
+			if (IsRigidGroup(aGroup))
 			{
-				float32 invMassA, invInertiaA, tangentDistanceA;
-				float32 invMassB, invInertiaB, tangentDistanceB;
-				InitDampingParameterWithRigidGroupOrParticle(
-					invMassA, invInertiaA, tangentDistanceA,
-					true, aGroup, a, p, n);
-				InitDampingParameter(
-					invMassB, invInertiaB, tangentDistanceB,
-					b->m_mass,
-					// Calculate b->m_I from public functions of b2Body.
-					b->GetInertia() -
-					b->m_mass * b->GetLocalCenter().LengthSquared(),
-					b->GetWorldCenter(),
-					p, n);
-				float32 f = damping * b2Min(w, 1.0f) * ComputeDampingImpulse(
-					invMassA, invInertiaA, tangentDistanceA,
-					invMassB, invInertiaB, tangentDistanceB,
-					vn);
-				AmpApplyDamping(
-					invMassA, invInertiaA, tangentDistanceA,
-					true, aGroup, k, f, n);
-				b->ApplyLinearImpulse(-f * n, p, true);
+				Body& b = m_world.GetBody(contact.bodyIdx);
+				b2Vec2 n = contact.normal;
+				float32 w = contact.weight;
+				b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+					GetLinearVelocityFromWorldPoint(aGroup, p);
+				float32 vn = b2Dot(v, n);
+				if (vn < 0)
+					// The group's average velocity at particle position 'p' is pushing
+					// the particle into the body.
+				{
+					float32 invMassA, invInertiaA, tangentDistanceA;
+					float32 invMassB, invInertiaB, tangentDistanceB;
+					InitDampingParameterWithRigidGroupOrParticle(
+						invMassA, invInertiaA, tangentDistanceA,
+						true, aGroup, a, p, n);
+					InitDampingParameter(
+						invMassB, invInertiaB, tangentDistanceB,
+						b.m_mass,
+						// Calculate b.m_I from public functions of b2Body.
+						b.GetInertia() -
+						b.m_mass * b.GetLocalCenter().LengthSquared(),
+						b.GetWorldCenter(),
+						p, n);
+					float32 f = damping * b2Min(w, 1.0f) * ComputeDampingImpulse(
+						invMassA, invInertiaA, tangentDistanceA,
+						invMassB, invInertiaB, tangentDistanceB,
+						vn);
+					ApplyDamping(
+						invMassA, invInertiaA, tangentDistanceA,
+						true, aGroup, a, f, n);
+					b.ApplyLinearImpulse(-f * n, p, true);
+				}
+			}
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			int32 a = contact.idxA;
+			int32 b = contact.idxB;
+			b2Vec2 n = contact.normal;
+			float32 w = contact.weight;
+			int32 aGroupIdx = m_partGroupIdxBuffer[a];
+			int32 bGroupIdx = m_partGroupIdxBuffer[b];
+			b2ParticleGroup& aGroup = m_groupBuffer[aGroupIdx];
+			b2ParticleGroup& bGroup = m_groupBuffer[bGroupIdx];
+			bool aRigid = IsRigidGroup(aGroup);
+			bool bRigid = IsRigidGroup(bGroup);
+			if (aGroupIdx != bGroupIdx && (aRigid || bRigid))
+			{
+				b2Vec2 p =
+					0.5f * b2Vec2(m_positionBuffer[a] + m_positionBuffer[b]);
+				b2Vec2 v =
+					GetLinearVelocity(bGroup, b, p) -
+					GetLinearVelocity(aGroup, a, p);
+				float32 vn = b2Dot(v, n);
+				if (vn < 0)
+				{
+					float32 invMassA, invInertiaA, tangentDistanceA;
+					float32 invMassB, invInertiaB, tangentDistanceB;
+					InitDampingParameterWithRigidGroupOrParticle(
+						invMassA, invInertiaA, tangentDistanceA,
+						aRigid, aGroup, a,
+						p, n);
+					InitDampingParameterWithRigidGroupOrParticle(
+						invMassB, invInertiaB, tangentDistanceB,
+						bRigid, bGroup, b,
+						p, n);
+					float32 f = damping * w * ComputeDampingImpulse(
+						invMassA, invInertiaA, tangentDistanceA,
+						invMassB, invInertiaB, tangentDistanceB,
+						vn);
+					ApplyDamping(
+						invMassA, invInertiaA, tangentDistanceA,
+						aRigid, aGroup, a, f, n);
+					ApplyDamping(
+						invMassB, invInertiaB, tangentDistanceB,
+						bRigid, bGroup, b, -f, n);
+				}
 			}
 		}
 	}
-	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
 }
 
 void b2ParticleSystem::SolveExtraDamping()
@@ -5491,172 +5045,205 @@ void b2ParticleSystem::SolveExtraDamping()
 	// Applies additional damping force between bodies and particles which can
 	// produce strong repulsive force. Applying damping force multiple times
 	// is effective in suppressing vibration.
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+
+	if (!(m_allParticleFlags & k_extraDampingFlags)) return;
+
+	if (m_accelerate)
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		if (m_flagsBuffer[a] & k_extraDampingFlags)
+		const uint32 filterFlag = k_extraDampingFlags;
+		auto& flags = m_ampFlags;
+		auto& bodies = m_ampBodies;
+		auto& positions = m_ampPositions;
+		auto& velocities = m_ampVelocities;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matInvMasses = m_ampMatInvMasses;
+		AmpForEachBodyContact([=, &flags, &bodies, &positions, &velocities,
+			&matIdxs, &matInvMasses](const b2PartBodyContact& contact) restrict(amp)
 		{
-			Body* b = contact.body;
+			int32 a = contact.partIdx;
+			if (!(flags[a] & filterFlag)) return;
+			Body& b = bodies[contact.bodyIdx];
 			float32 m = contact.mass;
 			b2Vec2 n = contact.normal;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+			b2Vec2 p = b2Vec2(positions[a]);
 			b2Vec2 v =
-				b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(m_velocityBuffer[a]);
+				b.GetLinearVelocityFromWorldPoint(p) -
+				b2Vec2(velocities[a]);
 			float32 vn = b2Dot(v, n);
-			if (vn < 0)
-			{
-				b2Vec2 f = 0.5f * m * vn * n;
-				//m_velocityBuffer.data[a] += GetParticleInvMass() * f;
-				float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-				m_velocityBuffer[a] += invMass * f;
-				b->ApplyLinearImpulse(-f, p, true);
-			}
-		}
+			if (vn >= 0) return;
+			b2Vec2 f = 0.5f * m * vn * n;
+			//m_velocityBuffer.data[a] += GetParticleInvMass() * f;
+			float32 invMass = matInvMasses[matIdxs[a]];
+			amp::atomicAdd(velocities[a], invMass * f);
+			b.ApplyLinearImpulse(-f, p, true);
+		});
 	}
-}
-void b2ParticleSystem::AmpSolveExtraDamping()
-{
-	// Applies additional damping force between bodies and particles which can
-	// produce strong repulsive force. Applying damping force multiple times
-	// is effective in suppressing vibration.
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+	else
 	{
-		b2Vec3& stgVec3 = m_stgBodyContactVec3s[k] = b2Vec3_zero;
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		if (m_flagsBuffer[a] & k_extraDampingFlags)
+		for (int32 k = 0; k < m_bodyContactCount; k++)
 		{
-			Body* b = contact.body;
-			float32 m = contact.mass;
-			b2Vec2 n = contact.normal;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 v =
-				b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(m_velocityBuffer[a]);
-			float32 vn = b2Dot(v, n);
-			if (vn < 0)
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			if (m_flagsBuffer[a] & k_extraDampingFlags)
 			{
-				b2Vec2 f = 0.5f * m * vn * n;
-				//m_velocityBuffer.data[a] += GetParticleInvMass() * f;
-				float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-				stgVec3 = invMass * f;
-				b->ApplyLinearImpulse(-f, p, true);
-			}
-		}
-	}
-	AddBodyContactResults(m_ampVelocities, m_stgBodyContactVec3s);
-}
-
-void b2ParticleSystem::SolveWall()
-{
-	for (int32 i = 0; i < m_count; i++)
-	{
-		if (m_flagsBuffer[i] & b2_wallParticle)
-		{
-			m_velocityBuffer[i].SetZero();
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveWall()
-{
-	auto& velocities = m_ampVelocities;
-	AmpForEachParticle(b2_wallParticle, [=, &velocities](const int32 i) restrict(amp)
-	{
-		velocities[i].SetZero();
-	});
-}
-
-void b2ParticleSystem::SolveRigid(const b2TimeStep& step)
-{
-	for (int32 k = 0; k < m_groupCount; k++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[k];
-		if (group.m_firstIndex != b2_invalidIndex)
-		{
-			if (group.m_groupFlags & b2_rigidParticleGroup)
-			{
-				UpdateStatistics(group);
-				b2Rot rotation(step.dt * group.m_angularVelocity);
-				b2Vec2 center = group.m_center;
-				b2Vec2 linVel = group.m_linearVelocity;
-				b2Transform transform(center + step.dt * linVel -
-					b2Mul(rotation, center), rotation);
-				group.m_transform = b2Mul(transform, group.m_transform);
-				b2Transform velocityTransform;
-				velocityTransform.p.x = step.inv_dt * transform.p.x;
-				velocityTransform.p.y = step.inv_dt * transform.p.y;
-				velocityTransform.q.s = step.inv_dt * transform.q.s;
-				velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
-				for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+				Body& b = m_world.GetBody(contact.bodyIdx);
+				float32 m = contact.mass;
+				b2Vec2 n = contact.normal;
+				b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 v =
+					b.GetLinearVelocityFromWorldPoint(p) -
+					b2Vec2(m_velocityBuffer[a]);
+				float32 vn = b2Dot(v, n);
+				if (vn < 0)
 				{
-					b2Vec2 vel = b2Mul(velocityTransform,
-						b2Vec2(m_positionBuffer[i]));
-					m_velocityBuffer[i] = vel;
+					b2Vec2 f = 0.5f * m * vn * n;
+					//m_velocityBuffer.data[a] += GetParticleInvMass() * f;
+					float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+					m_velocityBuffer[a] += invMass * f;
+					b.ApplyLinearImpulse(-f, p, true);
 				}
 			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveRigid(const b2TimeStep& step)
-{
-	ampArrayView<const b2Vec3> positions(m_ampPositions.section(0, m_count));
-	ampArrayView<b2Vec3> velocities(m_ampVelocities.section(0, m_count));
-	for (int32 k = 0; k < m_groupCount; k++)
-	{
-		b2ParticleGroup& group = m_groupBuffer[k];
-		if (group.m_firstIndex != b2_invalidIndex)
-		{
-			if (group.m_groupFlags & b2_rigidParticleGroup)
-			{
-				UpdateStatistics(group);
-				b2Rot rotation(step.dt * group.m_angularVelocity);
-				b2Vec2 center = group.m_center;
-				b2Vec2 linVel = group.m_linearVelocity;
-				b2Transform transform(center + step.dt * linVel -
-					b2Mul(rotation, center), rotation);
-				group.m_transform = b2Mul(transform, group.m_transform);
-				b2Transform velocityTransform;
-				velocityTransform.p.x = step.inv_dt * transform.p.x;
-				velocityTransform.p.y = step.inv_dt * transform.p.y;
-				velocityTransform.q.s = step.inv_dt * transform.q.s;
-				velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
 
-				amp::forEach(group.m_firstIndex, group.m_lastIndex, [=](const int32 i) restrict(amp)
+void b2ParticleSystem::SolveWall()
+{
+	if (!(m_allParticleFlags & b2_wallParticle)) return;
+
+	if (m_accelerate)
+	{
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle(b2_wallParticle, [=, &velocities](const int32 i) restrict(amp)
+		{
+			velocities[i].SetZero();
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			if (m_flagsBuffer[i] & b2_wallParticle)
+				m_velocityBuffer[i].SetZero();
+		}
+	}
+}
+
+void b2ParticleSystem::CopyVelocities()
+{
+	if (m_accelerate)
+		m_ampCopyFutVelocities.set(amp::copyAsync(m_ampVelocities, m_velocityBuffer, m_count));
+}
+
+void b2ParticleSystem::SolveRigid()
+{
+	if (!(m_allGroupFlags & b2_rigidParticleGroup)) return;
+
+	const b2TimeStep& step = m_subStep;
+
+	if (m_accelerate)
+	{
+		auto& positions = m_ampPositions;
+		auto& velocities = m_ampVelocities;
+		for (int32 k = 0; k < m_groupCount; k++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[k];
+			if (group.m_firstIndex != b2_invalidIndex)
+			{
+				if (group.m_groupFlags & b2_rigidParticleGroup)
 				{
-					const b2Vec3 vel = b2Vec3(b2Mul(velocityTransform, positions[i]), 0);
-					velocities[i] = vel;
-				});
+					UpdateStatistics(group);
+					b2Rot rotation(step.dt * group.m_angularVelocity);
+					b2Vec2 center = group.m_center;
+					b2Vec2 linVel = group.m_linearVelocity;
+					b2Transform transform(center + step.dt * linVel -
+						b2Mul(rotation, center), rotation);
+					group.m_transform = b2Mul(transform, group.m_transform);
+					b2Transform velocityTransform;
+					velocityTransform.p.x = step.inv_dt * transform.p.x;
+					velocityTransform.p.y = step.inv_dt * transform.p.y;
+					velocityTransform.q.s = step.inv_dt * transform.q.s;
+					velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
+
+					amp::forEach(group.m_firstIndex, group.m_lastIndex,
+						[=, &positions, &velocities](const int32 i) restrict(amp)
+						{
+							const b2Vec3 vel = b2Vec3(b2Mul(velocityTransform, positions[i]), 0);
+							velocities[i] = vel;
+						});
+				}
+			}
+		}
+	}
+	else
+	{
+		for (int32 k = 0; k < m_groupCount; k++)
+		{
+			b2ParticleGroup& group = m_groupBuffer[k];
+			if (group.m_firstIndex != b2_invalidIndex)
+			{
+				if (group.m_groupFlags & b2_rigidParticleGroup)
+				{
+					UpdateStatistics(group);
+					b2Rot rotation(step.dt * group.m_angularVelocity);
+					b2Vec2 center = group.m_center;
+					b2Vec2 linVel = group.m_linearVelocity;
+					b2Transform transform(center + step.dt * linVel -
+						b2Mul(rotation, center), rotation);
+					group.m_transform = b2Mul(transform, group.m_transform);
+					b2Transform velocityTransform;
+					velocityTransform.p.x = step.inv_dt * transform.p.x;
+					velocityTransform.p.y = step.inv_dt * transform.p.y;
+					velocityTransform.q.s = step.inv_dt * transform.q.s;
+					velocityTransform.q.c = step.inv_dt * (transform.q.c - 1);
+					for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
+					{
+						b2Vec2 vel = b2Mul(velocityTransform,
+							b2Vec2(m_positionBuffer[i]));
+						m_velocityBuffer[i] = vel;
+					}
+				}
 			}
 		}
 	}
 }
 
-void b2ParticleSystem::SolveElastic(const b2TimeStep& step)
+// SolveElastic and SolveSpring refer the current velocities for
+// numerical stability, they should be called as late as possible.
+void b2ParticleSystem::SolveElastic()
 {
-	float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
-	for (int32 k = 0; k < m_triadCount; k++)
+	if (!(m_allParticleFlags & b2_elasticParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
+	const uint32 filterFlag = b2_elasticParticle;
+	const float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
+
+	if (m_accelerate)
 	{
-		const b2ParticleTriad& triad = m_triadBuffer[k];
-		if (triad.flags & b2_elasticParticle)
+		m_ampCopyFutTriads.wait();
+		auto& triads = m_ampTriads;
+		auto& positions = m_ampPositions;
+		auto& velocities =  m_ampVelocities;
+		AmpForEachTriad([=, &triads, &positions, &velocities](const int32 i) restrict(amp)
 		{
-			int32 a = triad.indexA;
-			int32 b = triad.indexB;
-			int32 c = triad.indexC;
+			const b2ParticleTriad& triad = triads[i];
+			if (!(triad.flags & filterFlag)) return;
+			const int32 a = triad.indexA;
+			const int32 b = triad.indexB;
+			const int32 c = triad.indexC;
 			const b2Vec2& oa = triad.pa;
 			const b2Vec2& ob = triad.pb;
 			const b2Vec2& oc = triad.pc;
-			b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
-			b2Vec2 pc = b2Vec2(m_positionBuffer[c]);
-			b2Vec2 va = b2Vec2(m_velocityBuffer[a]);
-			b2Vec2 vb = b2Vec2(m_velocityBuffer[b]);
-			b2Vec2 vc = b2Vec2(m_velocityBuffer[c]);
+			b2Vec3 pa = positions[a];
+			b2Vec3 pb = positions[b];
+			b2Vec3 pc = positions[c];
+			const b2Vec3 va = velocities[a];
+			const b2Vec3 vb = velocities[b];
+			const b2Vec3 vc = velocities[c];
 			pa += step.dt * va;
 			pb += step.dt * vb;
 			pc += step.dt * vc;
-			b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
+			b2Vec3 midPoint = (float32)1 / 3 * (pa + pb + pc);
 			pa -= midPoint;
 			pb -= midPoint;
 			pc -= midPoint;
@@ -5668,308 +5255,434 @@ void b2ParticleSystem::SolveElastic(const b2TimeStep& step)
 			r.s *= invR;
 			r.c *= invR;
 			float32 strength = elasticStrength * triad.strength;
-			b2Vec2 vel = (b2Mul(r, oa) - pa);
-			m_velocityBuffer[a] += strength * vel;
-			vel = (b2Mul(r, ob) - pb);
-			m_velocityBuffer[b] += strength * vel;
-			vel = (b2Mul(r, oc) - pc);
-			m_velocityBuffer[c] += strength * vel;
+			b2Vec2 vel = b2Vec2(b2Mul(r, oa) - pa);
+			amp::atomicAdd(velocities[a], strength * vel);
+			vel = b2Vec2(b2Mul(r, ob) - pb);
+			amp::atomicAdd(velocities[b], strength * vel);
+			vel = b2Vec2(b2Mul(r, oc) - pc);
+			amp::atomicAdd(velocities[c], strength * vel);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_triadCount; k++)
+		{
+			const b2ParticleTriad& triad = m_triadBuffer[k];
+			if (triad.flags & b2_elasticParticle)
+			{
+				int32 a = triad.indexA;
+				int32 b = triad.indexB;
+				int32 c = triad.indexC;
+				const b2Vec2& oa = triad.pa;
+				const b2Vec2& ob = triad.pb;
+				const b2Vec2& oc = triad.pc;
+				b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
+				b2Vec2 pc = b2Vec2(m_positionBuffer[c]);
+				b2Vec2 va = b2Vec2(m_velocityBuffer[a]);
+				b2Vec2 vb = b2Vec2(m_velocityBuffer[b]);
+				b2Vec2 vc = b2Vec2(m_velocityBuffer[c]);
+				pa += step.dt * va;
+				pb += step.dt * vb;
+				pc += step.dt * vc;
+				b2Vec2 midPoint = (float32)1 / 3 * (pa + pb + pc);
+				pa -= midPoint;
+				pb -= midPoint;
+				pc -= midPoint;
+				b2Rot r;
+				r.s = b2Cross(oa, pa) + b2Cross(ob, pb) + b2Cross(oc, pc);
+				r.c = b2Dot(oa, pa) + b2Dot(ob, pb) + b2Dot(oc, pc);
+				float32 r2 = r.s * r.s + r.c * r.c;
+				float32 invR = b2InvSqrt(r2);
+				r.s *= invR;
+				r.c *= invR;
+				float32 strength = elasticStrength * triad.strength;
+				b2Vec2 vel = (b2Mul(r, oa) - pa);
+				m_velocityBuffer[a] += strength * vel;
+				vel = (b2Mul(r, ob) - pb);
+				m_velocityBuffer[b] += strength * vel;
+				vel = (b2Mul(r, oc) - pc);
+				m_velocityBuffer[c] += strength * vel;
+			}
 		}
 	}
-}
-void b2ParticleSystem::AmpSolveElastic(const b2TimeStep& step)
-{
-	const uint32 filterFlag = b2_elasticParticle;
-	const float32 elasticStrength = step.inv_dt * m_def.elasticStrength;
-	
-	auto& triads = m_ampTriads;
-	auto& positions = m_ampPositions;
-	auto& velocities =  m_ampVelocities;
-	AmpForEachTriad([=, &triads, &positions, &velocities](const int32 i) restrict(amp)
-	{
-		const b2ParticleTriad& triad = triads[i];
-		if (!(triad.flags & filterFlag)) return;
-		const int32 a = triad.indexA;
-		const int32 b = triad.indexB;
-		const int32 c = triad.indexC;
-		const b2Vec2& oa = triad.pa;
-		const b2Vec2& ob = triad.pb;
-		const b2Vec2& oc = triad.pc;
-		b2Vec3 pa = positions[a];
-		b2Vec3 pb = positions[b];
-		b2Vec3 pc = positions[c];
-		const b2Vec3 va = velocities[a];
-		const b2Vec3 vb = velocities[b];
-		const b2Vec3 vc = velocities[c];
-		pa += step.dt * va;
-		pb += step.dt * vb;
-		pc += step.dt * vc;
-		b2Vec3 midPoint = (float32)1 / 3 * (pa + pb + pc);
-		pa -= midPoint;
-		pb -= midPoint;
-		pc -= midPoint;
-		b2Rot r;
-		r.s = b2Cross(oa, pa) + b2Cross(ob, pb) + b2Cross(oc, pc);
-		r.c = b2Dot(oa, pa) + b2Dot(ob, pb) + b2Dot(oc, pc);
-		float32 r2 = r.s * r.s + r.c * r.c;
-		float32 invR = b2InvSqrt(r2);
-		r.s *= invR;
-		r.c *= invR;
-		float32 strength = elasticStrength * triad.strength;
-		b2Vec2 vel = b2Vec2(b2Mul(r, oa) - pa);
-		amp::atomicAdd(velocities[a], strength * vel);
-		vel = b2Vec2(b2Mul(r, ob) - pb);
-		amp::atomicAdd(velocities[b], strength * vel);
-		vel = b2Vec2(b2Mul(r, oc) - pc);
-		amp::atomicAdd(velocities[c], strength * vel);
-	});
 }
 
-void b2ParticleSystem::SolveSpring(const b2TimeStep& step)
+void b2ParticleSystem::SolveSpring()
 {
-	float32 springStrength = step.inv_dt * m_def.springStrength;
-	for (int32 k = 0; k < m_pairCount; k++)
-	{
-		const b2ParticlePair& pair = m_pairBuffer[k];
-		if (pair.flags & b2_springParticle)
-		{
-			int32 a = pair.indexA;
-			int32 b = pair.indexB;
-			b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
-			b2Vec2 va = b2Vec2(m_velocityBuffer[a]);
-			b2Vec2 vb = b2Vec2(m_velocityBuffer[b]);
-			pa += step.dt * va;
-			pb += step.dt * vb;
-			b2Vec2 d = pb - pa;
-			float32 r0 = pair.distance;
-			float32 r1 = d.Length();
-			float32 strength = springStrength * pair.strength;
-			b2Vec2 f = strength * (r0 - r1) / r1 * d;
-			m_velocityBuffer[a] -= f;
-			m_velocityBuffer[b] += f;
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveSpring(const b2TimeStep& step)
-{
+	if (!(m_allParticleFlags & b2_springParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
 	const uint32 filterFlag = b2_springParticle;
 	const float32 springStrength = step.inv_dt * m_def.springStrength;
 
-	auto& pairs = m_ampPairs;
-	auto& positions = m_ampPositions;
-	auto& velocities = m_ampVelocities;
-	AmpForEachPair([=, &pairs, &positions, &velocities](const int32 i) restrict(amp)
+	if (m_accelerate)
 	{
-		const b2ParticlePair& pair = pairs[i];
-		if (!(pair.flags & filterFlag)) return;
-		const int32 a = pair.indexA;
-		const int32 b = pair.indexB;
-		b2Vec3 pa = positions[a];
-		b2Vec3 pb = positions[b];
-		const b2Vec3 vb = velocities[b];
-		const b2Vec3 va = velocities[a];
-		pa += step.dt * va;
-		pb += step.dt * vb;
-		const b2Vec3 d = pb - pa;
-		const float32 r0 = pair.distance;
-		const float32 r1 = d.Length();
-		const float32 strength = springStrength * pair.strength;
-		b2Vec2 f = strength * (r0 - r1) / r1 * d;
-		amp::atomicAdd(velocities[a], f);
-		amp::atomicSub(velocities[b], f);
-	});
-}
-
-void b2ParticleSystem::SolveTensile(const b2TimeStep& step)
-{
-	b2Assert(!m_accumulation3Buffer.empty());
-	for (int32 i = 0; i < m_count; i++)
-	{
-		m_accumulation3Buf[i].SetZero();
-	}
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_tensileParticle)
+		auto& pairs = m_ampPairs;
+		auto& positions = m_ampPositions;
+		auto& velocities = m_ampVelocities;
+		AmpForEachPair([=, &pairs, &positions, &velocities](const int32 i) restrict(amp)
 		{
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			float32 w = contact.weight;
-			b2Vec3 n = contact.normal;
-			b2Vec3 weightedNormal = (1 - w) * w * n;
-			m_accumulation3Buf[a] -= weightedNormal;
-			m_accumulation3Buf[b] += weightedNormal;
-		}
+			const b2ParticlePair& pair = pairs[i];
+			if (!(pair.flags & filterFlag)) return;
+			const int32 a = pair.indexA;
+			const int32 b = pair.indexB;
+			b2Vec3 pa = positions[a];
+			b2Vec3 pb = positions[b];
+			const b2Vec3 vb = velocities[b];
+			const b2Vec3 va = velocities[a];
+			pa += step.dt * va;
+			pb += step.dt * vb;
+			const b2Vec3 d = pb - pa;
+			const float32 r0 = pair.distance;
+			const float32 r1 = d.Length();
+			const float32 strength = springStrength * pair.strength;
+			b2Vec2 f = strength * (r0 - r1) / r1 * d;
+			amp::atomicAdd(velocities[a], f);
+			amp::atomicSub(velocities[b], f);
+		});
 	}
-	float32 criticalVelocity = GetCriticalVelocity(step);
-	float32 pressureStrength = m_def.surfaceTensionPressureStrength
-		* criticalVelocity;
-	float32 normalStrength = m_def.surfaceTensionNormalStrength
-		* criticalVelocity;
-	float32 maxVelocityVariation = b2_maxParticleForce * criticalVelocity;
-	for (int32 k = 0; k < m_contactCount; k++)
+	else
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_tensileParticle)
+		for (int32 k = 0; k < m_pairCount; k++)
 		{
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			float32 w = contact.weight;
-			float32 m = contact.mass;
-			b2Vec3 n = contact.normal;
-			float32 h = m_weightBuffer[a] + m_weightBuffer[b];
-			b2Vec3 s = m_accumulation3Buf[b] - m_accumulation3Buf[a];
-			float32 fn = b2Min(
-				pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
-				maxVelocityVariation) * w;
-			b2Vec3 f = fn * n * m;
-			f.z = 0;
-			DistributeForce(a, b, f);
+			const b2ParticlePair& pair = m_pairBuffer[k];
+			if (pair.flags & b2_springParticle)
+			{
+				int32 a = pair.indexA;
+				int32 b = pair.indexB;
+				b2Vec2 pa = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 pb = b2Vec2(m_positionBuffer[b]);
+				b2Vec2 va = b2Vec2(m_velocityBuffer[a]);
+				b2Vec2 vb = b2Vec2(m_velocityBuffer[b]);
+				pa += step.dt * va;
+				pb += step.dt * vb;
+				b2Vec2 d = pb - pa;
+				float32 r0 = pair.distance;
+				float32 r1 = d.Length();
+				float32 strength = springStrength * pair.strength;
+				b2Vec2 f = strength * (r0 - r1) / r1 * d;
+				m_velocityBuffer[a] -= f;
+				m_velocityBuffer[b] += f;
+			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveTensile(const b2TimeStep& step)
-{
-	const uint32 filterFlag = b2_tensileParticle;
-	auto& accumulations = m_ampAccumulationVec3s;
-	amp::fill(accumulations, b2Vec3_zero);
-	auto& contacts = m_ampContacts;
-	AmpForEachContact([=, &contacts, &accumulations](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[i];
-		if (!(contact.flags & filterFlag)) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		const b2Vec3 n = contact.normal;
-		const b2Vec3 weightedNormal = (1 - w) * w * n;
-		amp::atomicSub(accumulations[a], weightedNormal);
-		amp::atomicAdd(accumulations[b], weightedNormal);
-	});
 
+void b2ParticleSystem::SolveTensile()
+{
+	if (!(m_allParticleFlags & b2_tensileParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
 	const float32 criticalVelocity = GetCriticalVelocity(step);
 	const float32 pressureStrength = m_def.surfaceTensionPressureStrength * criticalVelocity;
 	const float32 normalStrength = m_def.surfaceTensionNormalStrength * criticalVelocity;
 	const float32 maxVelocityVariation = b2_maxParticleForce * criticalVelocity;
 
-	auto& weights = m_ampWeights;
-	auto& velocities = m_ampVelocities;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	AmpForEachContact([=, &contacts, &weights, &velocities, &accumulations,
-		&matIdxs, &matMasses](const int32 i) restrict(amp)
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = contacts[i];
-		if (!(contact.flags & filterFlag)) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const float32 h = weights[a] + weights[b];
-		const b2Vec3 s = accumulations[b] - accumulations[a];
-		const float32 fn = b2Min(
-			pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
-			maxVelocityVariation) * w;
-		b2Vec3 f = fn * n * m;
-		f.z = 0;
-		amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
-	});
+		const uint32 filterFlag = b2_tensileParticle;
+		auto& accumulations = m_ampAccumulationVec3s;
+		amp::fill(accumulations, b2Vec3_zero);
+		AmpForEachContact([=, &accumulations](const b2ParticleContact& contact) restrict(amp)
+		{
+			if (!(contact.flags & filterFlag)) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			const b2Vec3 n = contact.normal;
+			const b2Vec3 weightedNormal = (1 - w) * w * n;
+			amp::atomicSub(accumulations[a], weightedNormal);
+			amp::atomicAdd(accumulations[b], weightedNormal);
+		});
+
+		auto& weights = m_ampWeights;
+		auto& velocities = m_ampVelocities;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachContact([=, &weights, &velocities, &accumulations,
+			&matIdxs, &matMasses](const b2ParticleContact& contact) restrict(amp)
+		{
+			if (!(contact.flags & filterFlag)) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const float32 h = weights[a] + weights[b];
+			const b2Vec3 s = accumulations[b] - accumulations[a];
+			const float32 fn = b2Min(
+				pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
+				maxVelocityVariation) * w;
+			b2Vec3 f = fn * n * m;
+			f.z = 0;
+			amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+			m_accumulation3Buf[i].SetZero();
+		
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_tensileParticle)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 w = contact.weight;
+				b2Vec3 n = contact.normal;
+				b2Vec3 weightedNormal = (1 - w) * w * n;
+				m_accumulation3Buf[a] -= weightedNormal;
+				m_accumulation3Buf[b] += weightedNormal;
+			}
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_tensileParticle)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 w = contact.weight;
+				float32 m = contact.mass;
+				b2Vec3 n = contact.normal;
+				float32 h = m_weightBuffer[a] + m_weightBuffer[b];
+				b2Vec3 s = m_accumulation3Buf[b] - m_accumulation3Buf[a];
+				float32 fn = b2Min(
+					pressureStrength * (h - 2) + normalStrength * b2Dot(s, n),
+					maxVelocityVariation) * w;
+				b2Vec3 f = fn * n * m;
+				f.z = 0;
+				DistributeForce(a, b, f);
+			}
+		}
+	}
 }
 
 void b2ParticleSystem::SolveViscous()
 {
-	float32 viscousStrength = m_def.viscousStrength;
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		if (m_flagsBuffer[a] & b2_viscousParticle)
-		{
-			Body* b = contact.body;
-			float32 w = contact.weight;
-			float32 m = contact.mass;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(m_velocityBuffer[a]);
-			b2Vec2 f = viscousStrength * m * w * v;
-			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			m_velocityBuffer[a] += invMass * f;
-			b->ApplyLinearImpulse(-f, p, true);
-		}
-	}
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_viscousParticle)
-		{
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			float32 w = contact.weight;
-			float32 m = contact.mass;
-			b2Vec2 v = b2Vec2(m_velocityBuffer[b] - m_velocityBuffer[a]);
-			b2Vec2 f = viscousStrength * w * m * v;
-			DistributeForceDamp(a, b, f);
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveViscous()
-{
-	const uint32 contactCnt = m_contactCount;
+	if (!(m_allParticleFlags & b2_viscousParticle)) return;
+
 	const float32 viscousStrength = m_def.viscousStrength;
-	const uint32 filterFlag = b2_viscousParticle;
 
-	auto& velocities = m_ampVelocities;
-	auto& contacts = m_ampContacts;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	AmpForEachContact([=, &velocities, &contacts, &matIdxs, &matMasses](const int32 i) restrict(amp)
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = contacts[i];
-		if (!(contact.flags & filterFlag)) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 v = velocities[b] - velocities[a];
-		const b2Vec3 f = viscousStrength * w * m * v;
-		amp::atomicAdd(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicSub(velocities[b], matMasses[matIdxs[a]] * f);
-	});
-	ampArrayView<const b2Vec3> cpuVelocities = velocities.section(0, m_count);
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		b2Vec3& stgVec3 = m_stgBodyContactVec3s[k] = b2Vec3_zero;
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		if (m_flagsBuffer[a] & filterFlag)
+		const uint32 filterFlag = b2_viscousParticle;
+
+		auto& velocities = m_ampVelocities;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachContact([=, &velocities, &matIdxs, &matMasses](const b2ParticleContact& contact) restrict(amp)
 		{
-			Body* b = contact.body;
+			if (!(contact.flags & filterFlag)) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 v = velocities[b] - velocities[a];
+			const b2Vec3 f = viscousStrength * w * m * v;
+			amp::atomicAdd(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicSub(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+	
+		auto& flags = m_ampFlags;
+		auto& body = m_ampBodies;
+		auto& positions = m_ampPositions;
+		auto& matInvMasses = m_ampMatInvMasses;
+		AmpForEachBodyContact([=, &flags, &body, &positions, &velocities,
+			&matIdxs, &matInvMasses](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			if (!(flags[a] & filterFlag)) return;
+			Body& b = body[contact.bodyIdx];
 			float32 w = contact.weight;
 			float32 m = contact.mass;
-			b2Vec2 p = b2Vec2(m_positionBuffer[a]);
-			b2Vec2 v = b->GetLinearVelocityFromWorldPoint(p) -
-				b2Vec2(cpuVelocities[a]);
+			b2Vec2 p = b2Vec2(positions[a]);
+			b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+				b2Vec2(velocities[a]);
 			b2Vec2 f = viscousStrength * m * w * v;
-			float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
-			stgVec3 = invMass * f;
-			b->ApplyLinearImpulse(-f, p, true);
+			float32 invMass = matInvMasses[matIdxs[a]];
+			amp::atomicAdd(velocities[a], invMass * f);
+			b.ApplyLinearImpulse(-f, p, true);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			if (m_flagsBuffer[a] & b2_viscousParticle)
+			{
+				Body& b = m_world.GetBody(contact.bodyIdx);
+				float32 w = contact.weight;
+				float32 m = contact.mass;
+				b2Vec2 p = b2Vec2(m_positionBuffer[a]);
+				b2Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
+					b2Vec2(m_velocityBuffer[a]);
+				b2Vec2 f = viscousStrength * m * w * v;
+				float32 invMass = m_partMatInvMassBuf[m_partMatIdxBuffer[a]];
+				m_velocityBuffer[a] += invMass * f;
+				b.ApplyLinearImpulse(-f, p, true);
+			}
+		}
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_viscousParticle)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				float32 w = contact.weight;
+				float32 m = contact.mass;
+				b2Vec2 v = b2Vec2(m_velocityBuffer[b] - m_velocityBuffer[a]);
+				b2Vec2 f = viscousStrength * w * m * v;
+				DistributeForceDamp(a, b, f);
+			}
 		}
 	}
-	AddBodyContactResults(velocities, m_stgBodyContactVec3s);
 }
 
-void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
+void b2ParticleSystem::SolveRepulsive()
 {
+	if (!(m_allParticleFlags & b2_repulsiveParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
 	float32 repulsiveStrength =
 		m_def.repulsiveStrength * GetCriticalVelocity(step);
-	for (int32 k = 0; k < m_contactCount; k++)
+
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_repulsiveParticle)
+		const uint32 filterFlag = b2_repulsiveParticle;
+		auto& velocities = m_ampVelocities;
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachContact([=, &velocities, &groupIdxs, &matIdxs, &matMasses](const b2ParticleContact& contact) restrict(amp)
 		{
+			if (!(contact.flags & filterFlag)) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			if (groupIdxs[a] == groupIdxs[b]) return;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const b2Vec3 f = repulsiveStrength * w * m * n;
+			amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_repulsiveParticle)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				if (m_partGroupIdxBuffer[a] != m_partGroupIdxBuffer[b])
+				{
+					float32 w = contact.weight;
+					float32 m = contact.mass;
+					b2Vec2 n = contact.normal;
+					b2Vec2 f = repulsiveStrength * w * m * n;
+					DistributeForce(a, b, f);
+				}
+			}
+		}
+	}
+}
+
+void b2ParticleSystem::SolvePowder()
+{
+	if (!(m_allParticleFlags & b2_powderParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
+	float32 powderStrength = m_def.powderStrength * GetCriticalVelocity(step);
+	const float32 minWeight = 1.0f - b2_particleStride;
+
+	if (m_accelerate)
+	{
+		const uint32 filterFlag = b2_powderParticle;
+		auto& velocities = m_ampVelocities;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachContact([=, &velocities, &matIdxs, &matMasses](const b2ParticleContact& contact) restrict(amp)
+		{
+			if (!(contact.flags & filterFlag)) return;
+			const float32 w = contact.weight;
+			if (w <= minWeight) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const b2Vec3 f = powderStrength * (w - minWeight) * m * n;
+			amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_powderParticle)
+			{
+				float32 w = contact.weight;
+				if (w > minWeight)
+				{
+					int32 a = contact.idxA;
+					int32 b = contact.idxB;
+					float32 m = contact.mass;
+					b2Vec2 n = contact.normal;
+					b2Vec2 f = powderStrength * (w - minWeight) * m * n;
+					DistributeForce(a, b, f);
+				}
+			}
+		}
+	}
+}
+
+void b2ParticleSystem::SolveSolid()
+{
+	// applies extra repulsive force from solid particle groups
+	if (!(m_allGroupFlags & b2_solidParticleGroup)) return;
+
+	b2Assert(m_hasDepth);
+	const b2TimeStep& step = m_subStep;
+	const float32 ejectionStrength = step.inv_dt * m_def.ejectionStrength;
+	
+	if (m_accelerate)
+	{
+		auto& velocities = m_ampVelocities;
+		auto& groupIdxs = m_ampGroupIdxs;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matMasses = m_ampMatMasses;
+		auto& depths = m_ampDepths;
+		AmpForEachContact([=, &velocities, &groupIdxs, 
+			&matIdxs, &matMasses, &depths](const b2ParticleContact& contact) restrict(amp)
+		{
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			if (groupIdxs[a] == groupIdxs[b]) return;
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec3 n = contact.normal;
+			const float32 h = depths[a] + depths[b];
+			const b2Vec3 f = ejectionStrength * h * m * w * n;
+			amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
+			amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
 			int32 a = contact.idxA;
 			int32 b = contact.idxB;
 			if (m_partGroupIdxBuffer[a] != m_partGroupIdxBuffer[b])
@@ -5977,156 +5690,40 @@ void b2ParticleSystem::SolveRepulsive(const b2TimeStep& step)
 				float32 w = contact.weight;
 				float32 m = contact.mass;
 				b2Vec2 n = contact.normal;
-				b2Vec2 f = repulsiveStrength * w * m * n;
+				float32 h = m_depthBuffer[a] + m_depthBuffer[b];
+				b2Vec2 f = ejectionStrength * h * m * w * n;
 				DistributeForce(a, b, f);
 			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveRepulsive(const b2TimeStep& step)
-{
-	const uint32 filterFlag = b2_repulsiveParticle;
-	const float32 repulsiveStrength =
-		m_def.repulsiveStrength * GetCriticalVelocity(step);
 
-	auto& velocities = m_ampVelocities;
-	auto& contacts = m_ampContacts;
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	AmpForEachContact([=, &velocities, &contacts, &groupIdxs, &matIdxs, &matMasses](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact & contact = contacts[i];
-		if (!(contact.flags & filterFlag)) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		if (groupIdxs[a] == groupIdxs[b]) return;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const b2Vec3 f = repulsiveStrength * w * m * n;
-		amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
-	});
-}
-
-void b2ParticleSystem::SolvePowder(const b2TimeStep& step)
+void b2ParticleSystem::SolveForce()
 {
-	float32 powderStrength = m_def.powderStrength * GetCriticalVelocity(step);
-	float32 minWeight = 1.0f - b2_particleStride;
-	for (int32 k = 0; k < m_contactCount; k++)
+	if (!m_hasForce) return;
+	const b2TimeStep& step = m_subStep;
+
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_powderParticle)
+		auto& velocities = m_ampVelocities;
+		auto& forces = m_ampForces;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matInvMasses = m_ampMatInvMasses;
+		AmpForEachParticle([=, &velocities, &forces, &matIdxs,
+			&matInvMasses](const int32 i) restrict(amp)
 		{
-			float32 w = contact.weight;
-			if (w > minWeight)
-			{
-				int32 a = contact.idxA;
-				int32 b = contact.idxB;
-				float32 m = contact.mass;
-				b2Vec2 n = contact.normal;
-				b2Vec2 f = powderStrength * (w - minWeight) * m * n;
-				DistributeForce(a, b, f);
-			}
+			const float32 invMassStep = step.dt * matInvMasses[matIdxs[i]];
+			velocities[i] += invMassStep * forces[i];
+		});
+	}
+	else
+	{
+		for (int32 i = 0; i < m_count; i++)
+		{
+			float32 invMassStep = step.dt * m_partMatInvMassBuf[m_partMatIdxBuffer[i]];
+			m_velocityBuffer[i] += invMassStep * m_forceBuffer[i];
 		}
 	}
-}
-void b2ParticleSystem::AmpSolvePowder(const b2TimeStep& step)
-{
-	const uint32 filterFlag = b2_powderParticle;
-	const float32 powderStrength = m_def.powderStrength * GetCriticalVelocity(step);
-	const float32 minWeight = 1.0f - b2_particleStride;
-	auto& velocities = m_ampVelocities;
-	auto& contacts = m_ampContacts;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	AmpForEachContact([=, &contacts, &velocities, &matIdxs, &matMasses](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact & contact = contacts[i];
-		if (!(contact.flags & filterFlag)) return;
-		const float32 w = contact.weight;
-		if (w <= minWeight) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const b2Vec3 f = powderStrength * (w - minWeight) * m * n;
-		amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
-	});
-}
-
-void b2ParticleSystem::SolveSolid(const b2TimeStep& step)
-{
-	// applies extra repulsive force from solid particle groups
-	b2Assert(m_hasDepth);
-	float32 ejectionStrength = step.inv_dt * m_def.ejectionStrength;
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		int32 a = contact.idxA;
-		int32 b = contact.idxB;
-		if (m_partGroupIdxBuffer[a] != m_partGroupIdxBuffer[b])
-		{
-			float32 w = contact.weight;
-			float32 m = contact.mass;
-			b2Vec2 n = contact.normal;
-			float32 h = m_depthBuffer[a] + m_depthBuffer[b];
-			b2Vec2 f = ejectionStrength * h * m * w * n;
-			DistributeForce(a, b, f);
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveSolid(const b2TimeStep& step)
-{
-	// applies extra repulsive force from solid particle groups
-	b2Assert(m_hasDepth);
-	const float32 ejectionStrength = step.inv_dt * m_def.ejectionStrength;
-	auto& velocities = m_ampVelocities;
-	auto& contacts = m_ampContacts;
-	auto& groupIdxs = m_ampGroupIdxs;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matMasses = m_ampMatMasses;
-	auto& depths = m_ampDepths;
-	AmpForEachContact([=, &contacts, &velocities, &groupIdxs, 
-		&matIdxs, &matMasses, &depths](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[i];
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		if (groupIdxs[a] == groupIdxs[b]) return;
-		const float32 w = contact.weight;
-		const float32 m = contact.mass;
-		const b2Vec3 n = contact.normal;
-		const float32 h = depths[a] + depths[b];
-		const b2Vec3 f = ejectionStrength * h * m * w * n;
-		amp::atomicSub(velocities[a], matMasses[matIdxs[b]] * f);
-		amp::atomicAdd(velocities[b], matMasses[matIdxs[a]] * f);
-	});
-}
-
-void b2ParticleSystem::SolveForce(const b2TimeStep& step)
-{
-	for (int32 i = 0; i < m_count; i++)
-	{
-		float32 invMassStep = step.dt * m_partMatInvMassBuf[m_partMatIdxBuffer[i]];
-		m_velocityBuffer[i] += invMassStep * m_forceBuffer[i];
-	}
-	m_hasForce = false;
-}
-void b2ParticleSystem::AmpSolveForce(const b2TimeStep& step)
-{
-	auto& velocities = m_ampVelocities;
-	auto& forces = m_ampForces;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matInvMasses = m_ampMatInvMasses;
-	AmpForEachParticle([=, &velocities, &forces, &matIdxs,
-		&matInvMasses](const int32 i) restrict(amp)
-	{
-		const float32 invMassStep = step.dt * matInvMasses[matIdxs[i]];
-		velocities[i] += invMassStep * forces[i];
-	});
 	m_hasForce = false;
 }
 
@@ -6175,401 +5772,443 @@ void b2ParticleSystem::SolveColorMixing()
 }
 
 
-void b2ParticleSystem::SolveHeatConduct(const b2TimeStep& step)
+void b2ParticleSystem::SolveHeatConduct()
 {
-	for (int32 k = 0; k < m_contactCount; k++)
+	if (!(m_world.m_allMaterialFlags & b2_heatConductingMaterial)) return;
+
+	const b2TimeStep& step = m_subStep;
+
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.matFlags & b2_heatConductingMaterial)
+		const uint32 matFilterFlag = b2_heatConductingMaterial;
+		const uint32 extinguishingMatFlag = b2_extinguishingMaterial;
+		auto& heats = m_ampHeats;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matFlags = m_ampMatFlags;
+		auto& matHeatConductivities = m_ampMatHeatConductivities;
+		auto& matMasses = m_ampMatMasses;
+		AmpForEachContact([=, &heats, &matIdxs, &matFlags,
+			&matHeatConductivities, &matMasses](const b2ParticleContact& contact) restrict(amp)
 		{
-			int32 a = contact.idxA;		//TODO include weight
-			int32 b = contact.idxB;
-			int32 matIdxA = m_partMatIdxBuffer[a];
-			int32 matIdxB = m_partMatIdxBuffer[b];
-			float32 conductivityA = m_partMatHeatConductivityBuf[matIdxA];
-			float32 conductivityB = m_partMatHeatConductivityBuf[matIdxB];
-			if (conductivityA > 0 && conductivityB > 0)
-			{ 
-				float32 heatA = m_heatBuffer[a];
-				float32 heatB = m_heatBuffer[b];
-				if (abs(heatA - heatB) > 1.0f)
-				{
-					float32 changeHeat = step.dt * 30.0f * (conductivityA * conductivityB)
-						* (heatB - heatA);
-					float32 massA = m_partMatMassBuf[matIdxA];
-					float32 massB = m_partMatMassBuf[matIdxB];
-					float32 invCombinedMass = 0.95f / (massA + massB);
-					m_heatBuffer[a] += changeHeat * (0.05f + massB * invCombinedMass);
-					m_heatBuffer[b] -= changeHeat * (0.05f + massA * invCombinedMass);
+			if (!(contact.matFlags & matFilterFlag)) return;
+			const int32 a = contact.idxA;		//TODO include weight
+			const int32 b = contact.idxB;
+			const int32 matIdxA = matIdxs[a];
+			const int32 matIdxB = matIdxs[b];
+			const float32 conductivityA = matHeatConductivities[matIdxA];
+			const float32 conductivityB = matHeatConductivities[matIdxB];
+			if (!(conductivityA && conductivityB)) return;
+			float32& heatA = heats[a];
+			float32& heatB = heats[b];
+			if ((heatA > heatB ? heatA - heatB : heatB - heatA) < 1.0f) return;
+			const float32 changeHeat = step.dt * 30.0f * (conductivityA * conductivityB)
+				* (heatB - heatA);
+			const float32 massA = matMasses[matIdxA];
+			const float32 massB = matMasses[matIdxB];
+			const float32 invCombinedMass = 0.95f / (massA + massB);
+			amp::atomicAdd(heatA, changeHeat * (0.05f + massB * invCombinedMass));
+			amp::atomicSub(heatB, changeHeat * (0.05f + massA * invCombinedMass));
+		});
+
+		// transfers heat to adjacent bodies
+		auto& bodies = m_ampBodies;
+		auto& bodyMats = m_world.m_ampBodyMaterials;
+		AmpForEachBodyContact([=, &bodies, &matIdxs, &bodyMats,
+			&matFlags, &matHeatConductivities, &matMasses, &heats](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			Body& b = bodies[contact.bodyIdx];
+			int32 matIdxP = matIdxs[a];
+			b2BodyMaterial& matB = bodyMats[b.m_matIdx];
+			if (!(matFlags[matIdxP] & matB.m_matFlags & b2_heatConductingMaterial)) return;
+			float32 conductivityP = matHeatConductivities[matIdxP];
+			float32 conductivityB = matB.m_heatConductivity;
+			if (conductivityP <= 0 || conductivityB <= 0) return;
+			float32& heatP = heats[a];
+			float32& heatB = b.m_heat;
+			if (b2Abs(heatB - heatP) < 1.0f) return;
+			{
+				float32 changeHeat = step.dt * 30.0f * (conductivityP * conductivityB)
+					* (heatB - heatP);
+				float32 massP = matMasses[matIdxP];
+				float32 massB = b.m_mass;
+				float32 invCombinedMass = 0.999f / (massP + massB);
+				amp::atomicAdd(heatP, changeHeat * (0.001f + massB * invCombinedMass));
+				amp::atomicSub(heatB, changeHeat * (0.001f + massP * invCombinedMass));
+
+				/*float32 changeHeat = step.dt * (conductivityP * conductivityB)
+					* (heatB - heatP);
+				float32 massP = matP->m_mass;
+				float32 massB = b.GetMass();
+				float32 invCombinedMass = 0.5f / (massP + massB);
+				m_heatBuffer[i] += changeHeat * (0.25f + massB * invCombinedMass);
+				b.m_heat			 -= changeHeat * (0.25f + massP * invCombinedMass);*/
+			}
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.matFlags & b2_heatConductingMaterial)
+			{
+				int32 a = contact.idxA;		//TODO include weight
+				int32 b = contact.idxB;
+				int32 matIdxA = m_partMatIdxBuffer[a];
+				int32 matIdxB = m_partMatIdxBuffer[b];
+				float32 conductivityA = m_partMatHeatConductivityBuf[matIdxA];
+				float32 conductivityB = m_partMatHeatConductivityBuf[matIdxB];
+				if (conductivityA > 0 && conductivityB > 0)
+				{ 
+					float32 heatA = m_heatBuffer[a];
+					float32 heatB = m_heatBuffer[b];
+					if (abs(heatA - heatB) > 1.0f)
+					{
+						float32 changeHeat = step.dt * 30.0f * (conductivityA * conductivityB)
+							* (heatB - heatA);
+						float32 massA = m_partMatMassBuf[matIdxA];
+						float32 massB = m_partMatMassBuf[matIdxB];
+						float32 invCombinedMass = 0.95f / (massA + massB);
+						m_heatBuffer[a] += changeHeat * (0.05f + massB * invCombinedMass);
+						m_heatBuffer[b] -= changeHeat * (0.05f + massA * invCombinedMass);
+					}
 				}
 			}
 		}
-	}
 
-	// transfers heat to adjacent bodies
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		int32 matIdxP = m_partMatIdxBuffer[a];
+		// transfers heat to adjacent bodies
+		for (int32 k = 0; k < m_bodyContactCount; k++)
+		{
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			Body& b = m_world.GetBody(contact.bodyIdx);
+			int32 matIdxP = m_partMatIdxBuffer[a];
 		
-		b2BodyMaterial& matB = m_world.m_bodyMaterials[b->m_materialIdx];
-		if (m_partMatFlagsBuf[matIdxP] & matB.m_matFlags & b2_heatConductingMaterial)
-		{
-			float32 conductivityP = m_partMatHeatConductivityBuf[matIdxP];
-			float32 conductivityB = matB.m_heatConductivity;
-			if (conductivityP > 0 && conductivityB > 0)
+			b2BodyMaterial& matB = m_world.m_bodyMaterials[b.m_matIdx];
+			if (m_partMatFlagsBuf[matIdxP] & matB.m_matFlags & b2_heatConductingMaterial)
 			{
-				float32 heatP = m_heatBuffer[a];
-				float32 heatB = b->m_heat;
-				if (abs(heatB - heatP) > 1.0f)
+				float32 conductivityP = m_partMatHeatConductivityBuf[matIdxP];
+				float32 conductivityB = matB.m_heatConductivity;
+				if (conductivityP > 0 && conductivityB > 0)
 				{
-					float32 changeHeat = step.dt * 30.0f * (conductivityP * conductivityB)
-										 * (heatB - heatP);
-					float32 massP = m_partMatMassBuf[matIdxP];
-					float32 massB = b->m_mass;
-					float32 invCombinedMass = 0.999f / (massP + massB);
-					m_heatBuffer[a] += changeHeat * (0.001f + massB * invCombinedMass);
-					b->m_heat		-= changeHeat * (0.001f + massP * invCombinedMass);
+					float32 heatP = m_heatBuffer[a];
+					float32 heatB = b.m_heat;
+					if (abs(heatB - heatP) > 1.0f)
+					{
+						float32 changeHeat = step.dt * 30.0f * (conductivityP * conductivityB)
+											 * (heatB - heatP);
+						float32 massP = m_partMatMassBuf[matIdxP];
+						float32 massB = b.m_mass;
+						float32 invCombinedMass = 0.999f / (massP + massB);
+						m_heatBuffer[a] += changeHeat * (0.001f + massB * invCombinedMass);
+						b.m_heat		-= changeHeat * (0.001f + massP * invCombinedMass);
 
-					/*float32 changeHeat = step.dt * (conductivityP * conductivityB)
-						* (heatB - heatP);
-					float32 massP = matP->m_mass;
-					float32 massB = b->GetMass();
-					float32 invCombinedMass = 0.5f / (massP + massB);
-					m_heatBuffer[i] += changeHeat * (0.25f + massB * invCombinedMass);
-					b->m_heat			 -= changeHeat * (0.25f + massP * invCombinedMass);*/
+						/*float32 changeHeat = step.dt * (conductivityP * conductivityB)
+							* (heatB - heatP);
+						float32 massP = matP->m_mass;
+						float32 massB = b.GetMass();
+						float32 invCombinedMass = 0.5f / (massP + massB);
+						m_heatBuffer[i] += changeHeat * (0.25f + massB * invCombinedMass);
+						b.m_heat			 -= changeHeat * (0.25f + massP * invCombinedMass);*/
+					}
 				}
 			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveHeatConduct(const b2TimeStep& step)
+
+void b2ParticleSystem::SolveLooseHeat()
 {
-	const uint32 contactCnt = m_contactCount;
-	const uint32 matFilterFlag = b2_heatConductingMaterial;
-	const uint32 extinguishingMatFlag = b2_extinguishingMaterial;
-	auto& heats = m_ampHeats;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matFlags = m_ampMatFlags;
-	auto& matHeatConductivities = m_ampMatHeatConductivities;
-	auto& matMasses = m_ampMatMasses;
-	auto& contacts = m_ampContacts;
-	AmpForEachContact([=, &contacts, &heats, &matIdxs, &matFlags,
-		&matHeatConductivities, &matMasses](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact& contact = contacts[i];
-		if (!(contact.matFlags & matFilterFlag)) return;
-		const int32 a = contact.idxA;		//TODO include weight
-		const int32 b = contact.idxB;
-		const int32 matIdxA = matIdxs[a];
-		const int32 matIdxB = matIdxs[b];
-		const float32 conductivityA = matHeatConductivities[matIdxA];
-		const float32 conductivityB = matHeatConductivities[matIdxB];
-		if (!(conductivityA && conductivityB)) return;
-		float32& heatA = heats[a];
-		float32& heatB = heats[b];
-		if ((heatA > heatB ? heatA - heatB : heatB - heatA) < 1.0f) return;
-		const float32 changeHeat = step.dt * 30.0f * (conductivityA * conductivityB)
-			* (heatB - heatA);
-		const float32 massA = matMasses[matIdxA];
-		const float32 massB = matMasses[matIdxB];
-		const float32 invCombinedMass = 0.95f / (massA + massB);
-		amp::atomicAdd(heatA, changeHeat * (0.05f + massB * invCombinedMass));
-		amp::atomicSub(heatB, changeHeat * (0.05f + massA * invCombinedMass));
-	});
+	if (!(m_allParticleFlags & b2_heatLoosingParticle)) return;
 
-	// transfers heat to adjacent bodies
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+	const b2TimeStep& step = m_subStep;
+
+	if (m_accelerate)
 	{
-		float32& stgFloat = m_stgBodyContactFloats[k] = 0;
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		int32 matIdxP = m_partMatIdxBuffer[a];
-		b2BodyMaterial& matB = m_world.m_bodyMaterials[b->m_materialIdx];
-		if (m_partMatFlagsBuf[matIdxP] & matB.m_matFlags & b2_heatConductingMaterial)
+		auto& heats = m_ampHeats;
+		auto& matIdxs  = m_ampMatIdxs;
+		auto& matFlags = m_ampMatFlags;
+		auto& matHeatConductivities = m_ampMatHeatConductivities;
+		auto& matInvMasses			= m_ampMatInvMasses;
+		const float32 roomTemp = m_roomTemp;
+		const float32 heatLossRatio = m_heatLossRatio;
+		AmpForEachParticle(b2_heatLoosingParticle, [=, &heats, &matIdxs, &matFlags,
+			&matHeatConductivities, &matInvMasses](const int32 i) restrict(amp)
 		{
-			float32 conductivityP = m_partMatHeatConductivityBuf[matIdxP];
-			float32 conductivityB = matB.m_heatConductivity;
-			if (conductivityP > 0 && conductivityB > 0)
-			{
-				float32 heatP = m_heatBuffer[a];
-				float32 heatB = b->m_heat;
-				if (abs(heatB - heatP) > 1.0f)
-				{
-					float32 changeHeat = step.dt * 30.0f * (conductivityP * conductivityB)
-						* (heatB - heatP);
-					float32 massP = m_partMatMassBuf[matIdxP];
-					float32 massB = b->m_mass;
-					float32 invCombinedMass = 0.999f / (massP + massB);
-					stgFloat = changeHeat * (0.001f + massB * invCombinedMass);
-					b->m_heat -= changeHeat * (0.001f + massP * invCombinedMass);
-
-					/*float32 changeHeat = step.dt * (conductivityP * conductivityB)
-						* (heatB - heatP);
-					float32 massP = matP->m_mass;
-					float32 massB = b->GetMass();
-					float32 invCombinedMass = 0.5f / (massP + massB);
-					m_heatBuffer[i] += changeHeat * (0.25f + massB * invCombinedMass);
-					b->m_heat			 -= changeHeat * (0.25f + massP * invCombinedMass);*/
-				}
-			}
-		}
-	}
-	AddBodyContactResults(heats, m_stgBodyContactFloats);
-}
-
-void b2ParticleSystem::SolveLooseHeat(const b2TimeStep& step)
-{
-	for (int32 k = 0; k < m_count; k++)
-	{
-		if (m_flagsBuffer[k] & b2_heatLoosingParticle)
-		{
-			int32 matIdx = m_partMatIdxBuffer[k];
-			float32 loss = step.dt * m_partMatHeatConductivityBuf[matIdx] * (m_heatBuffer[k] - m_roomTemp);
-			if (abs(loss) > step.dt)
-			{
-				m_heatBuffer[k] -= loss * (1 - pow(m_heatLossRatio,
+			const int32 matIdx = matIdxs[i];
+			float32& heat = heats[i];
+			const float32 loss = step.dt * matHeatConductivities[matIdx] * (heat - roomTemp);
+			if (!loss) return;
+			heat -= loss * (1 - __dp_math_powf(heatLossRatio,
 					//(2.0f - (m_weightBuffer[k] < 0 ? 0 : m_weightBuffer[k] > 1 ? 1 : m_weightBuffer[k])) *
-					0.0005f * m_partMatInvMassBuf[matIdx]));
-			}
-		}
+					0.0005f * matInvMasses[matIdx]));
+		});
 	}
-}
-void b2ParticleSystem::AmpSolveLooseHeat(const b2TimeStep& step)
-{
-	const uint32 cnt = m_count;
-	auto& heats = m_ampHeats;
-	auto& matIdxs  = m_ampMatIdxs;
-	auto& matFlags = m_ampMatFlags;
-	auto& matHeatConductivities = m_ampMatHeatConductivities;
-	auto& matInvMasses			= m_ampMatInvMasses;
-	const float32 roomTemp = m_roomTemp;
-	const float32 heatLossRatio = m_heatLossRatio;
-	AmpForEachParticle(b2_heatLoosingParticle, [=, &heats, &matIdxs, &matFlags,
-		&matHeatConductivities, &matInvMasses](const int32 i) restrict(amp)
+	else
 	{
-		const int32 matIdx = matIdxs[i];
-		float32& heat = heats[i];
-		const float32 loss = step.dt * matHeatConductivities[matIdx] * (heat - roomTemp);
-		if (!loss) return;
-		heat -= loss * (1 - __dp_math_powf(heatLossRatio,
-				//(2.0f - (m_weightBuffer[k] < 0 ? 0 : m_weightBuffer[k] > 1 ? 1 : m_weightBuffer[k])) *
-				0.0005f * matInvMasses[matIdx]));
-	});
-}
-
-void b2ParticleSystem::SolveFlame(const b2TimeStep& step)
-{
-	for (int32 k = 0; k < m_count; k++)
-	{
-		if (m_flagsBuffer[k] & b2_flameParticle)
+		for (int32 k = 0; k < m_count; k++)
 		{
-			float32& heat = m_heatBuffer[k];
-
-			// loose health
-			const int32 partMatIdx = m_partMatIdxBuffer[k];
-			const float32 loss = step.dt * heat * m_partMatInvStabilityBuf[partMatIdx];
-			if (loss > FLT_EPSILON)
-				m_healthBuffer[k] -= loss;
-			if (heat < m_partMatColderThanBuf[partMatIdx])
-				DestroyParticle(k);
-			else
+			if (m_flagsBuffer[k] & b2_heatLoosingParticle)
 			{
-				// rise heat
-				heat += loss * 1000.0f;
+				int32 matIdx = m_partMatIdxBuffer[k];
+				float32 loss = step.dt * m_partMatHeatConductivityBuf[matIdx] * (m_heatBuffer[k] - m_roomTemp);
+				if (abs(loss) > step.dt)
+				{
+					m_heatBuffer[k] -= loss * (1 - pow(m_heatLossRatio,
+						//(2.0f - (m_weightBuffer[k] < 0 ? 0 : m_weightBuffer[k] > 1 ? 1 : m_weightBuffer[k])) *
+						0.0005f * m_partMatInvMassBuf[matIdx]));
+				}
 			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveFlame(const b2TimeStep& step)
+
+void b2ParticleSystem::CopyHeats()
 {
-	const uint32 cnt = m_count;
-	const uint32 zombieFlag = b2_zombieParticle;
-	m_allParticleFlags |= zombieFlag;
-	auto& flags	= m_ampFlags;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& heats = m_ampHeats;
-	auto& healths = m_ampHealths;
-	auto& matInvStabilities = m_ampMatInvStabilities;
-	auto& matColderThans = m_ampMatColderThans;
-	AmpForEachParticle(b2_flameParticle, [=, &flags, &matIdxs, &heats, &healths,
-	&matInvStabilities, &matColderThans](const int32 i) restrict(amp)
+	if (m_accelerate)
+		m_ampCopyFutHeats.set(amp::copyAsync(m_ampHeats, m_heatBuffer, m_count));
+}
+
+void b2ParticleSystem::SolveFlame()
+{
+	if (!(m_allParticleFlags & b2_flameParticle)) return;
+
+	const b2TimeStep& step = m_subStep;
+
+	if (m_accelerate)
 	{
-		float32& heat = heats[i];
-		const int32 partMatIdx = matIdxs[i];
-		const float32 loss = step.dt * 0.001f * heat * matInvStabilities[partMatIdx];
-		healths[i] -= loss;
-		if (heat < matColderThans[partMatIdx])
-			flags[i] = zombieFlag;
-		else
-			heat += loss * 1000.0f;
-	});
+		const uint32 zombieFlag = b2_zombieParticle;
+		auto& flags = m_ampFlags;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& heats = m_ampHeats;
+		auto& healths = m_ampHealths;
+		auto& matInvStabilities = m_ampMatInvStabilities;
+		auto& matColderThans = m_ampMatColderThans;
+		AmpForEachParticle(b2_flameParticle, [=, &flags, &matIdxs, &heats, &healths,
+			&matInvStabilities, &matColderThans](const int32 i) restrict(amp)
+		{
+			float32& heat = heats[i];
+			const int32 partMatIdx = matIdxs[i];
+			const float32 loss = step.dt * 0.001f * heat * matInvStabilities[partMatIdx];
+			healths[i] -= loss;
+			if (heat < matColderThans[partMatIdx])
+				flags[i] = zombieFlag;
+			else
+				heat += loss * 1000.0f;
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_count; k++)
+		{
+			if (m_flagsBuffer[k] & b2_flameParticle)
+			{
+				float32& heat = m_heatBuffer[k];
+
+				// loose health
+				const int32 partMatIdx = m_partMatIdxBuffer[k];
+				const float32 loss = step.dt * heat * m_partMatInvStabilityBuf[partMatIdx];
+				if (loss > FLT_EPSILON)
+					m_healthBuffer[k] -= loss;
+				if (heat < m_partMatColderThanBuf[partMatIdx])
+					DestroyParticle(k);
+				else
+				{
+					// rise heat
+					heat += loss * 1000.0f;
+				}
+			}
+		}
+	}
+	m_allParticleFlags |= b2_zombieParticle;
 }
 
 void b2ParticleSystem::SolveIgnite()
 {
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		b2BodyMaterial& mat = m_world.m_bodyMaterials[b->m_materialIdx];
-		if (m_flagsBuffer[a] & b2_flameParticle
-			&& b->m_flags & b2_inflammableBody
-			&& mat.m_matFlags & b2_flammableMaterial
-			&& mat.m_ignitionPoint <= b->m_heat)
-		{
-			b->AddFlags((uint16)b2_burningBody);
-		}
-	}
+	if (!(m_allParticleFlags & b2_flameParticle &&
+		m_world.m_allMaterialFlags & b2_flammableMaterial))
+		return;
 
-	for (int32 k = 0; k < m_contactCount; k++)
-	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_flameParticle && contact.matFlags & b2_flammableMaterial)
-		{
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			int32 matIdxA = m_partMatIdxBuffer[a];
-			int32 matIdxB = m_partMatIdxBuffer[b];
-			if (m_partMatFlagsBuf[matIdxA] & b2_flammableMaterial
-				&& (m_flagsBuffer[b] & b2_flameParticle) & ~m_flagsBuffer[a]
-				&& m_partMatIgnitionPointBuf[matIdxA] <= m_heatBuffer[a])
-			{
-				m_flagsBuffer[a] |= b2_burningParticle;
-			}
-			else if (m_partMatFlagsBuf[matIdxB] & b2_flammableMaterial
-				&& (m_flagsBuffer[a] & b2_flameParticle) & ~m_flagsBuffer[b]
-				&& m_partMatIgnitionPointBuf[matIdxB] <= m_heatBuffer[b])
-			{
-				m_flagsBuffer[b] |= b2_burningParticle;
-			}
-		}
-	}
-}
-void b2ParticleSystem::AmpSolveIgnite()
-{
 	const uint32 flameFlag = b2_flameParticle;
 	const uint32 burningFlag = b2_burningParticle;
+	const uint32 burningBodyFlag = b2_burningBody;
 	const uint32 flameableMatFlag = b2_flammableMaterial;
-	auto& heats = m_ampHeats;
-	auto& flags = m_ampFlags;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matFlags = m_ampMatFlags;
-	auto& matIgnitionPoints = m_ampMatIgnitionPoints;
-	auto& contacts = m_ampContacts;
-	AmpForEachContact([=, &heats, &flags, &matIdxs, &matFlags, 
-		&matIgnitionPoints, &contacts](const int32 i) restrict(amp)
+	const uint32 inflammableBodyFlag = b2_inflammableBody;
+
+	if (m_accelerate)
 	{
-		const b2ParticleContact& contact = contacts[i];
-		if (!(contact.flags & flameFlag && contact.matFlags & flameableMatFlag)) return;
+		auto& heats = m_ampHeats;
+		auto& flags = m_ampFlags;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matFlags = m_ampMatFlags;
+		auto& matIgnitionPoints = m_ampMatIgnitionPoints;
+		AmpForEachContact([=, &heats, &flags, &matIdxs, &matFlags, 
+			&matIgnitionPoints](const b2ParticleContact& contact) restrict(amp)
+		{
+			if (!(contact.flags & flameFlag && contact.matFlags & flameableMatFlag)) return;
 	
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		const int32 matIdxA = matIdxs[a];
-		const int32 matIdxB = matIdxs[b];
-		if ((flags[b] & flameFlag) & ~flags[a]
-			&& matFlags[matIdxA] & flameableMatFlag
-			&& matIgnitionPoints[matIdxA] <= heats[a])
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			const int32 matIdxA = matIdxs[a];
+			const int32 matIdxB = matIdxs[b];
+			if ((flags[b] & flameFlag) & ~flags[a]
+				&& matFlags[matIdxA] & flameableMatFlag
+				&& matIgnitionPoints[matIdxA] <= heats[a])
+			{
+				flags[a] |= burningFlag;
+			}
+			else if (matFlags[matIdxB] & flameableMatFlag
+				&& (flags[a] & flameFlag) & ~flags[b]
+				&& matIgnitionPoints[matIdxB] <= heats[b])
+			{
+				flags[b] |= burningFlag;
+			}
+		});
+		auto& bodies = m_ampBodies;
+		auto& bodyMats = m_world.m_ampBodyMaterials;
+		AmpForEachBodyContact([=, &bodies, &bodyMats, &flags](const b2PartBodyContact& contact) restrict(amp)
 		{
-			flags[a] |= burningFlag;
-		}
-		else if (matFlags[matIdxB] & flameableMatFlag
-			&& (flags[a] & flameFlag) & ~flags[b]
-			&& matIgnitionPoints[matIdxB] <= heats[b])
-		{
-			flags[b] |= burningFlag;
-		}
-	});
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+			int32 a = contact.partIdx;
+			Body& b = bodies[contact.bodyIdx];
+			b2BodyMaterial& mat = bodyMats[b.m_matIdx];
+			if (flags[a] & flameFlag
+				&& b.m_flags & inflammableBodyFlag
+				&& mat.m_matFlags & flameableMatFlag
+				&& mat.m_ignitionPoint <= b.m_heat)
+			{
+				b.AddFlags(burningBodyFlag);
+			}
+		});
+	}
+	else
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		b2BodyMaterial& mat = m_world.m_bodyMaterials[b->m_materialIdx];
-		if (m_flagsBuffer[a] & b2_flameParticle
-			&& b->m_flags & b2_inflammableBody
-			&& mat.m_matFlags & b2_flammableMaterial
-			&& mat.m_ignitionPoint <= b->m_heat)
+		for (int32 k = 0; k < m_bodyContactCount; k++)
 		{
-			b->AddFlags((uint16)b2_burningBody);
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			Body& b = m_world.GetBody(contact.bodyIdx);
+			b2BodyMaterial& mat = m_world.m_bodyMaterials[b.m_matIdx];
+			if (m_flagsBuffer[a] & b2_flameParticle
+				&& b.m_flags & b2_inflammableBody
+				&& mat.m_matFlags & b2_flammableMaterial
+				&& mat.m_ignitionPoint <= b.m_heat)
+			{
+				b.AddFlags((uint16)b2_burningBody);
+			}
+		}
+
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_flameParticle && contact.matFlags & b2_flammableMaterial)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				int32 matIdxA = m_partMatIdxBuffer[a];
+				int32 matIdxB = m_partMatIdxBuffer[b];
+				if (m_partMatFlagsBuf[matIdxA] & b2_flammableMaterial
+					&& (m_flagsBuffer[b] & b2_flameParticle) & ~m_flagsBuffer[a]
+					&& m_partMatIgnitionPointBuf[matIdxA] <= m_heatBuffer[a])
+				{
+					m_flagsBuffer[a] |= b2_burningParticle;
+				}
+				else if (m_partMatFlagsBuf[matIdxB] & b2_flammableMaterial
+					&& (m_flagsBuffer[a] & b2_flameParticle) & ~m_flagsBuffer[b]
+					&& m_partMatIgnitionPointBuf[matIdxB] <= m_heatBuffer[b])
+				{
+					m_flagsBuffer[b] |= b2_burningParticle;
+				}
+			}
 		}
 	}
 }
 
 void b2ParticleSystem::SolveExtinguish()
 {
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+	if (m_allParticleFlags & b2_flameParticle &&
+		m_world.m_allMaterialFlags & b2_extinguishingMaterial) return;
+	
+	const uint32 burningFlag = b2_burningParticle;
+	const uint32 burningBodyFlag = b2_burningBody;
+	const uint32 wetBodyFlag = b2_wetBody;
+	const uint32 extinguishingMatFlag = b2_extinguishingMaterial;
+
+	if (m_accelerate)
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		int32 partMatIdx = m_partMatIdxBuffer[a];
-		if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
-			&& b->m_flags & b2_burningBody
-			&& b->m_heat < m_partMatIgnitionPointBuf[partMatIdx])
+		auto& flags = m_ampFlags;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matFlags = m_ampMatFlags;
+		AmpForEachContact([=, &flags, &matIdxs, &matFlags](const b2ParticleContact& contact) restrict(amp)
 		{
-			b->RemFlags(b2_burningBody);
-			b->AddFlags(b2_wetBody);
-		}
+			if (!(contact.flags & burningFlag && contact.matFlags & extinguishingMatFlag)) return;
+			const int32 a = contact.idxA;
+			const int32 b = contact.idxB;
+			if (matFlags[matIdxs[a]] & extinguishingMatFlag
+				&& flags[b] & burningFlag)
+				flags[b] &= ~burningFlag;
+
+			else if (matFlags[matIdxs[b]] & extinguishingMatFlag
+				&& flags[a] & burningFlag)
+				flags[a] &= ~burningFlag;
+		});
+		auto& bodies = m_ampBodies;
+		auto& matIgnitionPoints = m_ampMatIgnitionPoints;
+		AmpForEachBodyContact([=, &bodies, &matIdxs, &matFlags,
+			&matIgnitionPoints](const b2PartBodyContact& contact) restrict(amp)
+		{
+			int32 a = contact.partIdx;
+			Body& b = bodies[contact.bodyIdx];
+			int32 partMatIdx = matIdxs[a];
+			if (matFlags[partMatIdx] & extinguishingMatFlag
+				&& b.m_flags & burningBodyFlag
+				&& b.m_heat < matIgnitionPoints[partMatIdx])
+			{
+				b.RemFlags(burningBodyFlag);
+				b.AddFlags(wetBodyFlag);
+			}
+		});
 	}
-
-	for (int32 k = 0; k < m_contactCount; k++)
+	else
 	{
-		const b2ParticleContact& contact = m_partContactBuf[k];
-		if (contact.flags & b2_burningParticle && contact.matFlags & b2_extinguishingMaterial)
+		for (int32 k = 0; k < m_bodyContactCount; k++)
 		{
-			int32 a = contact.idxA;
-			int32 b = contact.idxB;
-			if (m_partMatFlagsBuf[m_partMatIdxBuffer[a]] & b2_extinguishingMaterial
-				&& m_flagsBuffer[b] & b2_burningParticle)
-				m_flagsBuffer[b] &= ~b2_burningParticle;
+			const b2PartBodyContact& contact = m_bodyContactBuf[k];
+			int32 a = contact.partIdx;
+			Body& b = m_world.GetBody(contact.bodyIdx);
+			int32 partMatIdx = m_partMatIdxBuffer[a];
+			if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
+				&& b.m_flags & b2_burningBody
+				&& b.m_heat < m_partMatIgnitionPointBuf[partMatIdx])
+			{
+				b.RemFlags(b2_burningBody);
+				b.AddFlags(b2_wetBody);
+			}
+		}
 
-			else if (m_partMatFlagsBuf[m_partMatIdxBuffer[b]] & b2_extinguishingMaterial
-				&& m_flagsBuffer[a] & b2_burningParticle)
-				m_flagsBuffer[a] &= ~b2_burningParticle;
+		for (int32 k = 0; k < m_contactCount; k++)
+		{
+			const b2ParticleContact& contact = m_partContactBuf[k];
+			if (contact.flags & b2_burningParticle && contact.matFlags & b2_extinguishingMaterial)
+			{
+				int32 a = contact.idxA;
+				int32 b = contact.idxB;
+				if (m_partMatFlagsBuf[m_partMatIdxBuffer[a]] & b2_extinguishingMaterial
+					&& m_flagsBuffer[b] & b2_burningParticle)
+					m_flagsBuffer[b] &= ~b2_burningParticle;
+
+				else if (m_partMatFlagsBuf[m_partMatIdxBuffer[b]] & b2_extinguishingMaterial
+					&& m_flagsBuffer[a] & b2_burningParticle)
+					m_flagsBuffer[a] &= ~b2_burningParticle;
+			}
 		}
 	}
 }
-void b2ParticleSystem::AmpSolveExtinguish()
+
+void b2ParticleSystem::CopyHealths()
 {
-	const uint32 burningFlag = b2_burningParticle;
-	const uint32 extinguishingMatFlag = b2_extinguishingMaterial;
-	auto& flags = m_ampFlags;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matFlags = m_ampMatFlags;
-	auto& contacts = m_ampContacts;
-	AmpForEachContact([=, &contacts, &flags, &matIdxs, &matFlags](const int32 i) restrict(amp)
-	{
-		const b2ParticleContact & contact = contacts[i];
-		if (!(contact.flags & burningFlag && contact.matFlags & extinguishingMatFlag)) return;
-		const int32 a = contact.idxA;
-		const int32 b = contact.idxB;
-		if (matFlags[matIdxs[a]] & extinguishingMatFlag
-			&& flags[b] & burningFlag)
-			flags[b] &= ~burningFlag;
-	
-		else if (matFlags[matIdxs[b]] & extinguishingMatFlag
-			&& flags[a] & burningFlag)
-			flags[a] &= ~burningFlag;
-	});
-	for (int32 k = 0; k < m_bodyContactCount; k++)
-	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		int32 partMatIdx = m_partMatIdxBuffer[a];
-		if (m_partMatFlagsBuf[partMatIdx] & b2_extinguishingMaterial
-			&& b->m_flags & b2_burningBody
-			&& b->m_heat < m_partMatIgnitionPointBuf[partMatIdx])
-		{
-			b->RemFlags(b2_burningBody);
-			b->AddFlags(b2_wetBody);
-		}
-	}
+	if (m_accelerate)
+		m_ampCopyFutHealths.set(amp::copyAsync(m_ampHealths, m_healthBuffer, m_count));
 }
 
 void b2ParticleSystem::SolveWater()
@@ -6578,125 +6217,132 @@ void b2ParticleSystem::SolveWater()
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
 		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = m_bodyContactPartIdxs[k];
-		Body* b = contact.body;
-		b2BodyMaterial& mat = m_world.m_bodyMaterials[b->m_materialIdx];
+		int32 a = contact.partIdx;
+		Body& b = m_world.GetBody(contact.bodyIdx);
+		b2BodyMaterial& mat = m_world.m_bodyMaterials[b.m_matIdx];
 		if (m_flagsBuffer[a] & b2_extinguishingMaterial
-			&& b->m_flags & b2_burningBody
+			&& b.m_flags & b2_burningBody
 			&& mat.m_matFlags & b2_flammableMaterial
-			&& mat.m_extinguishingPoint > b->m_heat)
+			&& mat.m_extinguishingPoint > b.m_heat)
 		{
-			b->RemFlags((int16)b2_burningBody);
+			b.RemFlags((int16)b2_burningBody);
 		}
 	}
 }
 void b2ParticleSystem::SolveAir()
 {
-	for (int32 k = 0; k < m_count; k++)
-	{
-		// delete if stopped
-		if (m_flagsBuffer[k] & b2_airParticle)
-		{
-			if (m_velocityBuffer[k].Length() < 0.1f)
-				DestroyParticle(k);
-		}
+	if (!(m_allParticleFlags & b2_airParticle)) return;
 
-		// TODO blow out burning
-	}
-}
-void b2ParticleSystem::AmpSolveAir()
-{
-	const uint32 cnt = m_count;
-	const uint32 zombieFlag = b2_zombieParticle;
-	auto& flags = m_ampFlags;
-	auto& velocities = m_ampVelocities;
-	AmpForEachParticle(b2_airParticle, [=, &flags, &velocities](const int32 i) restrict(amp)
+	if (m_accelerate)
 	{
-		if (velocities[i].Length() < 0.1f)
-			flags[i] = zombieFlag;
-	});
+		const uint32 zombieFlag = b2_zombieParticle;
+		auto& flags = m_ampFlags;
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle(b2_airParticle, [=, &flags, &velocities](const int32 i) restrict(amp)
+		{
+			if (velocities[i].Length() < 0.1f)
+				flags[i] = zombieFlag;
+		});
+	}
+	else
+	{
+		for (int32 k = 0; k < m_count; k++)
+		{
+			// delete if stopped
+			if (m_flagsBuffer[k] & b2_airParticle)
+			{
+				if (m_velocityBuffer[k].Length() < 0.1f)
+					DestroyParticle(k);
+			}
+
+			// TODO blow out burning
+		}
+	}
 }
 
 void b2ParticleSystem::SolveChangeMat()
 {
-	for (int32 k = 0; k < m_count; k++)
+	if (m_accelerate)
 	{
-		int32 matIdx = m_partMatIdxBuffer[k];
-		uint32 matFlags = m_partMatFlagsBuf[matIdx];
-		if (matFlags & b2_changeWhenColdMaterial)
+		const uint32 matColdFilterFlag = b2_changeWhenColdMaterial;
+		const uint32 matHotFilterFlag = b2_changeWhenHotMaterial;
+		const uint32 zombieFlag = b2_zombieParticle;
+		auto& flags = m_ampFlags;
+		auto& heats = m_ampHeats;
+		auto& matIdxs = m_ampMatIdxs;
+		auto& matColderThans = m_ampMatColderThans;
+		auto& matHotterThans = m_ampMatHotterThans;
+		auto& matChangeToColdMats = m_ampMatChangeToColdMats;
+		auto& matChangeToHotMats = m_ampMatChangeToHotMats;
+		auto& matPartFlags = m_ampMatPartFlags;
+		auto& matFlags = m_ampMatFlags;
+		AmpForEachParticle([=, &flags, &heats, &matIdxs, &matColderThans, &matHotterThans,
+			&matChangeToColdMats, &matChangeToHotMats, &matPartFlags, &matFlags](const int32 i) restrict(amp)
 		{
-			if (m_heatBuffer[k] < m_partMatColderThanBuf[matIdx])
+			int32& matIdx = matIdxs[i];
+			const uint32 matFlag = matFlags[matIdx];
+			const float32 heat = heats[i];
+			if (matFlag & matColdFilterFlag && heat < matColderThans[matIdx])
 			{
-				int32 newMat = m_partMatChangeToColdMatBuf[matIdx];
-				if (newMat != b2_invalidIndex)
+				const int32 newMatIdx = matChangeToColdMats[matIdx];
+				if (newMatIdx != -1)
 				{
-					m_partMatIdxBuffer[k] = newMat;
-					SetParticleFlags(k, m_partMatPartFlagsBuf[newMat]);
+					matIdx = newMatIdx;
+					flags[i] = matPartFlags[newMatIdx];
 				}
 				else
-					DestroyParticle(k);
+					flags[i] = zombieFlag;
 			}
-		}
-		if (matFlags & b2_changeWhenHotMaterial)
-		{
-			if (m_heatBuffer[k] > m_partMatHotterThanBuf[matIdx])
+			if (matFlag & matHotFilterFlag && heat > matHotterThans[matIdx])
 			{
-				int32 newMat = m_partMatChangeToHotMatBuf[matIdx];
-				if (newMat != b2_invalidIndex)
+				const int32 newMatIdx = matChangeToHotMats[matIdx];
+				if (newMatIdx != -1)
 				{
-					m_partMatIdxBuffer[k] = newMat;
-					SetParticleFlags(k, m_partMatPartFlagsBuf[newMat]);
+					matIdx = newMatIdx;
+					flags[i] = matPartFlags[newMatIdx];
 				}
 				else
-					DestroyParticle(k);
+					flags[i] = zombieFlag;
+			}
+		});
+		m_ampCopyFutMatIdxs.set(amp::copyAsync(m_ampMatIdxs, m_partMatIdxBuffer, m_count));
+	}
+	else
+	{
+		for (int32 k = 0; k < m_count; k++)
+		{
+			int32 matIdx = m_partMatIdxBuffer[k];
+			uint32 matFlags = m_partMatFlagsBuf[matIdx];
+			if (matFlags & b2_changeWhenColdMaterial)
+			{
+				if (m_heatBuffer[k] < m_partMatColderThanBuf[matIdx])
+				{
+					int32 newMat = m_partMatChangeToColdMatBuf[matIdx];
+					if (newMat != b2_invalidIndex)
+					{
+						m_partMatIdxBuffer[k] = newMat;
+						SetParticleFlags(k, m_partMatPartFlagsBuf[newMat]);
+					}
+					else
+						DestroyParticle(k);
+				}
+			}
+			if (matFlags & b2_changeWhenHotMaterial)
+			{
+				if (m_heatBuffer[k] > m_partMatHotterThanBuf[matIdx])
+				{
+					int32 newMat = m_partMatChangeToHotMatBuf[matIdx];
+					if (newMat != b2_invalidIndex)
+					{
+						m_partMatIdxBuffer[k] = newMat;
+						SetParticleFlags(k, m_partMatPartFlagsBuf[newMat]);
+					}
+					else
+						DestroyParticle(k);
+				}
 			}
 		}
 	}
-}
-void b2ParticleSystem::AmpSolveChangeMat()
-{
-	const uint32 cnt = m_count;
-	const uint32 matColdFilterFlag = b2_changeWhenColdMaterial;
-	const uint32 matHotFilterFlag = b2_changeWhenHotMaterial;
-	const uint32 zombieFlag = b2_zombieParticle;
-	auto& flags = m_ampFlags;
-	auto& heats = m_ampHeats;
-	auto& matIdxs = m_ampMatIdxs;
-	auto& matColderThans = m_ampMatColderThans;
-	auto& matHotterThans = m_ampMatHotterThans;
-	auto& matChangeToColdMats = m_ampMatChangeToColdMats;
-	auto& matChangeToHotMats = m_ampMatChangeToHotMats;
-	auto& matPartFlags = m_ampMatPartFlags;
-	auto& matFlags = m_ampMatFlags;
-	AmpForEachParticle([=, &flags, &heats, &matIdxs, &matColderThans, &matHotterThans,
-		&matChangeToColdMats, &matChangeToHotMats, &matPartFlags, &matFlags](const int32 i) restrict(amp)
-	{
-		int32& matIdx = matIdxs[i];
-		const uint32 matFlag = matFlags[matIdx];
-		const float32 heat = heats[i];
-		if (matFlag & matColdFilterFlag && heat < matColderThans[matIdx])
-		{
-			const int32 newMatIdx = matChangeToColdMats[matIdx];
-			if (newMatIdx != -1)
-			{
-				matIdx = newMatIdx;
-				flags[i] = matPartFlags[newMatIdx];
-			}
-			else
-				flags[i] = zombieFlag;
-		}
-		if (matFlag & matHotFilterFlag && heat > matHotterThans[matIdx])
-		{
-			const int32 newMatIdx = matChangeToHotMats[matIdx];
-			if (newMatIdx != -1)
-			{
-				matIdx = newMatIdx;
-				flags[i] = matPartFlags[newMatIdx];
-			}
-			else
-				flags[i] = zombieFlag;
-		}
-	});
 }
 
 void b2ParticleSystem::SolveFreeze()
@@ -6704,41 +6350,61 @@ void b2ParticleSystem::SolveFreeze()
 	
 }
 
-void b2ParticleSystem::SolvePosition(const b2TimeStep& step)
+void b2ParticleSystem::SolvePosition()
 {
-	for (int k = 0; k < m_count; k++)
-		m_positionBuffer[k] += step.dt * m_velocityBuffer[k];
-}
-void b2ParticleSystem::AmpSolvePosition(const b2TimeStep& step)
-{
-	auto& positions = m_ampPositions;
-	auto& velocities = m_ampVelocities;
-	AmpForEachParticle([=, &positions, &velocities](const int32 i) restrict(amp)
+	const b2TimeStep& step = m_subStep;
+	
+	if (m_accelerate)
 	{
-		positions[i] += step.dt * velocities[i];
-	});
+		auto& positions = m_ampPositions;
+		auto& velocities = m_ampVelocities;
+		AmpForEachParticle([=, &positions, &velocities](const int32 i) restrict(amp)
+		{
+			positions[i] += step.dt * velocities[i];
+		});
+		m_ampCopyFutPositions.set(amp::copyAsync(m_ampPositions, m_positionBuffer, m_count));
+	}
+	else
+	{
+		for (int k = 0; k < m_count; k++)
+			m_positionBuffer[k] += step.dt * m_velocityBuffer[k];
+	}
+}
+
+void b2ParticleSystem::IncrementIteration()
+{
+	m_iteration++;
 }
 
 void b2ParticleSystem::SolveHealth()
 {
-	for (int32 k = 0; k < m_count; k++)
+	if (m_accelerate)
 	{
-		if (m_healthBuffer[k] < 0)
-			DestroyParticle(k);
-			//m_flagsBuffer[k] |= b2_zombieParticle;
+		const uint32 zombieFlag = b2_zombieParticle;
+		auto& flags = m_ampFlags;
+		auto& healths = m_ampHealths;
+		AmpForEachParticle([=, &flags, &healths](const int32 i) restrict(amp)
+		{
+			if (healths[i] < 0)
+				flags[i] = zombieFlag;
+		});
+		m_ampCopyFutFlags.set(amp::copyAsync(m_ampFlags, m_flagsBuffer, m_count));
+	}
+	else
+	{
+		for (int32 k = 0; k < m_count; k++)
+		{
+			if (m_healthBuffer[k] < 0)
+				DestroyParticle(k);
+				//m_flagsBuffer[k] |= b2_zombieParticle;
+		}
 	}
 }
-void b2ParticleSystem::AmpSolveHealth()
+
+void b2ParticleSystem::CopyBodies()
 {
-	const uint32 cnt = m_count;
-	const uint32 zombieFlag = b2_zombieParticle;
-	auto& flags = m_ampFlags;
-	auto& healths = m_ampHealths;
-	AmpForEachParticle([=, &flags, &healths](const int32 i) restrict(amp)
-	{
-		if (healths[i] < 0)
-			flags[i] = zombieFlag;
-	});
+	if (m_accelerate && m_bodyContactCount)
+		m_ampCopyFutBodies.set(amp::copyAsync(m_ampBodies, m_world.m_bodyBuffer, m_world.m_bodyBuffer.size()));
 }
 
 template <class T1, class UnaryPredicate> 
@@ -6991,9 +6657,9 @@ void b2ParticleSystem::SolveZombie()
 		{
 			return contact.idxA < 0 || contact.idxB < 0;
 		}
-		static bool IsBodyContactInvalid(const int32& partIdx)
+		static bool IsBodyContactInvalid(const b2PartBodyContact& contact)
 		{
-			return partIdx < 0;
+			return contact.partIdx < 0;
 		}
 		static bool IsPairInvalid(const b2ParticlePair& pair)
 		{
@@ -7025,10 +6691,10 @@ void b2ParticleSystem::SolveZombie()
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32& partIdx = m_bodyContactPartIdxs[k];
+		int32& partIdx = m_bodyContactBuf[k].partIdx;
 		partIdx = newIndices[partIdx];
 	}
-	RemoveFromVectorsIf(m_bodyContactPartIdxs, m_bodyContactBuf, m_bodyContactCount, Test::IsBodyContactInvalid, true);
+	RemoveFromVectorIf(m_bodyContactBuf, m_bodyContactCount, Test::IsBodyContactInvalid, true);
 
 	// update pairs
 	for (int32 k = 0; k < m_pairCount; k++)
@@ -7384,7 +7050,7 @@ void b2ParticleSystem::RotateBuffer(int32 start, int32 mid, int32 end)
 	// update particle-body contacts
 	for (int32 k = 0; k < m_bodyContactCount; k++)
 	{
-		int32& partIdx = m_bodyContactPartIdxs[k];
+		int32& partIdx = m_bodyContactBuf[k].partIdx;
 		partIdx = newIndices[partIdx];
 	}
 
@@ -8011,4 +7677,39 @@ void b2ParticleSystem::CopyAmpPositions(ID3D11Buffer* dstPtr)
 	context->CopyResource(dstPtr, dx11PosBuf);
 	return;
 	context->Release();
+}
+
+template<typename S, typename A>
+inline ampCopyFuture CopyShapeBufferToGpu(std::vector<S>& shapeBuffer, ampArray<A>& array)
+{
+	b2Assert(sizeof(S) == sizeof(A));
+	return amp::copyAsync(reinterpret_cast<A*>(shapeBuffer.data()), array, shapeBuffer.size());
+}
+
+void b2ParticleSystem::CopyBox2DToGPUAsync()
+{
+	m_ampCopyFutBodies.set(amp::copyAsync(m_world.m_bodyBuffer, m_ampBodies));
+	m_ampCopyFutFixtures.set(amp::copyAsync(m_world.m_fixtureBuffer, m_ampFixtures));
+	m_ampCopyFutChainShapes.set(CopyShapeBufferToGpu(m_world.m_chainShapeBuffer, m_ampChainShapes));
+	m_ampCopyFutCircleShapes.set(CopyShapeBufferToGpu(m_world.m_circleShapeBuffer, m_ampCircleShapes));
+	m_ampCopyFutEdgeShapes.set(CopyShapeBufferToGpu(m_world.m_edgeShapeBuffer, m_ampEdgeShapes));
+	m_ampCopyFutPolygonShapes.set(CopyShapeBufferToGpu(m_world.m_polygonShapeBuffer, m_ampPolygonShapes));
+}
+
+void b2ParticleSystem::WaitForCopyBox2DToGPU() 
+{
+	m_ampCopyFutBodies.wait();
+	m_ampCopyFutFixtures.wait();
+	m_ampCopyFutChainShapes.wait();
+	m_ampCopyFutCircleShapes.wait();
+	m_ampCopyFutEdgeShapes.wait();
+	m_ampCopyFutPolygonShapes.wait();
+	//int32 offsetb2Type = offsetof(b2PolygonShape, b2PolygonShape::m_type);
+	//int32 offsetampType = offsetof(AmpPolygonShape, AmpPolygonShape::m_type);
+	//int32 offsetb2Count = offsetof(b2PolygonShape, b2PolygonShape::m_count);
+	//int32 offsetampCount = offsetof(AmpPolygonShape, AmpPolygonShape::m_count);
+	//int32 sizeb2 = sizeof(b2PolygonShape);
+	//int32 sizeamp = sizeof(AmpPolygonShape);
+	//ampArrayView<AmpPolygonShape> polys = m_ampPolygonShapes.section(0, 2);
+	//AmpPolygonShape poly0 = polys[1];
 }

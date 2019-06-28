@@ -48,22 +48,18 @@ struct b2BodyMaterialDef
 	float32 heatConductivity;
 };
 
-class b2BodyMaterial
+struct b2BodyMaterial
 {
-public:
-	const uint32 m_matFlags;
-	const float32 m_density;
-	const float32 m_friction;
-	const float32 m_bounciness;
-	const float32 m_stability;
-	const float32 m_invStability;
-	const float32 m_extinguishingPoint;
-	const float32 m_meltingPoint;
-	const float32 m_ignitionPoint;
-	const float32 m_heatConductivity;
-
-	b2BodyMaterial* m_prev;
-	b2BodyMaterial* m_next;
+	uint32 m_matFlags;
+	float32 m_density;
+	float32 m_friction;
+	float32 m_bounciness;
+	float32 m_stability;
+	float32 m_invStability;
+	float32 m_extinguishingPoint;
+	float32 m_meltingPoint;
+	float32 m_ignitionPoint;
+	float32 m_heatConductivity;
 
 	b2BodyMaterial(b2BodyMaterialDef def);
 	~b2BodyMaterial();

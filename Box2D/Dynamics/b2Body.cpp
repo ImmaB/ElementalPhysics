@@ -81,7 +81,7 @@ void Body::Set(const b2BodyDef def)
 	m_I = 0.0f;
 	m_invI = 0.0f;
 	
-	m_materialIdx = def.materialIdx;
+	m_matIdx = def.materialIdx;
 	m_heat = def.heat;
 
 	m_health = def.health;

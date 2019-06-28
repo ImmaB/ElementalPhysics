@@ -35,7 +35,8 @@
 #include <Box2D/Common/b2Timer.h>
 #include <new>
 
-b2World::b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit) : m_contactManager(*this)
+b2World::b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit)
+	: m_contactManager(*this), m_ampBodyMaterials(TILE_SIZE, amp::getGpuAccelView())
 {
 	m_destructionListener = NULL;
 	m_debugDraw = NULL;
@@ -1261,8 +1262,12 @@ void b2World::ShiftOrigin(const b2Vec2& newOrigin)
 int32 b2World::AddBodyMaterial(b2BodyMaterialDef def)
 {
 	const int32 idx = m_bodyMaterials.size();
-	m_bodyMaterials.push_back(b2BodyMaterial(def));
-
+	b2BodyMaterial newMat(def);
+	m_bodyMaterials.push_back(newMat);
+	
+	if (m_ampBodyMaterials.extent[0] <= idx) amp::resize(m_ampBodyMaterials, m_ampBodyMaterials.extent[0] * 2, m_ampBodyMaterials.extent[0]);
+	amp::copy(newMat, m_ampBodyMaterials, idx);
+	
 	m_allMaterialFlags |= def.matFlags;
 
 	return idx;
@@ -1396,28 +1401,6 @@ void b2World::RemoveFromBuffers(const int32 idx, vector<T1>& buf1, vector<T2>& b
 		freeIdxs.insert(idx);
 }
 
-const inline b2Shape& b2World::GetShape(const int32 fixtureIdx) const
-{
-	return GetShape(m_fixtureBuffer[fixtureIdx]);
-}
-const inline b2Shape& b2World::GetShape(const Fixture& f) const
-{
-	return GetShape(f.m_shapeType, f.m_shapeIdx);
-}
-const inline b2Shape& b2World::GetShape(b2Shape::Type type, int32 idx) const
-{
-	switch (type)
-	{
-	case b2Shape::e_chain:
-		return m_chainShapeBuffer[idx];
-	case b2Shape::e_circle:
-		return m_circleShapeBuffer[idx];
-	case b2Shape::e_edge:
-		return m_edgeShapeBuffer[idx];
-	case b2Shape::e_polygon:
-		return m_polygonShapeBuffer[idx];
-	}
-}
 
 int32 b2World::CreateFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx, float32 density)
 {

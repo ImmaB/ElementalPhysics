@@ -59,7 +59,7 @@ typedef std::chrono::time_point<std::chrono::steady_clock> Time;
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 class b2World;
-class b2Shape;
+struct b2Shape;
 struct b2ParticleGroup;
 class b2BlockAllocator;
 class b2StackAllocator;
@@ -99,10 +99,11 @@ struct b2ParticleContact
 
 struct b2PartBodyContact
 {
+	int32 partIdx;
 	/// The body making contact.
-	Body* body;
+	int32 bodyIdx;
 	/// The specific fixture making contact
-	Fixture* fixture;
+	int32 fixtureIdx;
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	float32 weight;
 	/// The normalized direction from the particle to the body.
@@ -286,6 +287,7 @@ struct b2ParticleMaterialDef
 class b2ParticleSystem
 {
 private:
+	int32 m_iteration;
 	b2TimeStep m_step;
 	b2TimeStep m_subStep;
 
@@ -301,10 +303,54 @@ public:
 		m_step = step;
 	}
 
+	bool ShouldSolve();
 	void SolveInit();
+
+	void InitStep();
 	void UpdateContacts(bool exceptZombie);
-	void SolveIteration(int32 iteration);
-	void SolveIteration2(int32 iteration);
+	void ComputeWeight();
+	void ComputeDepth();
+	void UpdatePairsAndTriadsWithReactiveParticles();
+
+	// Velocity
+	void SolveForce();
+	void SolveViscous();
+	void SolveRepulsive();
+	void SolvePowder();
+	void SolveTensile();
+	void SolveSolid();
+	void SolveGravity();
+	void SolveStaticPressure();
+	void SolvePressure();
+	void SolveDamping();
+	void SolveExtraDamping();
+	void SolveElastic();
+	void SolveSpring();
+	void LimitVelocity();
+	void SolveRigidDamping();
+	void SolveBarrier();
+	void SolveCollision();
+	void SolveRigid();
+	void SolveWall();
+	void CopyVelocities();
+	void SolveAir();
+
+	// Burning and Heat
+	void SolveFlame();
+	void SolveIgnite();
+	void SolveExtinguish();
+	void CopyHealths();
+	void SolveHeatConduct();
+	void SolveLooseHeat();
+	void CopyHeats();
+	void SolveChangeMat();
+
+	void SolveHealth();
+	void CopyBodies();
+
+	void SolvePosition();
+	void IncrementIteration();
+
 	void SolveEnd();
 
 	float32 GetTimeDif(Time start, Time end);
@@ -485,6 +531,9 @@ public:
 	float32 GetRadius() const;
 
 	void CopyAmpPositions(ID3D11Buffer* dstPtr);
+
+	void CopyBox2DToGPUAsync();
+	void WaitForCopyBox2DToGPU();
 
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
@@ -963,8 +1012,6 @@ private:
 	void UpdatePairsAndTriads(
 		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
 	void AmpUpdatePairsAndTriads(int32 firstIndex, int32 lastIndex);
-	void UpdatePairsAndTriadsWithReactiveParticles();
-	void AmpUpdatePairsAndTriadsWithReactiveParticles();
 	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
 	static bool MatchPairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
 	static bool CompareTriadIndices(const b2ParticleTriad& a, const b2ParticleTriad& b);
@@ -989,9 +1036,6 @@ private:
 	void UpdatePairsAndTriadsWithParticleList(
 		const b2ParticleGroup& group, const ParticleListNode* nodeBuffer);
 
-	void ComputeDepth();
-	void AmpComputeDepth();
-
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
 	void AddFlagInsideShape(const uint32 flag, const int32 matIdx,
@@ -1001,7 +1045,7 @@ private:
 	template<typename F>
 	void AmpForEachInsideBounds(const b2AABB& aabb, F& function);
 	template<typename F>
-	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function);
+	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function, bool skipSensors=false);
 	void UpdateAllParticleFlags();
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
@@ -1027,71 +1071,13 @@ private:
 	void UpdateBodyContacts();
 	void AmpUpdateBodyContacts();
 
-	void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
-	void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
+	//void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
+	//void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
 
-	void SolveCollision(const b2TimeStep& step);
-	void AmpSolveCollision(const b2TimeStep& step);
-	void LimitVelocity(const b2TimeStep& step);
-	void AmpLimitVelocity(const b2TimeStep& step);
-	void SolveGravity(const b2TimeStep& step);
-	void AmpSolveGravity(const b2TimeStep& step);
-	void SolveBarrier(const b2TimeStep& step);
-	void AmpSolveBarrier(const b2TimeStep& step);
-	void SolveStaticPressure(const b2TimeStep& step);
-	void AmpSolveStaticPressure(const b2TimeStep& step);
-	void ComputeWeight();
-	void AmpComputeWeight();
-	void SolvePressure(const b2TimeStep& step);
-	void AmpSolvePressure(const b2TimeStep& step);
-	void SolveDamping(const b2TimeStep& step);
-	void AmpSolveDamping(const b2TimeStep& step);
 	void SolveSlowDown(const b2TimeStep& step);
-	void SolveRigidDamping();
-	void AmpSolveRigidDamping();
-	void SolveExtraDamping();
-	void AmpSolveExtraDamping();
-	void SolveWall();
-	void AmpSolveWall();
-	void SolveRigid(const b2TimeStep& step);
-	void AmpSolveRigid(const b2TimeStep& step);
-	void SolveElastic(const b2TimeStep& step);
-	void AmpSolveElastic(const b2TimeStep& step);
-	void SolveSpring(const b2TimeStep& step);
-	void AmpSolveSpring(const b2TimeStep& step);
-	void SolveTensile(const b2TimeStep& step);
-	void AmpSolveTensile(const b2TimeStep& step);
-	void SolveViscous();
-	void AmpSolveViscous();
-	void SolveRepulsive(const b2TimeStep& step);
-	void AmpSolveRepulsive(const b2TimeStep& step);
-	void SolvePowder(const b2TimeStep& step);
-	void AmpSolvePowder(const b2TimeStep& step);
-	void SolveSolid(const b2TimeStep& step);
-	void AmpSolveSolid(const b2TimeStep& step);
-	void SolveForce(const b2TimeStep& step);
-	void AmpSolveForce(const b2TimeStep& step);
 	void SolveColorMixing();
-	void SolveHeatConduct(const b2TimeStep& step);
-	void AmpSolveHeatConduct(const b2TimeStep& step);
-	void SolveLooseHeat(const b2TimeStep& step);
-	void AmpSolveLooseHeat(const b2TimeStep& step);
-	void SolveFlame(const b2TimeStep& step);
-	void AmpSolveFlame(const b2TimeStep& step);
-	void SolveIgnite();
-	void AmpSolveIgnite();
-	void SolveExtinguish();
-	void AmpSolveExtinguish();
 	void SolveWater();
-	void SolveAir();
-	void AmpSolveAir();
-	void SolveChangeMat();
-	void AmpSolveChangeMat();
 	void SolveFreeze();
-	void SolveHealth();
-	void AmpSolveHealth();
-	void SolvePosition(const b2TimeStep& step);
-	void AmpSolvePosition(const b2TimeStep& step);
 	void SolveZombie();
 	void AmpSolveZombie();
 	void SolveFalling(const b2TimeStep& step);
@@ -1202,23 +1188,26 @@ private:
 		float32 invMass, float32 invInertia, float32 tangentDistance,
 		bool isRigidGroup, b2ParticleGroup& group, int32 particleIndex,
 		float32 impulse, const b2Vec2& normal);
-	void AmpApplyDamping(
-		float32 invMass, float32 invInertia, float32 tangentDistance,
-		bool isRigidGroup, b2ParticleGroup& group, int32 particleIndex,
-		float32 impulse, const b2Vec2& normal);
 
-	vector<Body>& m_bodyBuffer;
-	//int32 m_bodyCount;
-	vector<Fixture>& m_fixtureBuffer;
+	ampAccelView m_cpuAccelView = amp::getCpuAccelView();
+	ampAccelView m_gpuAccelView = amp::getGpuAccelView();
 
-	ampArray<Body> m_ampBodies;
-	ampArray<Fixture> m_ampFixtures;
+	ampArray<Fixture>		  m_ampFixtures;
+	ampArray<Body>			  m_ampBodies;
+	ampArray<AmpChainShape>	  m_ampChainShapes;
+	ampArray<AmpCircleShape>  m_ampCircleShapes;
+	ampArray<AmpEdgeShape>	  m_ampEdgeShapes;
+	ampArray<AmpPolygonShape> m_ampPolygonShapes;
 
-	ampCopyFuture m_ampCopyFutBodies;
-	ampCopyFuture m_ampCopyFutFixtures;
+	amp::CopyFuture m_ampCopyFutBodies;
+	amp::CopyFuture m_ampCopyFutFixtures;
+	amp::CopyFuture m_ampCopyFutChainShapes;
+	amp::CopyFuture m_ampCopyFutCircleShapes;
+	amp::CopyFuture m_ampCopyFutEdgeShapes;
+	amp::CopyFuture m_ampCopyFutPolygonShapes;
 
-	Concurrency::accelerator_view m_cpuAccelView = Concurrency::accelerator(Concurrency::accelerator::cpu_accelerator).default_view;
-	Concurrency::accelerator_view m_gpuAccelView = Concurrency::accelerator(Concurrency::accelerator::default_accelerator).default_view;
+	std::future<void> m_futureUpdateBodyContacts;
+
 
 	bool m_paused;
 	int32 m_timestamp;
@@ -1228,7 +1217,6 @@ private:
 	bool m_needsUpdateAllGroupFlags;
 	bool m_hasForce;
 	bool m_hasDepth;
-	int32 m_iterationIndex;
 	float32 m_inverseDensity;
 	float32 m_particleDiameter;
 	float32 m_inverseDiameter;
@@ -1237,11 +1225,8 @@ private:
 	float32 m_roomTemp;
 	float32 m_heatLossRatio;
 
-	int32 m_tileCnt;
-	int32 m_contactTileCnt;
-	ampExtent m_tilableExtent;
-	ampExtent m_contactTilableExtent;
-	ampExtent m_bodyContactTilableExtent;
+	//int32 m_tileCnt;
+	//int32 m_contactTileCnt;
 
 	int32 m_count;
 	int32 m_capacity;
@@ -1267,9 +1252,6 @@ private:
 	/// Maps particle indicies to  handles.
 	bool hasHandleIndexBuffer;
 
-	ampArray<float32> m_stgBodyContactFloats;
-	ampArray<b2Vec3> m_stgBodyContactVec3s;
-
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
 	vector<uint32>	m_flagsBuffer;
 	ampArray<uint32> m_ampFlags;
@@ -1286,17 +1268,17 @@ private:
 						m_ampHeats,
 						m_ampHealths;
 
-	ampCopyFuture m_ampCopyFutPositions;
-	ampCopyFuture m_ampCopyFutVelocities;
-	ampCopyFuture m_ampCopyFutWeights;
-	ampCopyFuture m_ampCopyFutHeats;
-	ampCopyFuture m_ampCopyFutHealths;
-	ampCopyFuture m_ampCopyFutFlags;
-	ampCopyFuture m_ampCopyFutMatIdxs;
+	amp::CopyFuture m_ampCopyFutPositions;
+	amp::CopyFuture m_ampCopyFutVelocities;
+	amp::CopyFuture m_ampCopyFutWeights;
+	amp::CopyFuture m_ampCopyFutHeats;
+	amp::CopyFuture m_ampCopyFutHealths;
+	amp::CopyFuture m_ampCopyFutFlags;
+	amp::CopyFuture m_ampCopyFutMatIdxs;
 
-	ampCopyFuture m_ampCopyFutDepths;
-	ampCopyFuture m_ampCopyFutPairs;
-	ampCopyFuture m_ampCopyFutTriads;
+	amp::CopyFuture m_ampCopyFutDepths;
+	amp::CopyFuture m_ampCopyFutPairs;
+	amp::CopyFuture m_ampCopyFutTriads;
 		
 	ID3D11ShaderResourceView* m_posSRV = nullptr;
 
@@ -1406,9 +1388,8 @@ private:
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
-	vector<int32> m_bodyContactPartIdxs;
-	ampArray<int32> m_ampBodyContactPartIdxs;
 	ampArray<b2ParticleContact> m_ampContacts;
+	ampArray<b2PartBodyContact> m_ampBodyContacts;
 	// Concurrency::array<b2PartBodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
@@ -1543,15 +1524,6 @@ inline const b2ParticleContact* b2ParticleSystem::GetContacts() const
 inline const int32 b2ParticleSystem::GetContactCount() const
 {
 	return m_contactCount;
-}
-
-inline std::vector<Body> b2ParticleSystem::GetBodyBuffer()
-{
-	return m_bodyBuffer;
-}
-inline std::vector<Fixture> b2ParticleSystem::GetFixtureBuffer()
-{
-	return m_fixtureBuffer;
 }
 
 inline const b2PartBodyContact* b2ParticleSystem::GetBodyContacts() const
