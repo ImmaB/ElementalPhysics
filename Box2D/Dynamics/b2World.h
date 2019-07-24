@@ -25,9 +25,11 @@
 #include <Box2D/Dynamics/b2ContactManager.h>
 #include <Box2D/Dynamics/b2WorldCallbacks.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <Box2D/Dynamics/Ground.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <Box2D/Particle/b2Material.h>
 #include <Box2D/Amp/ampAlgorithms.h>
+#include <vector>
 
 struct b2AABB;
 struct b2Color;
@@ -38,6 +40,13 @@ class b2Joint;
 struct b2ParticleGroup;
 class b2Contact;
 
+struct LFContact
+{
+	int32 bodyAIdx;
+	int32 bodyBIdx;
+};
+typedef void(__stdcall* ContactCallback)(LFContact*);
+
 /// The world class manages all physics entities, dynamic simulation,
 /// and asynchronous queries. The world also contains efficient memory
 /// management facilities.
@@ -46,7 +55,7 @@ class b2World
 public:
 	/// Construct a world object.
 	/// @param gravity the world gravity vector.
-	b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit);
+	b2World();
 
 	/// Destruct the world. All physics entities are destroyed and all heap memory is released.
 	~b2World();
@@ -88,6 +97,8 @@ public:
 	/// @warning This function is locked during callbacks.
 	void DestroyBody(int32 idx);
 
+	Ground* CreateGround(const Ground::def& gd);
+
 	/// Create a joint to constrain bodies together. No reference to the definition
 	/// is retained. This may cause the connected bodies to cease colliding.
 	/// @warning This function is locked during callbacks.
@@ -100,11 +111,11 @@ public:
 	/// Create a particle system given a definition. No reference to the
 	/// definition is retained.
 	/// @warning This function is locked during callbacks.
-	b2ParticleSystem* CreateParticleSystem(const b2ParticleSystemDef& def);
+	b2ParticleSystem* CreateParticleSystem();
 
 	/// Destroy a particle system.
 	/// @warning This function is locked during callbacks.
-	void DestroyParticleSystem(b2ParticleSystem* p);
+	void DestroyParticleSystem();
 
 	void SetStepParams(	float32 timeStep,
 						int32 velocityIterations,
@@ -196,8 +207,8 @@ public:
 	/// b2ParticleSystem::GetNext to get the next particle-system in the world
 	/// list. A NULL particle-system indicates the end of the list.
 	/// @return the head of the world particle-system list.
-	b2ParticleSystem* GetParticleSystemList();
-	const b2ParticleSystem* GetParticleSystemList() const;
+	b2ParticleSystem* GetParticleSystem();
+	const b2ParticleSystem* GetParticleSystem() const;
 
 	/// Get the world contact list. With the returned contact, use b2Contact::GetNext to get
 	/// the next contact in the world list. A NULL contact indicates the end of the list.
@@ -246,10 +257,16 @@ public:
 	float32 GetTreeQuality() const;
 
 	/// Change the global gravity vector.
-	void SetGravity(const b2Vec2& gravity);
+	void SetGravity(const b2Vec3& gravity);
+	b2Vec3 GetGravity() const;
 
-	/// Get the global gravity vector.
-	b2Vec2 GetGravity() const;
+	void SetRoomTemperature(float32 roomTemp);
+	float32 GetRoomTemperature() const;
+
+	void SetAtmosphericDensity(float32 density);
+	float32 GettAtmosphericDensity() const;
+
+	void SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside);
 
 	/// Is the world locked (in the middle of a time step).
 	bool IsLocked() const;
@@ -275,9 +292,9 @@ public:
 	vector<b2BodyMaterial> m_bodyMaterials;
 	ampArray<b2BodyMaterial> m_ampBodyMaterials;
 
-	int32 m_allMaterialFlags;
+	int32 m_allBodyMaterialFlags;
 
-	int32 AddBodyMaterial(b2BodyMaterialDef def);
+	int32 CreateBodyMaterial(b2BodyMaterialDef def);
 
 	bool m_stepComplete;
 
@@ -325,9 +342,8 @@ public:
 			return m_circleShapeBuffer[idx];
 		case b2Shape::e_edge:
 			return m_edgeShapeBuffer[idx];
-		case b2Shape::e_polygon:
-			return m_polygonShapeBuffer[idx];
 		}
+		return m_polygonShapeBuffer[idx];
 	}
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
@@ -349,8 +365,8 @@ private:
 		e_clearForces	= 0x0004
 	};
 
-	friend class b2Body;
-	friend class b2Fixture;
+	friend struct Body;
+	friend struct Fixture;
 	friend class b2ContactManager;
 	friend class b2Controller;
 	friend class b2ParticleSystem;
@@ -373,14 +389,18 @@ private:
 	b2ContactManager m_contactManager;
 
 	b2Joint* m_jointList;
-	b2ParticleSystem* m_particleSystemList;
+	b2ParticleSystem* m_particleSystem;
+	Ground* m_ground;
 
 	int32 m_jointCount;
 
+	float32 m_roomTemperature;
 	b2Vec3 m_gravity;
-	float32 m_lowerHeightLimit;
-	float32 m_upperHeightLimit;
-	float32 m_deleteOutsideLimit;
+	float32 m_atmosphericDensity;
+	b2Vec3 m_lowerBorder;
+	b2Vec3 m_upperBorder;
+	float32 m_deleteOutside;
+
 	float32 m_dampingStrength;
 	bool m_allowSleep;
 
@@ -444,8 +464,6 @@ public:
 	set<int32> m_freeShapePositionIdxs;
 	set<int32> m_freeShapeNormalIdxs;
 
-	// Body
-
 	/// Creates a fixture from a shape and attach it to this body.
 	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
 	/// like friction, restitution, user data, or filtering.
@@ -473,7 +491,7 @@ public:
 	/// Note: contacts are updated on the next call to b2World::Step.
 	/// @param position the world position of the body's local origin.
 	/// @param angle the world rotation in radians.
-	void SetTransform(Body& b, const b2Vec2& position, float32 angle);
+	void SetTransform(Body& b, const b2Transform& transform);
 
 	/// Set the active state of the body. An inactive body is not
 	/// simulated and cannot be collided with or woken up.
@@ -524,6 +542,7 @@ public:
 	/// If you need a more accurate AABB, compute it using the shape and
 	/// the body transform.
 	const b2AABB& GetAABB(const Fixture& f, int32 childIndex) const;
+	const b2AABB GetAABB(const Fixture& f) const;
 
 	/// Set if this fixture is a sensor.
 	void SetSensor(Fixture& f, bool sensor);
@@ -621,14 +640,14 @@ inline const b2Joint* b2World::GetJointList() const
 	return m_jointList;
 }
 
-inline b2ParticleSystem* b2World::GetParticleSystemList()
+inline b2ParticleSystem* b2World::GetParticleSystem()
 {
-	return m_particleSystemList;
+	return m_particleSystem;
 }
 
-inline const b2ParticleSystem* b2World::GetParticleSystemList() const
+inline const b2ParticleSystem* b2World::GetParticleSystem() const
 {
-	return m_particleSystemList;
+	return m_particleSystem;
 }
 
 inline b2Contact* b2World::GetContactList()
@@ -656,14 +675,39 @@ inline int32 b2World::GetContactCount() const
 	return m_contactManager.m_contactCount;
 }
 
-inline void b2World::SetGravity(const b2Vec2& gravity)
+inline void b2World::SetGravity(const b2Vec3& gravity)
 {
 	m_gravity = gravity;
 }
 
-inline b2Vec2 b2World::GetGravity() const
+inline b2Vec3 b2World::GetGravity() const
 {
 	return m_gravity;
+}
+
+inline void b2World::SetRoomTemperature(float32 roomTemp)
+{
+	m_roomTemperature = roomTemp;
+}
+inline float32 b2World::GetRoomTemperature() const
+{
+	return m_roomTemperature;
+}
+
+inline void b2World::SetAtmosphericDensity(float32 density)
+{
+	m_atmosphericDensity = density;
+}
+inline float32 b2World::GettAtmosphericDensity() const
+{
+	return m_atmosphericDensity;
+}
+
+inline void b2World::SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside)
+{
+	m_lowerBorder = lower;
+	m_upperBorder = upper;
+	m_deleteOutside = deleteOutside;
 }
 
 inline bool b2World::IsLocked() const

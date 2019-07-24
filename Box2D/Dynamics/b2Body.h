@@ -73,8 +73,8 @@ struct b2BodyDef
 	/// This constructor sets the body definition default values.
 	b2BodyDef()
 	{
-		position.Set(0.0f, 0.0f, 0.0f);
-		angle = 0.0f;
+		transform.p.SetZero();
+		transform.q.SetIdentity();
 		linearVelocity.Set(0.0f, 0.0f);
 		angularVelocity = 0.0f;
 		linearDamping = 0.0f;
@@ -105,10 +105,7 @@ struct b2BodyDef
 
 	/// The world position of the body. Avoid creating bodies at the origin
 	/// since this can lead to many overlapping shapes.
-	b2Vec3 position;
-
-	/// The world angle of the body in radians.
-	float32 angle;
+	b2Transform transform;
 
 	/// The linear velocity of the body's origin in world co-ordinates.
 	b2Vec2 linearVelocity;

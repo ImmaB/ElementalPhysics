@@ -42,11 +42,6 @@
 // #include <d3d12.h>
 #include <wrl/client.h>
 
-#define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
-#define TILE_SIZE_HALF 128
-#define TILE_SIZE_QUARTER 64
-#define MAX_CONTACTS_PER_PARTICLE 8
-
 typedef std::chrono::high_resolution_clock Clock;
 typedef std::chrono::time_point<std::chrono::steady_clock> Time;
 
@@ -308,16 +303,18 @@ public:
 
 	void InitStep();
 	void UpdateContacts(bool exceptZombie);
-	void ComputeWeight();
 	void ComputeDepth();
 	void UpdatePairsAndTriadsWithReactiveParticles();
 
 	// Velocity
 	void SolveForce();
+	void WaitForUpdateBodyContacts();
+	void ComputeWeight();
 	void SolveViscous();
 	void SolveRepulsive();
 	void SolvePowder();
-	void SolveTensile();
+	void WaitForComputeWeight();
+	void SolveTensile(); //needs weight
 	void SolveSolid();
 	void SolveGravity();
 	void SolveStaticPressure();
@@ -330,6 +327,7 @@ public:
 	void SolveRigidDamping();
 	void SolveBarrier();
 	void SolveCollision();
+	void SolveGroundCollision();
 	void SolveRigid();
 	void SolveWall();
 	void CopyVelocities();
@@ -346,6 +344,7 @@ public:
 	void SolveChangeMat();
 
 	void SolveHealth();
+	void CopyFlags();
 	void CopyBodies();
 
 	void SolvePosition();
@@ -368,6 +367,8 @@ public:
 	/// particle is destroyed.
 	void DestroyParticle(int32 index, bool callDestructionListener = false);
 
+	void DestroyAllParticles();
+
 	/// Destroy the Nth oldest particle in the system.
 	/// The particle is removed after the next b2World::Step().
 	/// @param Index of the Nth oldest particle to destroy, 0 will destroy the
@@ -381,19 +382,6 @@ public:
 	void DestroyParticlesInGroup(const int32 groupIdx);
 	void DestroyParticlesInGroup(const b2ParticleGroup& group);
 
-	/// Destroy particles inside a shape without enabling the destruction
-	/// callback for destroyed particles.
-	/// This function is locked during callbacks.
-	/// For more information see
-	/// DestroyParticleInShape(const b2Shape&, const b2Transform&,bool).
-	/// @param Shape which encloses particles that should be destroyed.
-	/// @param Transform applied to the shape.
-	/// @warning This function is locked during callbacks.
-	/// @return Number of particles destroyed.
-	int32 DestroyParticlesInShape(const b2Shape& shape, const b2Transform& xf)
-	{
-		return DestroyParticlesInShape(shape, xf, false);
-	}
 
 	/// Destroy particles inside a shape.
 	/// This function is locked during callbacks.
@@ -406,8 +394,8 @@ public:
 	/// particle destroyed.
 	/// @warning This function is locked during callbacks.
 	/// @return Number of particles destroyed.
-	int32 DestroyParticlesInShape(const b2Shape& shape, const b2Transform& xf,
-	                              bool callDestructionListener);
+	int32 DestroyParticlesInFixture(const Fixture& fixture, const b2Transform& xf,
+	                              bool callDestructionListener = false);
 
 	int32 CreateParticleMaterial(const b2ParticleMaterialDef& def);
 	void PartMatChangeMats(int32 matIdx, float32 colderThan, int32 changeToColdMat,
@@ -513,10 +501,6 @@ public:
 	/// Get the number of iterations for static pressure of particles.
 	int32 GetStaticPressureIterations() const;
 
-
-	void SetRoomTemperature(float32 roomTemp);
-	float32 GetRoomTemperature() const;
-
 	void SetHeatLossRatio(float32 heatLossRatio);
 
 	void SetAccelerate(const bool acc);
@@ -583,6 +567,7 @@ public:
 	/// Get the flags for each particle. See the b2ParticleFlag enum.
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle-flags array.
+	uint32* GetFlagsBuffer();
 	const uint32* GetFlagsBuffer() const;
 
 	const int32* GetHeightLayerBuffer() const;
@@ -955,9 +940,7 @@ private:
 	static const int32 k_extraDampingFlags =
 		b2_staticPressureParticle;
 
-	b2ParticleSystem(const b2ParticleSystemDef& def, b2World& world,
-					vector<Body>& bodyBuffer,
-					vector<Fixture>& fixtureBuffer);
+	b2ParticleSystem(b2World& world, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -981,6 +964,7 @@ private:
 	template<typename F> void AmpForEachParticle(const F& function) const;
 	template<typename F> void AmpForEachParticle(const uint32 filterFlag, const F& function) const;
 	template<typename F> void AmpForEachContact(const F& function) const;
+	template<typename F> void AmpForEachContactShuffled(const F& function) const;
 	template<typename F> void AmpForEachBodyContact(const F& function) const;
 	template<typename F> void AmpForEachPair(F& function) const;
 	template<typename F> void AmpForEachTriad(F& function) const;
@@ -1038,14 +1022,20 @@ private:
 
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
-	void AddFlagInsideShape(const uint32 flag, const int32 matIdx,
-		const b2Shape& shape, const b2Transform& transform);
+	void AddFlagInsideFixture(const uint32 flag, const int32 matIdx,
+		const Fixture& fixture, const b2Transform& transform);
 
 private:
+	void CopyShapeToGPU(b2Shape::Type type, int32 idx);
+
+	void BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagBounds& tagBounds);
 	template<typename F>
 	void AmpForEachInsideBounds(const b2AABB& aabb, F& function);
 	template<typename F>
-	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function, bool skipSensors=false);
+	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function);
+	template<typename F>
+	void AmpForEachInsideCircle(const b2CircleShape& circle,
+		const b2Transform& transform, F& function);
 	void UpdateAllParticleFlags();
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
@@ -1080,8 +1070,6 @@ private:
 	void SolveFreeze();
 	void SolveZombie();
 	void AmpSolveZombie();
-	void SolveFalling(const b2TimeStep& step);
-	void SolveRising(const b2TimeStep& step);
 	/// Destroy all particles which have outlived their lifetimes set by
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
@@ -1207,6 +1195,7 @@ private:
 	amp::CopyFuture m_ampCopyFutPolygonShapes;
 
 	std::future<void> m_futureUpdateBodyContacts;
+	std::future<void> m_futureComputeWeight;
 
 
 	bool m_paused;
@@ -1222,7 +1211,6 @@ private:
 	float32 m_inverseDiameter;
 	float32 m_squaredDiameter;
 
-	float32 m_roomTemp;
 	float32 m_heatLossRatio;
 
 	//int32 m_tileCnt;
@@ -1295,22 +1283,6 @@ private:
 	vector<int32>				m_freeGroupIdxs;
 	vector<b2ParticleGroup>		m_groupBuffer;
 	ampArray<b2ParticleGroup>	m_ampGroups;
-
-	//vector<int32>	m_groupFirstIdxBuf,
-	//				m_groupLastIdxBuf;
-	//vector<uint32>	m_groupFlagsBuf;
-	//vector<int32>	m_groupColGroupBuf;
-	//vector<float32>	m_groupStrengthBuf;
-	//vector<int32>	m_groupMatIdxBuf;
-	//vector<int32>	m_groupTimestampBuf;
-	//vector<float32>	m_groupMassBuf,
-	//				m_groupInertiaBuf,
-	//				m_groupCenterXBuf,
-	//				m_groupCenterYBuf,
-	//				m_groupLinVelXBuf,
-	//				m_groupLinVelYBuf;
-	//vector<float32> m_groupAngVelBuf;
-	//vector<b2Transform> m_groupTransformBuf;
 	
 	vector<uint32>  m_partMatFlagsBuf;
 	vector<uint32>  m_partMatPartFlagsBuf;
@@ -1385,6 +1357,11 @@ private:
 
 	vector<Proxy>  m_proxyBuffer;
 	ampArray<Proxy> m_ampProxies;
+	ampArray<int32> m_localContactCnts;
+	ampArray2D<b2ParticleContact> m_localContacts;
+	ampArray<int32> m_localBodyContactCnts;
+	ampArray2D<b2PartBodyContact> m_localBodyContacts;
+	int32 m_bodyContactFixtureCnt = 0;
 
 	vector<b2ParticleContact> m_partContactBuf;
 	vector<b2PartBodyContact> m_bodyContactBuf;
@@ -1577,17 +1554,6 @@ inline bool b2ParticleSystem::GetStrictContactCheck() const
 	return m_def.strictContactCheck;
 }
 
-
-
-inline void b2ParticleSystem::SetRoomTemperature(float32 roomTemp)
-{
-	m_roomTemp = roomTemp;
-}
-inline float32 b2ParticleSystem::GetRoomTemperature() const
-{
-	return m_roomTemp;
-}
-
 inline void b2ParticleSystem::SetHeatLossRatio(float32 heatLossRatio)
 {
 	m_heatLossRatio = heatLossRatio;
@@ -1760,6 +1726,10 @@ inline uint32 b2ParticleSystem::GetAllGroupFlags() const
 	return m_allGroupFlags;
 }
 
+inline uint32* b2ParticleSystem::GetFlagsBuffer()
+{
+	return m_flagsBuffer.data();
+}
 inline const uint32* b2ParticleSystem::GetFlagsBuffer() const
 {
 	return m_flagsBuffer.data();

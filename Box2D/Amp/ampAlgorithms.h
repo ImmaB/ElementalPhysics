@@ -17,6 +17,13 @@ inline int32 getTileCnt(const int32 value)
 
 namespace amp
 {
+	static void testCompatibilty()
+	{
+		auto accelerators = Concurrency::accelerator::get_all();
+		if (accelerators.size() == 0)
+			throw ERROR;
+	}
+
 	class CopyFuture
 	{
 	private:
@@ -83,6 +90,12 @@ namespace amp
 			Concurrency::copy(vec.data(), vec.data() + vec.size(), a);
 	}
 	template<typename T>
+	static void copy(const std::vector<T>& vec, ampArrayView<T>& av, int32 size = 0)
+	{
+		if (!size) size = vec.size();
+		Concurrency::copy(vec.data(), vec.data() + size, av);
+	}
+	template<typename T>
 	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 start, const int32 size)
 	{
 		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
@@ -99,14 +112,30 @@ namespace amp
 		Concurrency::copy(a.section(idx, 1), &dest);
 	}
 	template<typename T>
-	static void copy(const ampArrayView<T>& a, const int32 idx, T& dest)
+	static void copy(const ampArrayView<T>& av, const int32 idx, T& dest)
 	{
-		Concurrency::copy(a.section(idx, 1), &dest);
+		Concurrency::copy(av.section(idx, 1), &dest);
+	}
+	template<typename T>
+	static void copy(const ampArrayView<T>& av, std::vector<T>& dest)
+	{
+		Concurrency::copy(av, dest.data());
+	}
+	template<typename T>
+	static void copy(const ampArrayView<T>& av, T* dest)
+	{
+		Concurrency::copy(av, dest);
 	}
 	template<typename T>
 	static void copy(const T& elem, ampArray<T>& dest, const int32 idx)
 	{
 		Concurrency::copy(&elem, &elem + 1, dest.section(idx, 1));
+	}
+	template<typename T>
+	static void copyRange(const ampArray<T>& a, std::vector<T>& dest, const int32 start, const int32 end)
+	{
+		if (const int32 size = end - start; size > 0)
+			Concurrency::copy(a.section(start, size), dest.data() + start);
 	}
 
 	template<typename T>
@@ -153,12 +182,34 @@ namespace amp
 		});
 	}
 	template <typename T>
+	static void fill(ampArray2D<T>& a, const T& value, int32 sizeY = 0, int32 sizeX = 0)
+	{
+		const ampExtent2D e(sizeY ? sizeY : a.extent[0], sizeX ? sizeX : a.extent[1]);
+		Concurrency::parallel_for_each(e, [=, &a](ampIdx2D idx) restrict(amp)
+		{
+			a[idx] = value;
+		});
+	}
+	template <typename T>
 	static void fill(ampArrayView<T>& av, const T& value)
 	{
 		Concurrency::parallel_for_each(av.extent, [=](ampIdx idx) restrict(amp)
 		{
 			av[idx] = value;
 		});
+	}
+
+	template <typename T>
+	static void destroy(ampArray<T>& a)
+	{
+		a = ampArray<T>(1, a.accelerator_view);
+		a.~array();
+	}
+	template <typename T>
+	static void destroy(ampArray2D<T>& a)
+	{
+		a = ampArray2D<T>(1, 1, a.accelerator_view);
+		a.~array();
 	}
 	
 	template <typename T>
@@ -177,6 +228,26 @@ namespace amp
 			a = ampArray<T>(size, a.accelerator_view);
 	}
 	template <typename T>
+	static void resize(ampArray2D<T>& a, const int32 size, const int32 copyCnt = 0)
+	{
+		if (copyCnt)
+		{
+			ampArray2D<T> newA(size, a.extent[1], a.accelerator_view);
+			if (copyCnt == a.extent[0])
+				copy(a, newA);
+			else
+				a.section(0, 0, copyCnt, a.extent[1]).copy_to(newA.section(0, 0, copyCnt, a.extent[1]));
+			a = newA;
+		}
+		else
+			a = ampArray2D<T>(size, a.extent[1], a.accelerator_view);
+	}
+	template <typename T>
+	static void resize2ndDim(ampArray2D<T>& a, const int32 size)
+	{
+		a = ampArray2D<T>(a.extent[0], size, a.accelerator_view);
+	}
+	template <typename T>
 	static void resizeStaging(ampArray<T>& a, const int32 size)
 	{
 		a = ampArray<T>(size, a.accelerator_view, a.associated_accelerator_view);
@@ -193,17 +264,30 @@ namespace amp
 		});
 	}
 	template <int T1, int T2, typename F>
-	static void forEach2D(const int32 cnt1, const int32 cnt2, const F& function)
+	static void forEach2D(const int32 cntY, const int32 cntX, const F& function)
 	{
-		if (!cnt1 || !cnt2) return;
-		Concurrency::parallel_for_each(ampExtent2D(cnt1, cnt2).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
+		if (!cntY || !cntX) return;
+		Concurrency::parallel_for_each(ampExtent2D(cntY, cntX).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
 		{
 			const ampIdx2D idx = tIdx.global;
 			const int32 i1 = idx[0];
 			const int32 i2 = idx[1];
-			if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cnt1 && i2 < cnt2)
+			if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cntY && i2 < cntX)
 				function(i1, i2);
 		});
+	}
+	template <int T1, int T2, typename F>
+	static void forEach2DTiled(const int32 cntY, const int32 cntX, const F& function)
+	{
+		if (!cntY || !cntX) return;
+		Concurrency::parallel_for_each(ampExtent2D(cntY, cntX).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
+			{
+				const ampIdx2D idx = tIdx.global;
+				const int32 i1 = idx[0];
+				const int32 i2 = idx[1];
+				if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cntY && i2 < cntX)
+					function(tIdx);
+			});
 	}
 	template<typename F>
 	static void forEach(const int32 start, const int32 end, const F& function)
@@ -543,6 +627,20 @@ namespace amp
 		}
 	}
 
+	static void uninitialize()
+	{
+		concurrency::amp_uninitialize();
+	}
+
+	inline uint32 atomicAdd(uint32& dest, const uint32 add) restrict(amp)
+	{
+		return Concurrency::atomic_fetch_add(&dest, add);
+	}
+	inline int32 atomicAdd(int32& dest, const int32 add) restrict(amp)
+	{
+		return Concurrency::atomic_fetch_add(&dest, add);
+	}
+
 	inline void atomicAdd(float32& dest, const float32 add) restrict(amp)
 	{
 		float32 expected = dest;
@@ -588,6 +686,12 @@ namespace amp
 		atomicSub(dest.x, sub.x);
 		atomicSub(dest.y, sub.y);
 		atomicSub(dest.z, sub.z);
+	}
+
+	inline bool atomicAddFlag(uint32& dest, const uint32 flag) restrict(amp)
+	{
+		if (dest & flag) return false;
+		return Concurrency::atomic_compare_exchange(&dest, &dest, dest | flag);
 	}
 };
 

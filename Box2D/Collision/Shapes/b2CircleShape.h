@@ -118,6 +118,13 @@ struct AmpCircleShape
 		}
 		return false;
 	}
+
+	bool TestPoint(const b2Transform& xf, const b2Vec3& p) const restrict(amp)
+	{
+		b2Vec2 center = xf.p + b2Mul(xf.q, m_p);
+		b2Vec2 d = p - center;
+		return b2Dot(d, d) <= m_radius * m_radius;
+	}
 };
 
 inline b2CircleShape::b2CircleShape()

@@ -80,11 +80,19 @@ inline float32 b2InvSqrt(float32 x) restrict(amp)
 #define	ampCos(x)	concurrency::fast_math::cosf(x)
 #define	ampFloor(x)	concurrency::fast_math::floorf(x)
 
+struct b2Int2
+{
+	b2Int2() : y(0), x(0) {}
+	b2Int2() restrict(amp) : y(0), x(0) {}
+
+	int32 x, y;
+};
+
 /// A 2D column vector.
 struct b2Vec2
 {
 	/// Default constructor does nothing (for performance).
-	b2Vec2(): x(0), y(0) {}
+	b2Vec2() : x(0), y(0) {}
 	b2Vec2() restrict(amp) : x(0), y(0) {}
 
 	/// Construct using coordinates
@@ -437,6 +445,8 @@ struct b2Transform
 	/// Initialize using a position vector and a rotation.
 	b2Transform(const b2Vec2& position, const b2Rot& rotation) : p(position), q(rotation) {}
 	b2Transform(const b2Vec2& position, const b2Rot& rotation) restrict(amp) : p(position), q(rotation) {}
+	b2Transform(const b2Vec3& position, const b2Rot& rotation) : p(position), z(position.z), q(rotation) {}
+	b2Transform(const b2Vec3& position, const b2Rot& rotation) restrict(amp) : p(position), z(position.z), q(rotation) {}
 	b2Transform(float32 posX, float32 posY, const b2Rot& rotation) : p(b2Vec2(posX, posY)), q(rotation) {}
 	b2Transform(float32 posX, float32 posY, const b2Rot& rotation) restrict(amp) : p(b2Vec2(posX, posY)), q(rotation) {}
 
@@ -463,6 +473,7 @@ struct b2Transform
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
 	b2Vec2 p;
+	float32 z;
 	b2Rot q;
 };
 

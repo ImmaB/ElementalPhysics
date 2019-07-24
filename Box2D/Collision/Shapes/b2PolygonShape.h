@@ -218,6 +218,19 @@ struct AmpPolygonShape
 		}
 		return false;
 	}
+
+	bool TestPoint(const b2Transform& xf, const b2Vec3& p) const restrict(amp)
+	{
+		b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+
+		for (int32 i = 0; i < m_count; ++i)
+		{
+			float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
+			if (dot > 0.0f)
+				return false;
+		}
+		return true;
+	}
 };
 
 inline b2PolygonShape::b2PolygonShape()

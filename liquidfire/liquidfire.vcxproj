@@ -22,7 +22,7 @@
     <ProjectGuid>{C463B94E-C3E7-4E83-A8C5-EF827F959285}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>liquidfire</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ProjectName>liquidfire</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -51,7 +51,7 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
-    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -74,27 +74,31 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>$(SolutionDir);$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
-    <IncludePath>$(SolutionDir);C:\Program Files (x86)\Windows Kits\10\Include\10.0.17134.0\ucrt;$(IncludePath)</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
+    <IncludePath>$(SolutionDir);$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <LinkIncremental>false</LinkIncremental>
+    <LinkIncremental>
+    </LinkIncremental>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir);$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
-    <IncludePath>$(SolutionDir);C:\Program Files (x86)\Windows Kits\10\Include\10.0.15063.0\ucrt;$(IncludePath)</IncludePath>
+    <LinkIncremental>
+    </LinkIncremental>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
+    <IncludePath>$(SolutionDir);$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;LIQUIDFUNDLL_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -102,36 +106,41 @@
       <AdditionalIncludeDirectories>
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <OmitFramePointers />
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <MinimalRebuild>true</MinimalRebuild>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>NotSet</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>
-      </AdditionalDependencies>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
-      <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;AD_RELEASE;LIQUIDFUNDLL_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;AD_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <FunctionLevelLinking>
+      </FunctionLevelLinking>
       <AdditionalIncludeDirectories>
       </AdditionalIncludeDirectories>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FloatingPointModel>Precise</FloatingPointModel>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
-      <OpenMPSupport>true</OpenMPSupport>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -149,8 +158,8 @@
       </PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;LIQUIDFUNDLL_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -158,6 +167,7 @@
       </AdditionalIncludeDirectories>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -172,12 +182,11 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;LIQUIDFUNDLL_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -185,8 +194,13 @@
       </AdditionalIncludeDirectories>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <FloatingPointModel>Precise</FloatingPointModel>
-      <OpenMPSupport>true</OpenMPSupport>
+      <OpenMPSupport>
+      </OpenMPSupport>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <OmitFramePointers>
+      </OmitFramePointers>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -194,8 +208,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>
-      </AdditionalDependencies>
+      <AdditionalDependencies>D3D11.lib;D3D12.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -236,6 +249,7 @@
     <ClCompile Include="..\Box2D\Dynamics\Contacts\b2EdgeAndPolygonContact.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Contacts\b2PolygonAndCircleContact.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Contacts\b2PolygonContact.cpp" />
+    <ClCompile Include="..\Box2D\Dynamics\Ground.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2DistanceJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2FrictionJoint.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\Joints\b2GearJoint.cpp" />
@@ -299,6 +313,7 @@
     <ClInclude Include="..\Box2D\Dynamics\Contacts\b2EdgeAndPolygonContact.h" />
     <ClInclude Include="..\Box2D\Dynamics\Contacts\b2PolygonAndCircleContact.h" />
     <ClInclude Include="..\Box2D\Dynamics\Contacts\b2PolygonContact.h" />
+    <ClInclude Include="..\Box2D\Dynamics\Ground.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2DistanceJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2FrictionJoint.h" />
     <ClInclude Include="..\Box2D\Dynamics\Joints\b2GearJoint.h" />

@@ -35,14 +35,15 @@
 #include <Box2D/Common/b2Timer.h>
 #include <new>
 
-b2World::b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperHeightLimit, bool deleteOutsideLimit)
-	: m_contactManager(*this), m_ampBodyMaterials(TILE_SIZE, amp::getGpuAccelView())
+b2World::b2World() :
+	m_contactManager(*this),
+	m_ampBodyMaterials(16, amp::getGpuAccelView())
 {
 	m_destructionListener = NULL;
 	m_debugDraw = NULL;
 
 	m_jointList = NULL;
-	m_particleSystemList = NULL;
+	m_particleSystem = NULL;
 
 	m_jointCount = 0;
 
@@ -53,11 +54,6 @@ b2World::b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperH
 	m_stepComplete = true;
 
 	m_allowSleep = true;
-	m_gravity = gravity;
-
-	m_lowerHeightLimit = lowerHeightLimit;
-	m_upperHeightLimit = upperHeightLimit;
-	m_deleteOutsideLimit = deleteOutsideLimit;
 
 	m_flags = e_clearForces;
 
@@ -67,6 +63,8 @@ b2World::b2World(const b2Vec2& gravity, float32 lowerHeightLimit, float32 upperH
 
 	m_liquidFunVersion = &b2_liquidFunVersion;
 	m_liquidFunVersionString = b2_liquidFunVersionString;
+
+	m_allBodyMaterialFlags = 0;
 
 	memset(&m_profile, 0, sizeof(b2Profile));
 }
@@ -91,10 +89,9 @@ b2World::~b2World()
 		}
 	}
 
-	while (m_particleSystemList)
-	{
-		DestroyParticleSystem(m_particleSystemList);
-	}
+	m_ground->~Ground();
+	free(m_ground);
+	DestroyParticleSystem();
 
 	// Even though the block allocator frees them for us, for safety,
 	// we should ensure that all buffers have been freed.
@@ -179,6 +176,13 @@ void b2World::DestroyBody(int32 idx)
 	
 	RemoveFromBuffers(idx, m_bodyBuffer, m_bodyContactListBuffer, m_bodyFixtureIdxsBuffer, m_bodyFreeFixtureIdxsBuffer, m_bodyJointListBuffer, m_freeBodyIdxs);
 	b.m_idx = b2_invalidIndex;
+}
+
+
+Ground* b2World::CreateGround(const Ground::def& gd)
+{
+	m_ground = new Ground(*this, gd);
+	return m_ground;
 }
 
 b2Joint* b2World::CreateJoint(const b2JointDef* def)
@@ -310,41 +314,22 @@ void b2World::DestroyJoint(b2Joint* j)
 	}
 }
 
-b2ParticleSystem* b2World::CreateParticleSystem(const b2ParticleSystemDef& def)
+b2ParticleSystem* b2World::CreateParticleSystem()
 {
 	b2Assert(!IsLocked());
 	if (IsLocked()) return NULL;
 
-	void* mem = m_blockAllocator.Allocate(sizeof(b2ParticleSystem));
-	b2ParticleSystem* p = new (mem) b2ParticleSystem(def, *this, m_bodyBuffer, m_fixtureBuffer);
-
-	// Add to world doubly linked list.
-	p->m_prev = NULL;
-	p->m_next = m_particleSystemList;
-	if (m_particleSystemList)
-		m_particleSystemList->m_prev = p;
-	m_particleSystemList = p;
-
-	return p;
+	m_particleSystem = new b2ParticleSystem(*this, m_bodyBuffer, m_fixtureBuffer);
+	return m_particleSystem;
 }
 
-void b2World::DestroyParticleSystem(b2ParticleSystem* p)
+void b2World::DestroyParticleSystem()
 {
-	b2Assert(m_particleSystemList != NULL);
-	b2Assert(!IsLocked());
-	if (IsLocked())
+	if (IsLocked() || m_particleSystem == NULL)
 		return;
-
-	// Remove world particleSystem list.
-	if (p->m_prev)
-		p->m_prev->m_next = p->m_next;
-	if (p->m_next)
-		p->m_next->m_prev = p->m_prev;
-	if (p == m_particleSystemList)
-		m_particleSystemList = p->m_next;
-
-	p->~b2ParticleSystem();
-	m_blockAllocator.Free(p, sizeof(b2ParticleSystem));
+	m_particleSystem->~b2ParticleSystem();
+	free(m_particleSystem);
+	m_particleSystem = NULL;
 }
 
 //
@@ -359,7 +344,6 @@ void b2World::SetAllowSleeping(bool flag)
 			if (b.m_idx != b2_invalidIndex)
 				b.SetAwake(true);
 }
-
 
 // Find islands, integrate and solve constraints, solve position constraints
 void b2World::Solve(const b2TimeStep& step)
@@ -839,10 +823,7 @@ void b2World::SetStepParams(float32 dt,
 	m_step.particleIterations = particleIterations;
 
 	// Set Particle System m_step
-	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-	{
-		p->SetStep(m_step);
-	}
+	m_particleSystem->SetStep(m_step);
 }
 
 void b2World::StepPreParticle()
@@ -910,13 +891,7 @@ void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 		b2FixtureProxy* proxy = m_contactManager.m_broadPhase.GetUserData(proxyId);
 		return callback->ReportFixture(proxy->fixtureIdx);
 	});
-	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-	{
-		if (callback->ShouldQueryParticleSystem(p))
-		{
-			p->QueryAABB(callback, aabb);
-		}
-	}
+	m_particleSystem->QueryAABB(callback, aabb);
 }
 
 void b2World::QueryShapeAABB(b2QueryCallback* callback, const b2Shape& shape,
@@ -963,9 +938,7 @@ void b2World::RayCast(b2RayCastCallback& callback, const b2Vec2& point1, const b
 	input.p1 = point1;
 	input.p2 = point2;
 	m_contactManager.m_broadPhase.RayCast(wrapper, input);
-	for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-		if (callback.ShouldQueryParticleSystem(p))
-			p->RayCast(callback, point1, point2);
+	m_particleSystem->RayCast(callback, point1, point2);
 }
 
 void b2World::DrawShape(Fixture& fixture, const b2Transform& xf, const b2Color& color)
@@ -1119,8 +1092,7 @@ void b2World::DrawDebugData()
 	}
 
 	if (flags & b2Draw::e_particleBit)
-		for (b2ParticleSystem* p = m_particleSystemList; p; p = p->GetNext())
-			DrawParticleSystem(*p);
+		DrawParticleSystem(*m_particleSystem);
 
 	if (flags & b2Draw::e_jointBit)
 		for (b2Joint* j = m_jointList; j; j = j->GetNext())
@@ -1193,18 +1165,15 @@ void b2World::DrawDebugData()
 static float32 GetSmallestRadius(const b2World* world)
 {
 	float32 smallestRadius = b2_maxFloat;
-	for (const b2ParticleSystem* system = world->GetParticleSystemList();
-		 system != NULL;
-		 system = system->GetNext())
-	{
+	auto system = world->GetParticleSystem();
+	if (system != nullptr)
 		smallestRadius = b2Min(smallestRadius, system->GetRadius());
-	}
 	return smallestRadius;
 }
 
 int b2World::CalculateReasonableParticleIterations(float32 timeStep) const
 {
-	if (m_particleSystemList == NULL)
+	if (m_particleSystem == NULL)
 		return 1;
 
 	// Use the smallest radius, since that represents the worst-case.
@@ -1259,8 +1228,22 @@ void b2World::ShiftOrigin(const b2Vec2& newOrigin)
 	m_contactManager.m_broadPhase.ShiftOrigin(newOrigin);
 }
 
-int32 b2World::AddBodyMaterial(b2BodyMaterialDef def)
+int32 b2World::CreateBodyMaterial(b2BodyMaterialDef def)
 {
+	// Try finding duplicat first
+	for (int idx = 0; idx < m_bodyMaterials.size(); idx++)
+		if (const b2BodyMaterial& bm = m_bodyMaterials[idx];
+			def.matFlags == bm.m_matFlags &&
+			def.density == bm.m_density &&
+			def.friction == bm.m_friction &&
+			def.bounciness == bm.m_bounciness &&
+			def.stability == bm.m_stability &&
+			def.extinguishingPoint == bm.m_extinguishingPoint &&
+			def.meltingPoint == bm.m_meltingPoint &&
+			def.ignitionPoint == bm.m_ignitionPoint &&
+			def.heatConductivity == bm.m_heatConductivity)
+			return idx;
+
 	const int32 idx = m_bodyMaterials.size();
 	b2BodyMaterial newMat(def);
 	m_bodyMaterials.push_back(newMat);
@@ -1268,7 +1251,7 @@ int32 b2World::AddBodyMaterial(b2BodyMaterialDef def)
 	if (m_ampBodyMaterials.extent[0] <= idx) amp::resize(m_ampBodyMaterials, m_ampBodyMaterials.extent[0] * 2, m_ampBodyMaterials.extent[0]);
 	amp::copy(newMat, m_ampBodyMaterials, idx);
 	
-	m_allMaterialFlags |= def.matFlags;
+	m_allBodyMaterialFlags |= def.matFlags;
 
 	return idx;
 }
@@ -1427,7 +1410,7 @@ int32 b2World::CreateFixture(b2FixtureDef& def)
 	Body& b = m_bodyBuffer[def.bodyIdx];
 	idxInBody = InsertIntoBuffer(idx, m_bodyFixtureIdxsBuffer[b.m_idx], m_bodyFreeFixtureIdxsBuffer[b.m_idx]);
 
-	f.Set(def, idxInBody);
+	f.Set(def, idxInBody, m_bodyMaterials[b.m_matIdx]);
 
 
 	// Reserve proxy space
@@ -1513,15 +1496,14 @@ void b2World::DestroyFixture(Body& b, int32 fIdx)
 	RemoveFromBuffers(fIdx, m_fixtureBuffer, m_fixtureProxiesBuffer, m_freeFixtureIdxs);
 }
 
-void b2World::SetTransform(Body& b, const b2Vec2& position, float32 angle)
+void b2World::SetTransform(Body& b, const b2Transform& transform)
 {
-	b2Assert(!IsLocked());
 	if (IsLocked()) return;
 
-	b.m_xf.q.Set(angle);
-	b.m_xf.p = position;
+	b.m_xf = transform;
 	b.m_xf0 = b.m_xf;
 
+	const float32 angle = transform.q.GetAngle();
 	b.m_sweep.c = b2Mul(b.m_xf, b.m_sweep.localCenter);
 	b.m_sweep.a = angle;
 
@@ -1716,9 +1698,17 @@ b2MassData b2World::GetMassData(const Fixture& f) const
 	return GetShape(f).ComputeMass(f.m_density);
 }
 
-const b2AABB& b2World::GetAABB(const Fixture& f, int32 childIndex) const
+const b2AABB& b2World::GetAABB(const Fixture& f, int32 childIdx) const
 {	
-	return m_fixtureProxiesBuffer[f.m_idx][childIndex].aabb;
+	return m_fixtureProxiesBuffer[f.m_idx][childIdx].aabb;
+}
+const b2AABB b2World::GetAABB(const Fixture& f) const
+{
+	b2AABB aabb;
+	const int32 childCnt = GetShape(f).GetChildCount();
+	for (int32 childIdx = 0; childIdx < childCnt; childIdx++)
+		aabb.Combine(GetAABB(f, childIdx));
+	return aabb;
 }
 
 void b2World::SetSensor(Fixture& f, bool sensor)

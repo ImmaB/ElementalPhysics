@@ -53,7 +53,7 @@ struct b2BodyMaterial
 	uint32 m_matFlags;
 	float32 m_density;
 	float32 m_friction;
-	float32 m_bounciness;
+	float32 m_bounciness;	// same as restitution
 	float32 m_stability;
 	float32 m_invStability;
 	float32 m_extinguishingPoint;
@@ -79,3 +79,4 @@ inline b2BodyMaterial::b2BodyMaterial(b2BodyMaterialDef def)
 
 inline b2BodyMaterial::~b2BodyMaterial()
 {}
+

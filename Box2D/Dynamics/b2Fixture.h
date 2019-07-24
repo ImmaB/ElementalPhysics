@@ -142,7 +142,7 @@ struct Fixture
 	}
 
 
-	void Set(const b2FixtureDef& def, const int32 idxInBody);
+	void Set(const b2FixtureDef& def, const int32 idxInBody, const b2BodyMaterial& mat);
 
 	/// Set the density of this fixture. This will _not_ automatically adjust the mass
 	/// of the body. You must call b2Body::ResetMassData to update the body's mass.

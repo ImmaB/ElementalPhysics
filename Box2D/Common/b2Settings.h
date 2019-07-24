@@ -53,10 +53,15 @@ typedef unsigned int uint32;
 typedef float float32;
 typedef double float64;
 
+
+// AMP
 #define TILE_SIZE_DOUBLE 512
-#define TILE_SIZE 256
+#define TILE_SIZE 256	// Number of Threads in one Tile on the GPU. Must be power of 2. C++ AMP Optimum is 256
 #define TILE_SIZE_HALF 128
 #define TILE_SIZE_QUARTER 64
+#define TILE_SIZE_SQRT 16
+
+#define MAX_CONTACTS_PER_PARTICLE 8
 
 template <typename T>
 using ampArrayView = Concurrency::array_view<T>;

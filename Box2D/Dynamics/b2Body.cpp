@@ -42,15 +42,14 @@ void Body::Set(const b2BodyDef def)
 	if (def.active)
 		m_flags |= b2_activeBody;
 
-	m_xf.p = def.position;
-	m_xf.q.Set(def.angle);
+	m_xf = def.transform;
 	m_xf0 = m_xf;
 
 	m_sweep.localCenter.SetZero();
 	m_sweep.c0 = m_xf.p;
 	m_sweep.c = m_xf.p;
-	m_sweep.a0 = def.angle;
-	m_sweep.a = def.angle;
+	m_sweep.a0 = def.transform.q.GetAngle();
+	m_sweep.a = m_sweep.a0;
 	m_sweep.alpha0 = 0.0f;
 
 	m_linearVelocity = def.linearVelocity;

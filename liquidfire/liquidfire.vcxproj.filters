@@ -240,6 +240,9 @@
     <ClCompile Include="..\Interface.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="..\Box2D\Dynamics\Ground.cpp">
+      <Filter>Quelldateien\Dynamics</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Box2D\Collision\Shapes\b2PolygonShape.h">
@@ -430,6 +433,9 @@
     </ClInclude>
     <ClInclude Include="..\Box2D\Amp\ampAlgorithms.h">
       <Filter>Headerdateien\Amp</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Box2D\Dynamics\Ground.h">
+      <Filter>Headerdateien\Dynamics</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
