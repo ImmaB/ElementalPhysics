@@ -93,12 +93,15 @@ public:
 	vector<Tile> m_changedTiles;
 
 	float32 m_stride;
-	int32 m_sizeX;
 	int32 m_sizeY;
+	int32 m_sizeX;
 	int32 m_size;
+	int32 m_chunkCntY;
+	int32 m_chunkCntX;
+	int32 m_chunkCnt;
 	vector<Tile> m_tiles;
 	ampArray<Tile> m_ampTiles;
-	ampArray2D<int32> m_ampTilesTileHasChange;
+	ampArray<int32> m_ampChunkHasChange;
 	ampArray<int32> m_ampTilesChangedIdxs;
 
 	vector<Material> m_materials;

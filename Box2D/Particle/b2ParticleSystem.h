@@ -107,6 +107,21 @@ struct b2PartBodyContact
 	float32 mass;
 };
 
+struct b2PartGroundContact
+{
+	int32 groundTileIdx;
+	int32 groundChunkIdx;
+	int32 groundMatIdx;
+	float32 weight;
+	b2Vec3 normal;
+	float32 mass;
+
+	void setInvalid() { groundTileIdx = b2_invalidIndex; }
+	void setInvalid() restrict(amp) { groundTileIdx = b2_invalidIndex; }
+	bool getValid() const { return groundTileIdx != b2_invalidIndex; }
+	bool getValid() const restrict(amp) { return groundTileIdx != b2_invalidIndex; }
+};
+
 /// Connection between two particles
 struct b2ParticlePair
 {
@@ -283,7 +298,7 @@ class b2ParticleSystem
 {
 private:
 	int32 m_iteration;
-	b2TimeStep m_step;
+	b2TimeStep& m_step;
 	b2TimeStep m_subStep;
 
 	HANDLE findBodyContactsThread;
@@ -293,15 +308,11 @@ public:
 	int MyIndex;
 	void SetIndex(int ind);
 
-	void SetStep(b2TimeStep step)
-	{
-		m_step = step;
-	}
-
 	bool ShouldSolve();
 	void SolveInit();
 
 	void InitStep();
+	void SortProxies();
 	void UpdateContacts(bool exceptZombie);
 	void ComputeDepth();
 	void UpdatePairsAndTriadsWithReactiveParticles();
@@ -314,7 +325,7 @@ public:
 	void SolveRepulsive();
 	void SolvePowder();
 	void WaitForComputeWeight();
-	void SolveTensile(); //needs weight
+	void SolveTensile();			// Needs: weight
 	void SolveSolid();
 	void SolveGravity();
 	void SolveStaticPressure();
@@ -327,11 +338,11 @@ public:
 	void SolveRigidDamping();
 	void SolveBarrier();
 	void SolveCollision();
-	void SolveGroundCollision();
 	void SolveRigid();
 	void SolveWall();
 	void CopyVelocities();
 	void SolveAir();
+	void SolveWater();				// Needs: Flags		| Modifies: Flags
 
 	// Burning and Heat
 	void SolveFlame();
@@ -940,7 +951,7 @@ private:
 	static const int32 k_extraDampingFlags =
 		b2_staticPressureParticle;
 
-	b2ParticleSystem(b2World& world, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer);
+	b2ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer);
 	~b2ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
@@ -966,6 +977,8 @@ private:
 	template<typename F> void AmpForEachContact(const F& function) const;
 	template<typename F> void AmpForEachContactShuffled(const F& function) const;
 	template<typename F> void AmpForEachBodyContact(const F& function) const;
+	template<typename F> void AmpForEachGroundContact(const F& function) const;
+	template<typename F> void AmpForEachGroundContact(const uint32 filterFlag, const F& function) const;
 	template<typename F> void AmpForEachPair(F& function) const;
 	template<typename F> void AmpForEachTriad(F& function) const;
 
@@ -1043,10 +1056,6 @@ private:
 	bool b2ParticleSystem::ShouldCollide(int32 i, const Fixture& f) const;
 	void FindContacts();
 	void AmpFindContacts(bool exceptZombie);
-	void UpdateProxies();
-	void AmpUpdateProxies();
-	void SortProxies();
-	void AmpSortProxies();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
 	template<class T1, class T2>
@@ -1061,12 +1070,13 @@ private:
 	void UpdateBodyContacts();
 	void AmpUpdateBodyContacts();
 
+	void AmpUpdateGroundContacts();
+
 	//void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
 	//void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
 
 	void SolveSlowDown(const b2TimeStep& step);
 	void SolveColorMixing();
-	void SolveWater();
 	void SolveFreeze();
 	void SolveZombie();
 	void AmpSolveZombie();
@@ -1208,6 +1218,7 @@ private:
 	bool m_hasDepth;
 	float32 m_inverseDensity;
 	float32 m_particleDiameter;
+	float32 m_particleRadius;
 	float32 m_inverseDiameter;
 	float32 m_squaredDiameter;
 
@@ -1367,7 +1378,7 @@ private:
 	vector<b2PartBodyContact> m_bodyContactBuf;
 	ampArray<b2ParticleContact> m_ampContacts;
 	ampArray<b2PartBodyContact> m_ampBodyContacts;
-	// Concurrency::array<b2PartBodyContact> m_ampBodyContacts;
+	ampArray<b2PartGroundContact> m_ampGroundContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
@@ -1567,6 +1578,7 @@ inline void b2ParticleSystem::SetAccelerate(bool accelerate)
 
 inline void b2ParticleSystem::SetRadius(float32 radius)
 {
+	m_particleRadius = radius;
 	m_particleDiameter = 2 * radius;
 	m_squaredDiameter = m_particleDiameter * m_particleDiameter;
 	m_inverseDiameter = 1 / m_particleDiameter;

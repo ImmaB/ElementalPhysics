@@ -319,7 +319,7 @@ b2ParticleSystem* b2World::CreateParticleSystem()
 	b2Assert(!IsLocked());
 	if (IsLocked()) return NULL;
 
-	m_particleSystem = new b2ParticleSystem(*this, m_bodyBuffer, m_fixtureBuffer);
+	m_particleSystem = new b2ParticleSystem(*this, m_step, m_bodyBuffer, m_fixtureBuffer);
 	return m_particleSystem;
 }
 
@@ -821,9 +821,6 @@ void b2World::SetStepParams(float32 dt,
 	m_step.velocityIterations = velocityIterations;
 	m_step.positionIterations = positionIterations;
 	m_step.particleIterations = particleIterations;
-
-	// Set Particle System m_step
-	m_particleSystem->SetStep(m_step);
 }
 
 void b2World::StepPreParticle()

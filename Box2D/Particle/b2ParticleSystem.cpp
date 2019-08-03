@@ -394,7 +394,7 @@ int32 b2ParticleSystem::InsideBoundsEnumerator::GetNext()
 	return b2_invalidIndex;
 }
 
-b2ParticleSystem::b2ParticleSystem(b2World& world, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer) :
+b2ParticleSystem::b2ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer) :
 	m_handleAllocator(b2_minParticleBufferCapacity),
 	m_ampGroups(1, m_gpuAccelView),
 
@@ -409,6 +409,7 @@ b2ParticleSystem::b2ParticleSystem(b2World& world, vector<Body>& bodyBuffer, vec
 	// Contacts
 	m_ampContacts(TILE_SIZE, m_gpuAccelView),
 	m_ampBodyContacts(TILE_SIZE, m_gpuAccelView),
+	m_ampGroundContacts(TILE_SIZE, m_gpuAccelView),
 
 	m_ampProxies(TILE_SIZE, m_gpuAccelView),
 	m_localContactCnts(TILE_SIZE, m_gpuAccelView),
@@ -452,7 +453,8 @@ b2ParticleSystem::b2ParticleSystem(b2World& world, vector<Body>& bodyBuffer, vec
 	m_ampPairs(TILE_SIZE, m_gpuAccelView),
 	m_ampTriads(TILE_SIZE, m_gpuAccelView),
 
-	m_world(world)
+	m_world(world),
+	m_step(step)
 {
 	m_paused = false;
 	m_timestamp = 0;
@@ -675,6 +677,30 @@ inline void b2ParticleSystem::AmpForEachBodyContact(const F& function) const
 	});
 }
 template<typename F>
+inline void b2ParticleSystem::AmpForEachGroundContact(const F& function) const
+{
+	auto& groundContacts = m_ampGroundContacts;
+	amp::forEach(m_count, [=, &groundContacts](const int32 i) restrict(amp)
+	{
+		const b2PartGroundContact& contact = groundContacts[i];
+		if (!contact.getValid()) return;
+		function(i, contact);
+	});
+}
+template<typename F>
+inline void b2ParticleSystem::AmpForEachGroundContact(const uint32 filterFlag, const F& function) const
+{
+	auto& groundContacts = m_ampGroundContacts;
+	auto& flags = m_ampFlags;
+	amp::forEach(m_count, [=, &groundContacts, &flags](const int32 i) restrict(amp)
+	{
+		if (!(flags[i] & filterFlag)) return;
+		const b2PartGroundContact& contact = groundContacts[i];
+		if (!contact.getValid()) return;
+		function(i, contact);
+	});
+}
+template<typename F>
 inline void b2ParticleSystem::AmpForEachPair(F& function) const
 {
 	amp::forEach(m_pairCount, [=](const int32 i) restrict(amp)
@@ -798,6 +824,8 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 	amp::resize(m_localBodyContactCnts, m_capacity);
 	amp::resize(m_localBodyContacts, m_capacity);
 
+	amp::resize(m_ampGroundContacts, m_capacity);
+
 	//m_findContactCountBuf.resize(m_capacity);
 	//m_findContactIdxABuf.resize(m_capacity);
 	//m_findContactIdxBBuf.resize(m_capacity);
@@ -807,6 +835,7 @@ void b2ParticleSystem::ResizeParticleBuffers(int32 size)
 
 	m_expireTimeBuf.resize(m_capacity); 
 	m_idxByExpireTimeBuf.resize(m_capacity);
+
 }
 
 void b2ParticleSystem::ResizeGroupBuffers(int32 size)
@@ -2008,6 +2037,10 @@ void b2ParticleSystem::ComputeWeight()
 				float32 w = contact.weight;
 				amp::atomicAdd(weights[a], w);
 			});
+			AmpForEachGroundContact([=, &weights](int32 a, const b2PartGroundContact& contact) restrict(amp)
+			{
+				weights[a] += contact.weight;
+			});
 			AmpForEachContactShuffled([=, &weights](const b2ParticleContact& contact) restrict(amp)
 			{
 				const int32 a = contact.idxA;
@@ -2739,41 +2772,36 @@ void b2ParticleSystem::NotifyContactListenerPostContact(
 	}*/
 }
 
-void b2ParticleSystem::UpdateProxies()
-{
-	for (int i = 0; i < m_count; i++)
-	{
-		const b2Vec3& pos = m_positionBuffer[i];
-		m_proxyBuffer[i] = Proxy(i, computeTag(m_inverseDiameter * pos.x, m_inverseDiameter * pos.y));
-	}
-}
-void b2ParticleSystem::AmpUpdateProxies()
-{
-	const float32 invDiameter = m_inverseDiameter;
-	auto& proxies = m_ampProxies;
-	auto& positions = m_ampPositions;
-	AmpForEachParticle([=, &proxies, &positions](const int32 i) restrict(amp)
-	{
-		const b2Vec3& pos = positions[i];
-		proxies[i] = Proxy(i, computeTag(invDiameter * pos.x, invDiameter * pos.y));
-	});
-}
-
-// Sort the proxy array by 'tag'. This orders the particles into rows that
-// run left-to-right, top-to-bottom. The rows are spaced m_particleDiameter
-// apart, such that a particle in one row can only collide with the rows
-// immediately above and below it. This ordering makes collision computation
-// tractable.
 void b2ParticleSystem::SortProxies()
 {
-	std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
-}
+	// Sort the proxy array by 'tag'. This orders the particles into rows that
+	// run left-to-right, top-to-bottom. The rows are spaced m_particleDiameter
+	// apart, such that a particle in one row can only collide with the rows
+	// immediately above and below it. This ordering makes collision computation
+	// tractable.
 
-void b2ParticleSystem::AmpSortProxies()
-{
-	amp::radixSort(m_ampProxies, m_count);
+	if (m_accelerate)
+	{
+		const float32 invDiameter = m_inverseDiameter;
+		auto& proxies = m_ampProxies;
+		auto& positions = m_ampPositions;
+		AmpForEachParticle([=, &proxies, &positions](const int32 i) restrict(amp)
+		{
+			const b2Vec3& pos = positions[i];
+			proxies[i] = Proxy(i, computeTag(invDiameter * pos.x, invDiameter * pos.y));
+		});
+		amp::radixSort(m_ampProxies, m_count);
+	}
+	else
+	{
+		for (int i = 0; i < m_count; i++)
+		{
+			const b2Vec3& pos = m_positionBuffer[i];
+			m_proxyBuffer[i] = Proxy(i, computeTag(m_inverseDiameter * pos.x, m_inverseDiameter * pos.y));
+		}
+		std::sort(m_proxyBuffer.data(), m_proxyBuffer.data() + m_count);
+	}
 }
-
 
 template<class T>
 void b2ParticleSystem::reorder(vector<T>& v, const vector<int32>& order) 
@@ -3457,6 +3485,50 @@ void b2ParticleSystem::AmpUpdateBodyContacts()
 	//amp::copy(m_bodyContactPartIdxs, m_ampBodyContactPartIdxs, m_bodyContactCount);
 }
 
+void b2ParticleSystem::AmpUpdateGroundContacts()
+{
+	const float32 invStride = 1.0f / m_world.m_ground->m_stride;
+	const float32 partRadius = m_particleRadius;
+	const float32 invDiameter = m_inverseDiameter;
+	const b2Vec3& vec3Up = b2Vec3_up;
+	const int32 txMax = m_world.m_ground->m_sizeX;
+	const int32 tyMax = m_world.m_ground->m_sizeY;
+	const int32 cxMax = m_world.m_ground->m_chunkCntX;
+	auto& groundContacts = m_ampGroundContacts;
+	auto& positions = m_ampPositions;
+	auto& matIdxs = m_ampMatIdxs;
+	auto& matMasses = m_ampMatMasses;
+	auto& groundTiles = m_world.m_ground->m_ampTiles;
+	auto& groundMats = m_world.m_ground->m_ampMaterials;
+	AmpForEachParticle([=, &groundContacts, &positions, &matIdxs,
+		&matMasses, &groundTiles, &groundMats](int32 i) restrict(amp)
+	{
+		const b2Vec3& p = positions[i];
+		int32 tx = p.x * invStride;
+		int32 ty = p.y * invStride;
+
+		b2PartGroundContact& contact = groundContacts[i];
+		if (tx < 0 || tx >= txMax || ty < 0 || ty >= tyMax)
+		{
+			contact.setInvalid();
+			return;
+		}
+		const Ground::Tile& groundTile = groundTiles[ty * txMax + tx];
+		const float32 d = p.z - groundTile.height;
+		if (d >= partRadius)
+		{
+			contact.setInvalid();
+			return;
+		}
+		contact.groundTileIdx = ty * txMax + tx;
+		contact.groundChunkIdx = (ty / TILE_SIZE_SQRT) * cxMax + (tx / TILE_SIZE_SQRT);
+		contact.groundMatIdx = groundTile.matIdx;
+		contact.weight = 1 - d * invDiameter;
+		contact.normal = vec3Up;
+		contact.mass = matMasses[matIdxs[i]];
+	});
+}
+
 void b2ParticleSystem::RemoveSpuriousBodyContacts()
 {
 	// At this point we have a list of contact candidates based on AABB
@@ -3640,7 +3712,7 @@ void b2ParticleSystem::SolveCollision()
 			const b2Vec2& ap = positions[a];
 			const Body& body = bodies[fixture.m_bodyIdx];
 		
-			b2Vec3& av = velocities[a];
+			const b2Vec3 av = velocities[a];
 			b2RayCastOutput output;
 			b2RayCastInput input;
 			if (iteration == 0)
@@ -3673,11 +3745,42 @@ void b2ParticleSystem::SolveCollision()
 				output.fraction * input.p2 +
 				b2_linearSlop * n;
 			const b2Vec2 v = stepInvDt * (p - ap);
-			av.x = v.x;
-			av.y = v.y;
+			velocities[a] = b2Vec3(v, av.z);
 			const b2Vec2 f = stepInvDt *
 				matMasses[matIdxs[a]] * (b2Vec2(av) - v);
 			particleApplyForce(a, f);
+		});
+
+		const uint32 waterFlag = b2_waterParticle;
+		auto& groundTiles = m_world.m_ground->m_ampTiles;
+		auto& groundMats = m_world.m_ground->m_ampMaterials;
+		AmpForEachGroundContact([=, &velocities, &flags,
+			&groundTiles, &groundMats](const int32 i, const b2PartGroundContact& contact) restrict(amp)
+		{
+			Ground::Tile& gt = groundTiles[contact.groundTileIdx];
+			const Ground::Material& groundMat = groundMats[gt.matIdx];
+			b2Vec3& v = velocities[i];
+			if (flags[i] & waterFlag)
+			{
+				if (v.z < 0)
+					v.z = 0;
+			}
+			else
+			{
+				// Solve Bounciness
+				if (v.z < 0)
+					v.z *= -1 * groundMat.bounciness;
+
+				// Solve Friction
+				b2Vec3& v = velocities[i];
+				if (groundMat.friction)
+				{
+					const float32 frictionFactor = 1 - groundMat.friction;
+					v.x *= frictionFactor;
+					v.y *= frictionFactor;
+				}
+			}
+
 		});
 	}
 	else
@@ -3763,67 +3866,6 @@ void b2ParticleSystem::SolveCollision()
 		} callback(m_world, *this, step, GetFixtureContactFilter());
 		m_world.QueryAABB(&callback, aabb);
 	}
-}
-
-void b2ParticleSystem::SolveGroundCollision()
-{
-	if (m_accelerate)
-	{
-		const uint32 waterFlag = b2_waterParticle;
-		const uint32 zombieFlag = b2_zombieParticle;
-		const int32 txMax = m_world.m_ground->m_sizeX;
-		const int32 tyMax = m_world.m_ground->m_sizeY;
-		const float32 invStride = 1.0f / m_world.m_ground->m_stride;
-		const float32 partRadius = GetRadius();
-		auto& positions = m_ampPositions;
-		auto& velocities = m_ampVelocities;
-		auto& flags = m_ampFlags;
-		auto& groundTiles = m_world.m_ground->m_ampTiles;
-		auto& groundTilesTileHasChange = m_world.m_ground->m_ampTilesTileHasChange;
-		auto& groundMats = m_world.m_ground->m_ampMaterials;
-		AmpForEachParticle([=, &positions, &velocities, &flags,
-			&groundTiles, &groundTilesTileHasChange, &groundMats](const int32 i) restrict(amp)
-		{
-			b2Vec3& p = positions[i];
-			int32 tx = p.x * invStride;
-			int32 ty = p.y * invStride;
-			if (tx < 0 || tx >= txMax || ty < 0 || ty >= tyMax) return;
-
-			Ground::Tile& gt = groundTiles[ty * txMax + tx];
-			const float32 height = gt.height + partRadius;
-			if (p.z > height) return;
-			p.z = height;
-			const Ground::Material& groundMat = groundMats[gt.matIdx];
-			if (uint32& f = flags[i]; f & waterFlag)
-			{
-				if (!groundMat.isWaterRepellent() && gt.atomicSetWet())
-				{
-					f |= zombieFlag;
-					groundTilesTileHasChange[ty / TILE_SIZE_SQRT][tx / TILE_SIZE_SQRT] = 1;
-				}
-				return;
-			}
-			// Solve Friction
-			b2Vec3& v = velocities[i];
-			if (groundMat.friction)
-			{
-				const float32 frictionFactor = 1 - groundMat.friction;
-				v.x *= frictionFactor;
-				v.y *= frictionFactor;
-			}
-
-			// Solve Bounciness
-			if (v.z < 0)
-				v.z *= -1 * groundMat.bounciness;
-		});
-	}
-	else
-	{
-
-	}
-	if (m_world.m_ground->m_allMaterialFlags & Ground::Material::Flags::waterRepellent &&
-		m_allParticleFlags & b2_waterParticle)
-		m_allParticleFlags |= b2_zombieParticle;
 }
 
 void b2ParticleSystem::SolveBarrier()
@@ -4269,15 +4311,12 @@ void b2ParticleSystem::UpdateContacts(bool exceptZombie)
 {
 	if (m_accelerate)
 	{
-		AmpUpdateProxies();
-		AmpSortProxies();
 		m_futureUpdateBodyContacts = std::async(launch::async, &b2ParticleSystem::AmpUpdateBodyContacts, this);
+		m_futureUpdateBodyContacts = std::async(launch::async, &b2ParticleSystem::AmpUpdateGroundContacts, this);
 		AmpFindContacts(exceptZombie);
 	}
 	else
 	{
-		UpdateProxies();
-		SortProxies();
 		FindContacts();
 		UpdateBodyContacts();
 		if (exceptZombie)
@@ -4541,7 +4580,7 @@ void b2ParticleSystem::SolvePressure()
 			});
 		}
 
-		// applies pressure between each particles in contact
+		// applies pressure between each particles in contact<
 		auto& velocities = m_ampVelocities;
 		auto& matMasses = m_ampMatMasses;
 		auto& matIdxs = m_ampMatIdxs;
@@ -4551,17 +4590,26 @@ void b2ParticleSystem::SolvePressure()
 		AmpForEachBodyContact([=, &bodies, &positions, &accumulations,
 			&velocities, &matIdxs, &matInvMasses](const b2PartBodyContact& contact) restrict(amp)
 		{
-			int32 a = contact.partIdx;
+			const int32 a = contact.partIdx;
 			Body& b = bodies(contact.bodyIdx);
-			float32 w = contact.weight;
-			float32 m = contact.mass;
-			b2Vec2 n = contact.normal;
-			b2Vec2 p = b2Vec2(positions[a]);
-			float32 h = accumulations[a] + pressurePerWeight * w;
-			b2Vec2 f = velocityPerPressure * w * m * h * n;
-			float32 invMass = matInvMasses[matIdxs[a]];
+			const float32 w = contact.weight;
+			const float32 m = contact.mass;
+			const b2Vec2 n = contact.normal;
+			const b2Vec2 p = b2Vec2(positions[a]);
+			const float32 h = accumulations[a] + pressurePerWeight * w;
+			const b2Vec2 f = velocityPerPressure * w * m * h * n;
+			const float32 invMass = matInvMasses[matIdxs[a]];
 			amp::atomicSub(velocities[a], invMass * f);
 			b.ApplyLinearImpulse(f, p, true);
+		});
+		AmpForEachGroundContact([=, &velocities, &accumulations,
+			&matMasses, &matIdxs](int32 i, const b2PartGroundContact& contact) restrict(amp)
+		{
+			const float32 w = contact.weight;
+			const b2Vec3 n = contact.normal;
+			const float32 h = accumulations[i] + pressurePerWeight * w;
+			const b2Vec3 f = velocityPerPressure * w * h * n;
+			velocities[i] -= f;
 		});
 		AmpForEachContactShuffled([=, &velocities, &accumulations, 
 			&matMasses, &matIdxs](const b2ParticleContact& contact) restrict(amp)
@@ -4674,6 +4722,20 @@ void b2ParticleSystem::SolveDamping()
 				float32 invMass = matInvMasses[matIdxs[a]];
 				amp::atomicAdd(velocities[a], invMass * f);
 				b.ApplyLinearImpulse(-f, p, true);
+			}
+		});
+		AmpForEachGroundContact([=, &velocities](int32 a, const b2PartGroundContact& contact) restrict(amp)
+		{
+			float32 w = contact.weight;
+			b2Vec3 n = contact.normal;
+			b2Vec3& v = velocities[a];
+			float32 vn = b2Dot(v, n);
+			if (vn < 0)
+			{
+				float32 damping =
+					b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
+				b2Vec3 f = damping * vn * n;
+				v += f;
 			}
 		});
 		AmpForEachContactShuffled([=, &velocities, &matMasses,
@@ -5163,6 +5225,17 @@ void b2ParticleSystem::SolveExtraDamping()
 			amp::atomicAdd(velocities[a], invMass * f);
 			b.ApplyLinearImpulse(-f, p, true);
 		});
+		AmpForEachGroundContact([=, &flags, &bodies, &positions, &velocities,
+			&matIdxs, &matInvMasses](const int32 i, const b2PartGroundContact& contact) restrict(amp)
+		{
+			if (!(flags[i] & filterFlag)) return;
+			b2Vec3 n = contact.normal;
+			b2Vec3& v = velocities[i];
+			float32 vn = b2Dot(v, n);
+			if (vn >= 0) return;
+			b2Vec3 f = 0.5f * vn * n;
+			v += f;
+		});
 	}
 	else
 	{
@@ -5581,6 +5654,16 @@ void b2ParticleSystem::SolveViscous()
 			amp::atomicAdd(velocities[a], invMass * f);
 			b.ApplyLinearImpulse(-f, p, true);
 		});
+		AmpForEachGroundContact([=, &flags, &body, &positions, &velocities,
+			&matIdxs, &matInvMasses](const int32 i, const b2PartGroundContact& contact) restrict(amp)
+			{
+				if (!(flags[i] & filterFlag)) return;
+				float32 w = contact.weight;
+				float32 m = contact.mass;
+				b2Vec3& v = velocities[i];
+				b2Vec3 f = viscousStrength * w * v;
+				v += f;
+			});
 		AmpForEachContact([=, &velocities, &matIdxs, &matMasses](const b2ParticleContact& contact) restrict(amp)
 		{
 			if (!(contact.flags & filterFlag)) return;
@@ -6303,20 +6386,47 @@ void b2ParticleSystem::CopyHealths()
 void b2ParticleSystem::SolveWater()
 {
 	// make Objects wet
-	for (int32 k = 0; k < m_bodyContactCount; k++)
+	//for (int32 k = 0; k < m_bodyContactCount; k++)
+	//{
+	//	const b2PartBodyContact& contact = m_bodyContactBuf[k];
+	//	int32 a = contact.partIdx;
+	//	Body& b = m_world.GetBody(contact.bodyIdx);
+	//	b2BodyMaterial& mat = m_world.m_bodyMaterials[b.m_matIdx];
+	//	if (m_flagsBuffer[a] & b2_extinguishingMaterial
+	//		&& b.m_flags & b2_burningBody
+	//		&& mat.m_matFlags & b2_flammableMaterial
+	//		&& mat.m_extinguishingPoint > b.m_heat)
+	//	{
+	//		b.RemFlags((int16)b2_burningBody);
+	//	}
+	//}
+
+	const uint32 zombieFlag = b2_zombieParticle;
+	const int32 txMax = m_world.m_ground->m_sizeX;
+	const int32 tyMax = m_world.m_ground->m_sizeY;
+	const float32 invStride = 1.0f / m_world.m_ground->m_stride;
+	const float32 partRadius = GetRadius();
+	auto& positions = m_ampPositions;
+	auto& velocities = m_ampVelocities;
+	auto& flags = m_ampFlags;
+	auto& groundTiles = m_world.m_ground->m_ampTiles;
+	auto& groundChunkHasChange = m_world.m_ground->m_ampChunkHasChange;
+	auto& groundMats = m_world.m_ground->m_ampMaterials;
+	AmpForEachGroundContact(b2_waterParticle, [=, &flags,
+		&groundTiles, &groundChunkHasChange, &groundMats](const int32 i, const b2PartGroundContact& contact) restrict(amp)
 	{
-		const b2PartBodyContact& contact = m_bodyContactBuf[k];
-		int32 a = contact.partIdx;
-		Body& b = m_world.GetBody(contact.bodyIdx);
-		b2BodyMaterial& mat = m_world.m_bodyMaterials[b.m_matIdx];
-		if (m_flagsBuffer[a] & b2_extinguishingMaterial
-			&& b.m_flags & b2_burningBody
-			&& mat.m_matFlags & b2_flammableMaterial
-			&& mat.m_extinguishingPoint > b.m_heat)
+		Ground::Tile& groundTile = groundTiles[contact.groundTileIdx];
+		const Ground::Material& groundMat = groundMats[contact.groundMatIdx];
+		if (!groundMat.isWaterRepellent() && groundTile.atomicSetWet())
 		{
-			b.RemFlags((int16)b2_burningBody);
+			flags[i] |= zombieFlag;
+			groundChunkHasChange[contact.groundChunkIdx] = 1;
 		}
-	}
+	});
+
+	if (m_world.m_ground->m_allMaterialFlags & Ground::Material::Flags::waterRepellent &&
+		m_allParticleFlags & b2_waterParticle)
+		m_allParticleFlags |= b2_zombieParticle;
 }
 void b2ParticleSystem::SolveAir()
 {

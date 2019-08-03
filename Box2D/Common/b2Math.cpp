@@ -20,6 +20,7 @@
 
 const b2Vec2 b2Vec2_zero(0.0f, 0.0f);
 const b2Vec3 b2Vec3_zero(0.0f, 0.0f, 0.0f);
+const b2Vec3 b2Vec3_up(0.0f, 0.0f, 1.0f);
 
 /// Solve A * x = b, where b is a column vector. This is more efficient
 /// than computing the inverse in one-shot cases.

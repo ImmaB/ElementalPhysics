@@ -217,6 +217,7 @@ EXPORT bool ShouldSolveParticleSystem() { return pPartSys->ShouldSolve(); }
 EXPORT void SolveInit()	{ pPartSys->SolveInit(); }
 
 EXPORT void InitStep() { pPartSys->InitStep(); }
+EXPORT void SortProxies() { pPartSys->SortProxies(); }
 EXPORT void UpdateContacts() { pPartSys->UpdateContacts(false); }
 EXPORT void ComputeDepth() { pPartSys->ComputeDepth(); }
 EXPORT void UpdatePairsAndTriadsWithReactiveParticles() { pPartSys->UpdatePairsAndTriadsWithReactiveParticles(); }
@@ -241,12 +242,12 @@ EXPORT void LimitVelocity() { pPartSys->LimitVelocity(); }
 EXPORT void SolveRigidDamping() { pPartSys->SolveRigidDamping(); }
 EXPORT void SolveBarrier() { pPartSys->SolveBarrier(); }
 EXPORT void SolveCollision() { pPartSys->SolveCollision(); }
-EXPORT void SolveGroundCollision() { pPartSys->SolveGroundCollision(); }
-EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
 EXPORT void SolveRigid() { pPartSys->SolveRigid(); }
 EXPORT void SolveWall() { pPartSys->SolveWall(); }
 EXPORT void CopyVelocities() { pPartSys->CopyVelocities(); }
 EXPORT void SolveAir() { pPartSys->SolveAir(); }
+EXPORT void SolveWater() { pPartSys->SolveWater(); }
+EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
 
 EXPORT void SolveFlame() { pPartSys->SolveFlame(); }
 EXPORT void SolveIgnite() { pPartSys->SolveIgnite(); }

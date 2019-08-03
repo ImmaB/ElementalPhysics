@@ -5,7 +5,7 @@
 
 Ground::Ground(b2World& world, const def& gd) :
 	m_world(world),
-	m_ampTilesTileHasChange(1, 1, amp::getGpuAccelView()),
+	m_ampChunkHasChange(1, amp::getGpuAccelView()),
 	m_ampTilesChangedIdxs(16, amp::getGpuAccelView()),
 	m_ampTiles(16, amp::getGpuAccelView()),
 	m_ampMaterials(8, amp::getGpuAccelView())
@@ -15,12 +15,13 @@ Ground::Ground(b2World& world, const def& gd) :
 	m_sizeY = gd.ySize;
 	m_sizeX = gd.xSize;
 	m_size = m_sizeY * m_sizeX;
+	m_chunkCntY = m_sizeY / TILE_SIZE_SQRT + 1;
+	m_chunkCntX = m_sizeX / TILE_SIZE_SQRT + 1;
+	m_chunkCnt = m_chunkCntY * m_chunkCntX;
 	amp::resize(m_ampTiles, m_size);
 
-	amp::resize(m_ampTilesTileHasChange, m_sizeY / TILE_SIZE_SQRT + 1);
-	amp::resize2ndDim(m_ampTilesTileHasChange, m_sizeX / TILE_SIZE_SQRT + 1);
-	amp::fill(m_ampTilesTileHasChange, 0);
-	amp::resize(m_ampTilesChangedIdxs, m_size);
+	amp::resize(m_ampChunkHasChange, m_chunkCnt);
+	amp::fill(m_ampChunkHasChange, 0);
 }
 
 void Ground::SetTiles(Tile* tiles)
@@ -84,18 +85,17 @@ void Ground::CopyChangedTiles()
 
 	ampArrayView<int32> hasChange(1);
 	amp::fill(hasChange, 0);
-	auto& tilesTileHasChange = m_ampTilesTileHasChange;
-	amp::forEach2D<TILE_SIZE_SQRT, TILE_SIZE_SQRT>(m_sizeY / TILE_SIZE_SQRT + 1,
-		m_sizeX / TILE_SIZE_SQRT + 1, [=, &tilesTileHasChange](int y, int x) restrict(amp)
+	auto& tilesTileHasChange = m_ampChunkHasChange;
+	amp::forEach(m_chunkCnt, [=, &tilesTileHasChange](int32 i) restrict(amp)
+	{
+		if (int32& tileHasChange = tilesTileHasChange[i]; tileHasChange)
 		{
-			if (int32& tileHasChange = tilesTileHasChange[y][x]; tileHasChange)
-			{
-				tileHasChange = 0;
-				hasChange[0] = 1;
-			}
-		});
+			tileHasChange = 0;
+			hasChange[0] = 1;
+		}
+	});
 	if (!hasChange[0]) return;
 	amp::copy(m_ampTiles, m_tiles);
 	if (m_changeCallback)
-		m_changeCallback(nullptr, m_tiles.data(), 0);
+		m_changeCallback(nullptr, m_tiles.data(), m_size);
 }
