@@ -64,6 +64,5 @@
 
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
-#include <Box2D/Particle/b2Material.h>
 
 #endif

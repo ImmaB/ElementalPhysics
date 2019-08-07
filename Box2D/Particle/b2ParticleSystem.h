@@ -977,6 +977,7 @@ private:
 	template<typename F> void AmpForEachContact(const F& function) const;
 	template<typename F> void AmpForEachContactShuffled(const F& function) const;
 	template<typename F> void AmpForEachBodyContact(const F& function) const;
+	template<typename F> void AmpForEachBodyContact(const uint32 filterFlag, const F& function) const;
 	template<typename F> void AmpForEachGroundContact(const F& function) const;
 	template<typename F> void AmpForEachGroundContact(const uint32 filterFlag, const F& function) const;
 	template<typename F> void AmpForEachPair(F& function) const;
@@ -991,19 +992,16 @@ private:
 	void ResizeBodyContactBuffers(int32 size);
 	void ResizePairBuffers(int32 size);
 	void ResizeTriadBuffers(int32 size);
+	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef, const vector<b2Vec2>& positions);
 	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const vector<b2Vec3>& positions);
-	int32 CreateParticlesForGroup(const b2ParticleGroupDef& groupDef,
-		const b2Transform& xf, const vector<b2Vec3>& poss, const vector<int32>& cols);
+		const vector<b2Vec3>& poss, const vector<int32>& cols);
 	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
 		const b2Shape& shape,
 		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
 	pair<int32, int32> CreateParticlesFillShapeForGroup(
 		const b2Shape& shape,
-		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
-	pair<int32, int32> CreateParticlesWithShapeForGroup(
-		const b2Shape::Type shapeType, int32 shapeIdx,
-		const b2ParticleGroupDef& groupDef, const b2Transform& xf);
+		const b2ParticleGroupDef& groupDef);
+	pair<int32, int32> CreateParticlesWithShapeForGroup(const b2ParticleGroupDef& gd);
 	int32 CloneParticle(int32 index, int32 groupIdx);
 
 	void UpdatePairsAndTriads(
@@ -1036,7 +1034,7 @@ private:
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
 	void AddFlagInsideFixture(const uint32 flag, const int32 matIdx,
-		const Fixture& fixture, const b2Transform& transform);
+		const Fixture& fixture);
 
 private:
 	void CopyShapeToGPU(b2Shape::Type type, int32 idx);
@@ -1220,6 +1218,7 @@ private:
 	float32 m_particleDiameter;
 	float32 m_particleRadius;
 	float32 m_inverseDiameter;
+	float32 m_inverseRadius;
 	float32 m_squaredDiameter;
 
 	float32 m_heatLossRatio;
@@ -1579,6 +1578,7 @@ inline void b2ParticleSystem::SetAccelerate(bool accelerate)
 inline void b2ParticleSystem::SetRadius(float32 radius)
 {
 	m_particleRadius = radius;
+	m_inverseRadius = 1 / radius;
 	m_particleDiameter = 2 * radius;
 	m_squaredDiameter = m_particleDiameter * m_particleDiameter;
 	m_inverseDiameter = 1 / m_particleDiameter;

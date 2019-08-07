@@ -140,6 +140,9 @@ public:
 	/// Get the desired tangent speed. In meters per second.
 	float32 GetTangentSpeed() const;
 
+	void AddFlag(uint32 flag) { m_flags |= flag; }
+	void RemFlag(uint32 flag) { m_flags &= ~flag; }
+	bool HasFlag(uint32 flag) { return m_flags & flag; }
 
 protected:
 	friend class b2ContactManager;
@@ -180,7 +183,6 @@ protected:
 	b2Contact() : m_fixtureIdxA(b2_invalidIndex), m_fixtureIdxB(b2_invalidIndex) {}
 	b2Contact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB);
 	virtual ~b2Contact() {}
-
 
 	static b2ContactRegister s_registers[b2Shape::e_typeCount][b2Shape::e_typeCount];
 	static bool s_initialized;

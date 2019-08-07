@@ -30,9 +30,9 @@ public:
 		bool isWet() const { return flags & Flags::wet; }
 		bool isWet() const restrict(amp) { return flags & Flags::wet; }
 		bool setWet() { flags |= Flags::wet; }
-		bool atomicSetWet() restrict(amp)
+		bool atomicAddFlag(uint32 flag) restrict(amp)
 		{
-			if (amp::atomicAddFlag(flags, Flags::wet)) { setChanged(); return true; }
+			if (amp::atomicAddFlag(flags, flag)) { setChanged(); return true; }
 			return false;
 		}
 		void remWet() { flags &= ~Flags::wet; setChanged(); }

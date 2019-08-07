@@ -26,7 +26,6 @@
 #include <vector>
 
 class b2Fixture;
-struct b2BodyMaterial;
 class b2Joint;
 class b2Contact;
 class b2Controller;
@@ -47,23 +46,6 @@ enum b2BodyType
 
 	// TODO_ERIN
 	//b2_bulletBody,
-};
-
-
-/// The particle type. Can be combined with the | operator.
-enum b2BodyFlag
-{
-	b2_islandBody = 1 << 0,
-	b2_awakeBody = 1 << 1,
-	b2_autoSleepBody = 1 << 2,	//also called allow sleep
-	b2_bulletBody = 1 << 3,
-	b2_fixedRotationBody = 1 << 4,
-	b2_activeBody = 1 << 5,
-	b2_toiBody = 1 << 6,
-	b2_breakableBody = 1 << 7,
-	b2_inflammableBody = 1 << 8,
-	b2_burningBody = 1 << 9,
-	b2_wetBody = 1 << 10
 };
 
 /// A body definition holds all the data needed to construct a rigid body.
@@ -154,6 +136,87 @@ struct b2BodyDef
 
 struct Body
 {
+	struct Mat
+	{
+		struct Def
+		{
+			Def()
+			{
+				matFlags = 0;
+				density = 1.0f;
+				friction = 0.1f;
+				bounciness = 0.2f;
+				stability = 1.0f;
+				extinguishingPoint = 0.0f;
+				meltingPoint = 1000.0f;
+				ignitionPoint = 300.0f;
+				heatConductivity = 0.0f;
+			}
+
+			uint32 matFlags;
+			float32 density;
+			float32 friction;
+			float32 bounciness;
+			float32 stability;
+			float32 extinguishingPoint;
+			float32 meltingPoint;
+			float32 ignitionPoint;
+			float32 heatConductivity;
+		};
+
+		enum Flag
+		{
+			extinguishing = 1 << 0,
+			changeWhenCold = 1 << 1,
+			changeWhenHot = 1 << 2,
+			flammable = 1 << 3,
+			heatConducting = 1 << 4,
+			electricityConducting = 1 << 5,
+			waterRepellent = 1 << 6,
+		};
+
+		uint32 m_matFlags;
+		float32 m_density;
+		float32 m_friction;
+		float32 m_bounciness;	// same as restitution
+		float32 m_stability;
+		float32 m_invStability;
+		float32 m_extinguishingPoint;
+		float32 m_meltingPoint;
+		float32 m_ignitionPoint;
+		float32 m_heatConductivity;
+
+		Mat(const Def& def)
+			: m_matFlags(def.matFlags),
+			m_density(def.density),
+			m_friction(def.friction),
+			m_bounciness(def.bounciness),
+			m_stability(def.stability), m_invStability(1 / def.stability),
+			m_extinguishingPoint(def.extinguishingPoint),
+			m_meltingPoint(def.meltingPoint),
+			m_ignitionPoint(def.ignitionPoint),
+			m_heatConductivity(def.heatConductivity)
+		{}
+		~Mat() {}
+
+		bool HasFlag(const uint32 flag) const { return m_matFlags & flag; }
+		bool HasFlag(const uint32 flag) const restrict(amp) { return m_matFlags & flag; }
+	};
+
+	enum Flag
+	{
+		island = 1 << 0,
+		awake = 1 << 1,
+		autoSleep = 1 << 2,	//also called allow sleep
+		bullet = 1 << 3,
+		fixedRotation = 1 << 4,
+		active = 1 << 5,
+		toi = 1 << 6,
+		breakable = 1 << 7,
+		burning = 1 << 8,
+		wet = 1 << 9
+	};
+
 	int32 m_idx;
 
 	b2BodyType m_type;
@@ -332,10 +395,23 @@ struct Body
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
-	void AddFlags(uint32 flags);
-	void AddFlags(uint32 flags) restrict(amp);
-	void RemFlags(uint32 flags);
-	void RemFlags(uint32 flags) restrict(amp);
+	bool IsType(b2BodyType t) { return m_type == t; }
+
+	void AddFlag(uint32 flags) { m_flags |= flags; }
+	void AddFlag(uint32 flags) restrict(amp) { m_flags |= flags; }
+	void RemFlag(uint32 flags) { m_flags &= ~flags; }
+	void RemFlag(uint32 flags) restrict(amp) { m_flags &= ~flags; }
+
+	bool HasFlag(uint32 flag) const { return m_flags & flag; }
+	bool HasFlag(uint32 flag) const restrict(amp) { return m_flags & flag; }
+
+	bool IsAwake() const restrict(amp) { return HasFlag(Flag::awake); }
+
+	bool atomicAddFlag(uint32 flag) restrict(amp)
+	{
+		if (amp::atomicAddFlag(m_flags, flag)) return true;
+		return false;
+	}
 };
 
 /// A rigid body. These are created via b2World::CreateBody.
@@ -343,23 +419,6 @@ class b2Body
 {
 public:
 };
-
-inline void Body::AddFlags(uint32 flags)
-{
-	m_flags |= flags;
-}
-inline void Body::AddFlags(uint32 flags) restrict(amp)
-{
-	m_flags |= flags;
-}
-inline void Body::RemFlags(uint32 flags)
-{
-	m_flags &= ~flags;
-}
-inline void Body::RemFlags(uint32 flags) restrict(amp)
-{
-	m_flags &= ~flags;
-}
 
 inline const b2Vec2 Body::GetPosition() const
 {
@@ -462,29 +521,26 @@ inline b2Vec2 Body::GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) co
 
 inline void Body::SetBullet(bool flag)
 {
-	if (flag)
-		m_flags |= b2_bulletBody;
-	else
-		m_flags &= ~b2_bulletBody;
+	if (flag) AddFlag(Flag::bullet); else RemFlag(Flag::bullet);
 }
 inline bool Body::IsBullet() const
 {
-	return (m_flags & b2_bulletBody) == b2_bulletBody;
+	return (m_flags & bullet);
 }
 
 inline void Body::SetAwake(bool flag)
 {
 	if (flag)
 	{
-		if ((m_flags & b2_awakeBody) == 0)
+		if (!IsAwake())
 		{
-			m_flags |= b2_awakeBody;
+			m_flags |= awake;
 			m_sleepTime = 0.0f;
 		}
 	}
 	else
 	{
-		m_flags &= ~b2_awakeBody;
+		m_flags &= ~awake;
 		m_sleepTime = 0.0f;
 		m_linearVelocity.SetZero();
 		m_angularVelocity = 0.0f;
@@ -496,15 +552,15 @@ inline void Body::SetAwake(bool flag) restrict(amp)
 {
 	if (flag)
 	{
-		if ((m_flags & b2_awakeBody) == 0)
+		if ((m_flags & awake) == 0)
 		{
-			m_flags |= b2_awakeBody;
+			m_flags |= awake;
 			m_sleepTime = 0.0f;
 		}
 	}
 	else
 	{
-		m_flags &= ~b2_awakeBody;
+		m_flags &= ~awake;
 		m_sleepTime = 0.0f;
 		m_linearVelocity.SetZero();
 		m_angularVelocity = 0.0f;
@@ -514,32 +570,32 @@ inline void Body::SetAwake(bool flag) restrict(amp)
 }
 inline bool Body::IsAwake() const
 {
-	return (m_flags & b2_awakeBody) == b2_awakeBody;
+	return HasFlag(Flag::awake);
 }
 
 inline bool Body::IsActive() const
 {
-	return (m_flags & b2_activeBody) == b2_activeBody;
+	return HasFlag(Flag::active);
 }
 
 inline bool Body::IsFixedRotation() const
 {
-	return (m_flags & b2_fixedRotationBody) == b2_fixedRotationBody;
+	return HasFlag(fixedRotation);
 }
 
 inline void Body::SetSleepingAllowed(bool flag)
 {
 	if (flag)
-		m_flags |= b2_autoSleepBody;
+		AddFlag(Flag::autoSleep);
 	else
 	{
-		m_flags &= ~b2_autoSleepBody;
+		RemFlag(Flag::autoSleep);
 		SetAwake(true);
 	}
 }
 inline bool Body::IsSleepingAllowed() const
 {
-	return (m_flags & b2_autoSleepBody) == b2_autoSleepBody;
+	return HasFlag(autoSleep);
 }
 
 inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake)
@@ -547,11 +603,11 @@ inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate a force if the body is sleeping.
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 	{
 		m_force += force;
 		m_torque += b2Cross(point - m_sweep.c, force);
@@ -563,11 +619,11 @@ inline void Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate a force if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 		m_force += force;
 }
 inline void Body::ApplyImpulseToCenter(const b2Vec2& impulse, bool wake)
@@ -575,11 +631,11 @@ inline void Body::ApplyImpulseToCenter(const b2Vec2& impulse, bool wake)
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate a force if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 		m_linearVelocity += m_invMass * impulse;
 }
 
@@ -588,11 +644,11 @@ inline void Body::ApplyTorque(float32 torque, bool wake)
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate a force if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 		m_torque += torque;
 }
 
@@ -601,11 +657,11 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate velocity if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 	{
 		m_linearVelocity += m_invMass * impulse;
 		m_angularVelocity += m_invI * b2Cross(point - m_sweep.c, impulse);
@@ -616,11 +672,11 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate velocity if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 	{
 		amp::atomicAdd(m_linearVelocity, m_invMass * impulse);
 		amp::atomicAdd(m_angularVelocity, m_invI * b2Cross(point - m_sweep.c, impulse));
@@ -632,11 +688,11 @@ inline void Body::ApplyAngularImpulse(float32 impulse, bool wake)
 	if (m_type != b2_dynamicBody)
 		return;
 
-	if (wake && (m_flags & b2_awakeBody) == 0)
+	if (wake && !IsAwake())
 		SetAwake(true);
 
 	// Don't accumulate velocity if the body is sleeping
-	if (m_flags & b2_awakeBody)
+	if (IsAwake())
 		m_angularVelocity += m_invI * impulse;
 }
 

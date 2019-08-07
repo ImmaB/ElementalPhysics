@@ -158,7 +158,7 @@ EXPORT void AddParticleMatChangeMats(int32 matIdx,
 EXPORT int32 CreateBodyMaterial(uint32 materialFlags, float32 density, float32 friction, float32 bounciness,
 	float32 stability, float32 heatConductivity)
 {
-	b2BodyMaterialDef md;
+	Body::Mat::Def md;
 	md.matFlags = materialFlags;
 	md.density = density;
 	md.friction = friction;
@@ -321,9 +321,9 @@ EXPORT int32 GetMaxParticleCount(void* partSysPtr) {
 #pragma endregion
 
 #pragma region API Particles
-EXPORT void AddFlagsToPartsWithMatInFixture(uint32 flag, int32 matIdx, int32 fixtureIdx, b2Transform transform)
+EXPORT void AddFlagsToPartsWithMatInFixture(uint32 flag, int32 matIdx, int32 fixtureIdx)
 {
-	pPartSys->AddFlagInsideFixture(flag, matIdx, pWorld->GetFixture(fixtureIdx), transform);
+	pPartSys->AddFlagInsideFixture(flag, matIdx, pWorld->GetFixture(fixtureIdx));
 }
 
 EXPORT void RemoveFlagsFromAll(int32 flags) { pPartSys->RemovePartFlagsFromAll(flags); }
@@ -358,8 +358,8 @@ EXPORT void GetPartBufPtrs(int32** pMatIdxs, b2Vec3** pPoss, b2Vec3** pVels,
 #pragma region ParticleGroups
 
 EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
-	float32 angle, float32 strength, float32 angVel, b2Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
-	b2Transform transform, float32 z, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
+	float32 strength, float32 angVel, b2Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
+	b2Transform transform, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
 {
 	b2ParticleGroupDef gd;
 	gd.flags = partFlags;
@@ -368,7 +368,7 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	gd.collisionGroup = collisionGroup;
 	gd.shapeType = shapeType;
 	gd.shapeIdx = shapeIdx;
-	gd.angle = angle;
+	gd.transform = transform;
 	gd.strength = strength;
 	gd.angularVelocity = angVel;
 	gd.linearVelocity = linVel;
@@ -377,9 +377,6 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	gd.color = color;
 	gd.heat = heat;
 	gd.timestamp = timestamp;
-	gd.position = transform.p;
-	gd.position.z += z;
-	gd.angle = transform.q.GetAngle();
 	int32 idx = pPartSys->CreateGroup(gd);
 	return idx;
 }

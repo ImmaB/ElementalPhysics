@@ -27,7 +27,6 @@
 #include <Box2D/Dynamics/b2TimeStep.h>
 #include <Box2D/Dynamics/Ground.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
-#include <Box2D/Particle/b2Material.h>
 #include <Box2D/Amp/ampAlgorithms.h>
 #include <vector>
 
@@ -289,12 +288,12 @@ public:
 	const b2Profile& GetProfile() const;
 
 
-	vector<b2BodyMaterial> m_bodyMaterials;
-	ampArray<b2BodyMaterial> m_ampBodyMaterials;
+	vector<Body::Mat> m_bodyMaterials;
+	ampArray<Body::Mat> m_ampBodyMaterials;
 
 	int32 m_allBodyMaterialFlags;
 
-	int32 CreateBodyMaterial(b2BodyMaterialDef def);
+	int32 CreateBodyMaterial(const Body::Mat::Def& def);
 
 	bool m_stepComplete;
 
@@ -405,7 +404,6 @@ private:
 	bool m_allowSleep;
 
 	b2DestructionListener* m_destructionListener;
-	AFDestructionListener* afDestructionListener;
 	b2Draw* m_debugDraw;
 
 	// This is used to compute the time step ratio to

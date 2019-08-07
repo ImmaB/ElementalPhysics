@@ -28,7 +28,7 @@
 #include <Box2D/Common/b2BlockAllocator.h>
 
 
-void Fixture::Set(const b2FixtureDef& def, const int32 idxInBody, const b2BodyMaterial& mat)
+void Fixture::Set(const b2FixtureDef& def, const int32 idxInBody, const Body::Mat& mat)
 {
 	m_friction = mat.m_friction;
 	m_restitution = mat.m_bounciness;

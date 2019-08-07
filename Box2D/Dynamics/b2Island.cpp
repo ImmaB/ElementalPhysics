@@ -361,7 +361,7 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 			if (b.m_type == b2_staticBody)
 				continue;
 
-			if ((b.m_flags & b2_autoSleepBody) == 0 ||
+			if ((b.m_flags & Body::Flag::autoSleep) == 0 ||
 				b.m_angularVelocity * b.m_angularVelocity > angTolSqr ||
 				b2Dot(b.m_linearVelocity, b.m_linearVelocity) > linTolSqr)
 			{

@@ -31,7 +31,6 @@ class b2ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
 struct b2ParticleGroup;
-struct b2BodyMaterial;
 struct b2ParticleContact;
 struct b2PartBodyContact;
 
@@ -56,11 +55,6 @@ public:
 	{
 		B2_NOT_USED(group);
 	}
-	/// Called when any fixture material is about to be destroyed.
-	virtual void SayGoodbye(b2BodyMaterial* mat)
-	{
-		B2_NOT_USED(mat);
-	}
 
 
 	/// Called when a particle is about to be destroyed.
@@ -72,41 +66,6 @@ public:
 	{
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(index);
-	}
-};
-class AFDestructionListener
-{
-public:
-	virtual ~AFDestructionListener() {}
-
-	/// Called when any joint is about to be destroyed due
-	/// to the destruction of one of its attached bodies.
-	virtual void SayGoodbye(b2Joint* joint) = 0;
-
-	/// Called when any fixture is about to be destroyed due
-	/// to the destruction of its parent body.
-	virtual void SayGoodbye(Fixture* fixture) = 0;
-
-	/// Called when any particle group is about to be destroyed.
-	virtual void SayGoodbye(int32 groupIdx)
-	{
-		B2_NOT_USED(groupIdx);
-	}
-	/// Called when any fixture material is about to be destroyed.
-	virtual void SayGoodbye(b2BodyMaterial* mat)
-	{
-		B2_NOT_USED(mat);
-	}
-
-
-	/// Called when a particle is about to be destroyed.
-	/// The index can be used in conjunction with
-	/// b2ParticleSystem::GetUserDataBuffer() or
-	/// b2ParticleSystem::GetParticleHandleFromIndex() to determine which
-	/// particle has been destroyed.
-	virtual void SayGoodbye(b2ParticleSystem* particleSystem)
-	{
-		B2_NOT_USED(particleSystem);
 	}
 };
 

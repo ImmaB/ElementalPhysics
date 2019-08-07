@@ -368,10 +368,10 @@ void b2World::Solve(const b2TimeStep& step)
 	// Clear all the island flags.
 	for (Body& b : m_bodyBuffer)
 		if (b.m_idx != b2_invalidIndex)
-			b.m_flags &= ~b2_islandBody;
+			b.RemFlag(Body::Flag::island);
 
 	for (b2Contact* c = m_contactManager.m_contactList; c; c = c->m_next)
-		c->m_flags &= ~b2Contact::e_islandFlag;
+		c->RemFlag(b2Contact::e_islandFlag);
 
 	for (b2Joint* j = m_jointList; j; j = j->m_next)
 		j->m_islandFlag = false;
@@ -383,7 +383,7 @@ void b2World::Solve(const b2TimeStep& step)
 	{
 		if (seed.m_idx == b2_invalidIndex) continue;
 
-		if (seed.m_flags & b2_islandBody)
+		if (seed.HasFlag(Body::Flag::island))
 			continue;
 
 		if (!seed.IsAwake() || !seed.IsActive())
@@ -397,7 +397,7 @@ void b2World::Solve(const b2TimeStep& step)
 		island.Clear();
 		int32 stackCount = 0;
 		stack[stackCount++] = seed.m_idx;
-		seed.m_flags |= b2_islandBody;
+		seed.AddFlag(Body::Flag::island);
 
 		// Perform a depth first search (DFS) on the constraint graph.
 		while (stackCount > 0)
@@ -442,12 +442,12 @@ void b2World::Solve(const b2TimeStep& step)
 				Body& other = m_bodyBuffer[ce->otherIdx];
 
 				// Was the other body already added to this island?
-				if (other.m_flags & b2_islandBody)
+				if (other.HasFlag(Body::Flag::island))
 					continue;
 
 				b2Assert(stackCount < stackSize);
 				stack[stackCount++] = other.m_idx;
-				other.m_flags |= b2_islandBody;
+				other.AddFlag(Body::Flag::island);
 			}
 
 			// Search all joints connect to this body.
@@ -465,12 +465,12 @@ void b2World::Solve(const b2TimeStep& step)
 				island.Add(je->joint);
 				je->joint->m_islandFlag = true;
 
-				if (other.m_flags & b2_islandBody)
+				if (other.HasFlag(Body::Flag::island))
 					continue;
 
 				b2Assert(stackCount < stackSize);
 				stack[stackCount++] = other.m_idx;
-				other.m_flags |= b2_islandBody;
+				other.AddFlag(Body::Flag::island);
 			}
 		}
 
@@ -485,8 +485,8 @@ void b2World::Solve(const b2TimeStep& step)
 		{
 			// Allow static bodies to participate in other islands.
 			Body& b = m_bodyBuffer[island.m_bodyIdxs[i]];
-			if (b.m_type == b2_staticBody)
-				b.m_flags &= ~b2_islandBody;
+			if (b.IsType(b2_staticBody))
+				b.RemFlag(Body::Flag::island);
 		}
 	}
 	stack.clear();
@@ -500,10 +500,10 @@ void b2World::Solve(const b2TimeStep& step)
 			if (b.m_idx != b2_invalidIndex)
 			{
 				// If a body was not in an island then it did not move.
-				if ((b.m_flags & b2_islandBody) == 0)
+				if (!b.HasFlag(Body::Flag::island))
 					continue;
 
-				if (b.m_type == b2_staticBody)
+				if (b.IsType(b2_staticBody))
 					continue;
 
 				// Update fixtures (for broad-phase).
@@ -528,7 +528,7 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 		{
 			if (b.m_idx != b2_invalidIndex)
 			{
-				b.m_flags &= ~b2_islandBody;
+				b.RemFlag(Body::Flag::island);
 				b.m_sweep.alpha0 = 0.0f;
 			}
 		}
@@ -536,7 +536,7 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 		for (b2Contact* c = m_contactManager.m_contactList; c; c = c->m_next)
 		{
 			// Invalidate TOI
-			c->m_flags &= ~(b2Contact::e_toiFlag | b2Contact::e_islandFlag);
+			c->RemFlag(b2Contact::e_toiFlag | b2Contact::e_islandFlag);
 			c->m_toiCount = 0;
 			c->m_toi = 1.0f;
 		}
@@ -662,7 +662,7 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 
 		// The TOI contact likely has some new contact points.
 		Update(*minContact);
-		minContact->m_flags &= ~b2Contact::e_toiFlag;
+		minContact->RemFlag(b2Contact::e_toiFlag);
 		++minContact->m_toiCount;
 
 		// Is the contact solid?
@@ -686,8 +686,8 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 		island.Add(bB);
 		island.Add(minContact);
 
-		bA.m_flags |= b2_islandBody;
-		bB.m_flags |= b2_islandBody;
+		bA.AddFlag(Body::Flag::island);
+		bB.AddFlag(Body::Flag::island);
 		minContact->m_flags |= b2Contact::e_islandFlag;
 
 		// Get contacts on bodyA and bodyB.
@@ -723,7 +723,7 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 
 					// Tentatively advance the body to the TOI.
 					b2Sweep backup = other.m_sweep;
-					if ((other.m_flags & b2_islandBody) == 0)
+					if (!other.HasFlag(Body::Flag::island))
 						other.Advance(minAlpha);
 
 					// Update the contact points
@@ -750,11 +750,11 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 					island.Add(contact);
 
 					// Has the other body already been added to the island?
-					if (other.m_flags & b2_islandBody)
+					if (other.HasFlag(Body::Flag::island))
 						continue;
 
 					// Add the other body to the island.
-					other.m_flags |= b2_islandBody;
+					other.AddFlag(Body::Flag::island);
 
 					if (other.m_type != b2_staticBody)
 						other.SetAwake(true);
@@ -778,16 +778,16 @@ void b2World::SolveTOI(const b2TimeStep& step)	// TOI = Time Of Impact
 		for (int32 i = 0; i < island.m_bodyCount; ++i)
 		{
 			Body& body = m_bodyBuffer[island.m_bodyIdxs[i]];
-			body.m_flags &= ~b2_islandBody;
+			body.RemFlag(Body::Flag::island);
 
-			if (body.m_type != b2_dynamicBody)
+			if (!body.IsType(b2_dynamicBody))
 				continue;
 
 			SynchronizeFixtures(body);
 
 			// Invalidate all contact TOIs on this displaced body.
 			for (b2ContactEdge* ce = m_bodyContactListBuffer[body.m_idx]; ce; ce = ce->next)
-				ce->contact->m_flags &= ~(b2Contact::e_toiFlag | b2Contact::e_islandFlag);
+				ce->contact->RemFlag(b2Contact::e_toiFlag | b2Contact::e_islandFlag);
 		}
 
 		// Commit fixture proxy movements to the broad-phase so that new contacts are created.
@@ -809,13 +809,9 @@ void b2World::SetStepParams(float32 dt,
 {
 	m_step.dt = dt; 
 	if (dt > 0.0f)
-	{
 		m_step.inv_dt = 1.0f / dt;
-	}
 	else
-	{
 		m_step.inv_dt = 0.0f;
-	}
 	m_step.dtRatio = m_inv_dt0 * dt;
 	m_step.warmStarting = m_warmStarting;
 	m_step.velocityIterations = velocityIterations;
@@ -1225,11 +1221,11 @@ void b2World::ShiftOrigin(const b2Vec2& newOrigin)
 	m_contactManager.m_broadPhase.ShiftOrigin(newOrigin);
 }
 
-int32 b2World::CreateBodyMaterial(b2BodyMaterialDef def)
+int32 b2World::CreateBodyMaterial(const Body::Mat::Def& def)
 {
 	// Try finding duplicat first
 	for (int idx = 0; idx < m_bodyMaterials.size(); idx++)
-		if (const b2BodyMaterial& bm = m_bodyMaterials[idx];
+		if (const Body::Mat& bm = m_bodyMaterials[idx];
 			def.matFlags == bm.m_matFlags &&
 			def.density == bm.m_density &&
 			def.friction == bm.m_friction &&
@@ -1242,7 +1238,7 @@ int32 b2World::CreateBodyMaterial(b2BodyMaterialDef def)
 			return idx;
 
 	const int32 idx = m_bodyMaterials.size();
-	b2BodyMaterial newMat(def);
+	Body::Mat newMat(def);
 	m_bodyMaterials.push_back(newMat);
 	
 	if (m_ampBodyMaterials.extent[0] <= idx) amp::resize(m_ampBodyMaterials, m_ampBodyMaterials.extent[0] * 2, m_ampBodyMaterials.extent[0]);
@@ -1420,7 +1416,7 @@ int32 b2World::CreateFixture(b2FixtureDef& def)
 	}
 	f.m_proxyCount = 0;
 
-	if (b.m_flags & b2_activeBody)
+	if (b.HasFlag(Body::Flag::active))
 		CreateProxies(f, m_contactManager.m_broadPhase, b.m_xf);
 
 	// Adjust mass properties if needed.
@@ -1484,7 +1480,7 @@ void b2World::DestroyFixture(Body& b, int32 fIdx)
 	}
 
 	f.m_proxyCount = GetShape(fIdx).GetChildCount();
-	if (m_flags & b2_activeBody)
+	if (b.IsActive())
 		DestroyProxies(f);
 	m_blockAllocator.Free(m_fixtureProxiesBuffer[fIdx], f.m_proxyCount * sizeof(b2FixtureProxy));
 	DestroyShape(f);
@@ -1523,7 +1519,7 @@ void b2World::SetActive(Body& b, bool flag)
 
 	if (flag)
 	{
-		b.m_flags |= b2_activeBody;
+		b.AddFlag(Body::Flag::active);
 
 		// Create all proxies.
 		b2BroadPhase& broadPhase = m_contactManager.m_broadPhase;
@@ -1534,7 +1530,7 @@ void b2World::SetActive(Body& b, bool flag)
 	}
 	else
 	{
-		m_flags &= ~b2_activeBody;
+		b.RemFlag(Body::Flag::active);
 
 		// Destroy all proxies.
 		for each (int32 fIdx in m_bodyFixtureIdxsBuffer[b.m_idx])
@@ -1554,13 +1550,12 @@ void b2World::SetActive(Body& b, bool flag)
 
 void b2World::SetFixedRotation(Body& b, bool flag)
 {
-	bool status = (b.m_flags & b2_fixedRotationBody) == b2_fixedRotationBody;
-	if (status == flag)
+	if (b.HasFlag(Body::Flag::fixedRotation) == flag)
 		return;
 	if (flag)
-		b.m_flags |= b2_fixedRotationBody;
+		b.AddFlag(Body::Flag::fixedRotation);
 	else
-		b.m_flags &= ~b2_fixedRotationBody;
+		b.RemFlag(Body::Flag::fixedRotation);
 
 	b.m_angularVelocity = 0.0f;
 	ResetMassData(b);
@@ -1650,7 +1645,7 @@ void b2World::ResetMassData(Body& b)
 		b.m_invMass = 1.0f;
 	}
 
-	if (b.m_I > 0.0f && (b.m_flags & b2_fixedRotationBody) == 0)
+	if (b.m_I > 0.0f && !b.HasFlag(Body::Flag::fixedRotation))
 	{
 		// Center the inertia about the center of mass.
 		b.m_I -= b.m_mass * b2Dot(localCenter, localCenter);
@@ -1947,10 +1942,10 @@ void b2World::Update(b2Contact& c)
 	const Fixture& fixtureB = m_fixtureBuffer[c.m_fixtureIdxB];
 
 	// Re-enable this contact.
-	c.m_flags |= b2Contact::e_enabledFlag;
+	c.AddFlag(b2Contact::e_enabledFlag);
 
 	bool touching = false;
-	bool wasTouching = (c.m_flags & b2Contact::e_touchingFlag) == b2Contact::e_touchingFlag;
+	bool wasTouching = c.HasFlag(b2Contact::e_touchingFlag);
 	bool sensor = fixtureA.m_isSensor || fixtureB.m_isSensor;
 
 	Body& bodyA = m_bodyBuffer[fixtureA.m_bodyIdx];
@@ -2001,9 +1996,9 @@ void b2World::Update(b2Contact& c)
 	}
 
 	if (touching)
-		c.m_flags |= b2Contact::e_touchingFlag;
+		c.AddFlag(b2Contact::e_touchingFlag);
 	else
-		c.m_flags &= ~b2Contact::e_touchingFlag;
+		c.RemFlag(b2Contact::e_touchingFlag);
 
 	if (!wasTouching && touching && m_contactManager.m_contactListener)
 		m_contactManager.m_contactListener->BeginContact(c);
