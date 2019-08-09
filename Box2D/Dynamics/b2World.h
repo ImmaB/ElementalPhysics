@@ -36,7 +36,7 @@ struct b2JointDef;
 struct b2Filter;
 class b2Draw;
 class b2Joint;
-struct b2ParticleGroup;
+struct ParticleGroup;
 class b2Contact;
 
 struct LFContact

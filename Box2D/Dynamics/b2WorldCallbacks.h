@@ -30,7 +30,7 @@ class b2Contact;
 class b2ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
-struct b2ParticleGroup;
+struct ParticleGroup;
 struct b2ParticleContact;
 struct b2PartBodyContact;
 
@@ -51,7 +51,7 @@ public:
 	virtual void SayGoodbye(Fixture& fixture) = 0;
 
 	/// Called when any particle group is about to be destroyed.
-	virtual void SayGoodbye(b2ParticleGroup& group)
+	virtual void SayGoodbye(ParticleGroup& group)
 	{
 		B2_NOT_USED(group);
 	}

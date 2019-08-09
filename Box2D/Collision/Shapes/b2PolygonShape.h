@@ -88,7 +88,7 @@ struct b2PolygonShape : public b2Shape
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density) const;
+	b2MassData ComputeMass(float32 density, float32 height) const;
 
 	/// Get the vertex count.
 	int32 GetVertexCount() const { return m_count; }
@@ -103,9 +103,10 @@ struct b2PolygonShape : public b2Shape
 
 struct AmpPolygonShape
 {
-	int32 _vfptr[2];
+	int32 _vfptr[3];
 	b2Shape::Type m_type;
 	float32 m_radius;
+	float32 m_area;
 
 	b2Vec2 m_centroid;
 	b2Vec2 m_vertices[b2_maxPolygonVertices];

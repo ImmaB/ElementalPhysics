@@ -137,21 +137,26 @@ EXPORT void SetWorldDamping(float32 s)
 	pWorld->SetDamping(s);
 }
 
-EXPORT int32 CreateParticleMaterial(uint32 matFlags, uint32 partFlags, float32 density, float32 stability,
+EXPORT int32 CreateParticleMaterial(uint32 flags, uint32 partFlags, float32 density, float32 stability,
 	float32 heatConductivity)
 {
-	b2ParticleMaterialDef md;
-	md.matFlags = matFlags;
-	md.partFlags = partFlags;
-	md.mass = density * pPartSys->GetParticleMass();
+	Particle::Mat::Def md;
+	md.flags = flags;
+	md.density = density;
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
 	return pPartSys->CreateParticleMaterial(md);
 }
-EXPORT void AddParticleMatChangeMats(int32 matIdx,
-	float32 colderThan, int32 changeToColdMat, float32 hotterThan, int32 changeToHotMat, float32 ignitionPoint, int32 burnToMat)
+EXPORT void AddParticleMatChangeMats(int32 matIdx, float32 coldThreshold, int32 changeToColdMatIdx,
+	float32 hotThreshold, int32 changeToHotMat, float32 ignitionThreshold, int32 changeToBurnedMatIdx)
 {
-	pPartSys->PartMatChangeMats(matIdx, colderThan, changeToColdMat, hotterThan, changeToHotMat, ignitionPoint, burnToMat);
+	Particle::Mat::ChangeDef mcd;
+	mcd.coldThreshold = coldThreshold;
+	mcd.changeToColdMatIdx = changeToColdMatIdx;
+	mcd.hotThreshold = hotThreshold;
+	mcd.ignitionThreshold = ignitionThreshold;
+	mcd.changeToBurnedMatIdx = changeToBurnedMatIdx;
+	pPartSys->AddPartMatChange(matIdx, mcd);
 }
 
 
@@ -361,7 +366,7 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	float32 strength, float32 angVel, b2Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
 	b2Transform transform, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
 {
-	b2ParticleGroupDef gd;
+	ParticleGroup::Def gd;
 	gd.flags = partFlags;
 	gd.groupFlags = groupFlags;
 	gd.matIdx = matIdx;
@@ -383,13 +388,9 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 EXPORT int32 CreateParticles(int32 partCount, uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
 	float32 strength, b2Vec3* poss, b2Vec3 vel, int32* col, float32 health, float32 heat, int32 timestamp)
 {
-	b2ParticleGroupFlag bgf;
-	bgf = static_cast<b2ParticleGroupFlag>(groupFlags);
-	b2ParticleFlag bf;
-	bf = static_cast<b2ParticleFlag>(partFlags);
-	b2ParticleGroupDef pd;
-	pd.flags = bf;
-	pd.groupFlags = bgf;
+	ParticleGroup::Def pd;
+	pd.flags = partFlags;
+	pd.groupFlags = groupFlags;
 	pd.matIdx = matIdx;
 	pd.collisionGroup = collisionGroup;
 	pd.strength = strength;
@@ -407,14 +408,13 @@ EXPORT void JoinParticleGroups(void* partSysPtr, int32 groupAIdx, int32 groupBId
     b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
     system->JoinParticleGroups(groupAIdx, groupBIdx);
 }
-EXPORT void ApplyForceToParticleGroup(void* partSysPtr, void* groupPointer, b2Vec3 force) {
-	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
-	system->ApplyForce(*group, force);
+EXPORT void ApplyForceToParticleGroup(ParticleGroup* pGroup, b2Vec3 force)
+{
+	pPartSys->ApplyForce(*pGroup, force);
 }
 EXPORT void ApplyLinearImpulseToParticleGroup(void* partSysPtr, void* groupPointer, float32 forceX, float32 forceY) {
 	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-	b2ParticleGroup* group = static_cast<b2ParticleGroup*>(groupPointer);
+	ParticleGroup* group = static_cast<ParticleGroup*>(groupPointer);
     b2Vec2 impulse = b2Vec2(forceX, forceY);
 	system->ApplyLinearImpulse(*group, impulse);
 }

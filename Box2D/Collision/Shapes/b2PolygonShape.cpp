@@ -256,6 +256,31 @@ void b2PolygonShape::Set(const b2Shape::Def& shapeDef)
 
 	// Compute the polygon centroid.
 	m_centroid = ComputeCentroid(m_vertices, m);
+
+	m_area = 0;
+
+	// s is the reference point for forming triangles.
+	// It's location doesn't change the result (except for rounding error).
+	b2Vec2 s(0.0f, 0.0f);
+
+	// This code would put the reference point inside the polygon.
+	for (int32 i = 0; i < m_count; ++i)
+		s += m_vertices[i];
+	s *= 1.0f / m_count;
+
+	const float32 k_inv3 = 1.0f / 3.0f;
+
+	for (int32 i = 0; i < m_count; ++i)
+	{
+		// Triangle vertices.
+		b2Vec2 e1 = m_vertices[i] - s;
+		b2Vec2 e2 = i + 1 < m_count ? m_vertices[i + 1] - s : m_vertices[0] - s;
+
+		float32 D = b2Cross(e1, e2);
+
+		float32 triangleArea = 0.5f * D;
+		m_area += triangleArea;
+	}
 }
 
 bool b2PolygonShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
@@ -407,7 +432,7 @@ void b2PolygonShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 chil
 	aabb.upperBound = upper + r;
 }
 
-b2MassData b2PolygonShape::ComputeMass(float32 density) const
+b2MassData b2PolygonShape::ComputeMass(float32 density, float32 height) const
 {
 	// Polygon mass, centroid, and inertia.
 	// Let rho be the polygon density in mass per unit area.
@@ -445,9 +470,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 
 	// This code would put the reference point inside the polygon.
 	for (int32 i = 0; i < m_count; ++i)
-	{
 		s += m_vertices[i];
-	}
 	s *= 1.0f / m_count;
 
 	const float32 k_inv3 = 1.0f / 3.0f;
@@ -478,7 +501,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 	// Total mass
 	b2Assert(area > b2_epsilon);
 	center *= 1.0f / area;
-	float32 mMass = density * area;
+	float32 mMass = density * area * height;
 
 	// Center of mass
 	b2Vec2 mCenter = center + s;

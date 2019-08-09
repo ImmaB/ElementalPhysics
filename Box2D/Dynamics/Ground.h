@@ -19,24 +19,25 @@ public:
 			wet = 1 << 1,
 		};
 		int32 matIdx;
+		int32 wetPartMatIdx;
 		float32 height;
 		int32 textureSeed;
 		uint32 flags;
 
-		bool getChanged() { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
-		bool getChanged() restrict(amp) { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
-		void setChanged() { flags |= Flags::changed; }
-		void setChanged() restrict(amp) { flags |= Flags::changed; }
-		bool isWet() const { return flags & Flags::wet; }
-		bool isWet() const restrict(amp) { return flags & Flags::wet; }
-		bool setWet() { flags |= Flags::wet; }
-		bool atomicAddFlag(uint32 flag) restrict(amp)
+		inline bool getChanged() { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
+		inline bool getChanged() restrict(amp) { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
+		inline void setChanged() { flags |= Flags::changed; }
+		inline void setChanged() restrict(amp) { flags |= Flags::changed; }
+		inline bool isWet() const { return flags & Flags::wet; }
+		inline bool isWet() const restrict(amp) { return flags & Flags::wet; }
+		inline bool setWet() { flags |= Flags::wet; }
+		inline bool atomicAddFlag(uint32 flag) restrict(amp)
 		{
 			if (amp::atomicAddFlag(flags, flag)) { setChanged(); return true; }
 			return false;
 		}
-		void remWet() { flags &= ~Flags::wet; setChanged(); }
-		void remWet() restrict(amp) { flags &= ~Flags::wet; setChanged(); }
+		inline void remWet() { flags &= ~Flags::wet; setChanged(); }
+		inline void remWet() restrict(amp) { flags &= ~Flags::wet; setChanged(); }
 	};
 	typedef void(__stdcall* ChangeCallback)(int32*, Ground::Tile*, int32);
 
@@ -73,8 +74,8 @@ public:
 				flags == d.flags;
 		}
 
-		bool isWaterRepellent() const { return flags & Flags::waterRepellent; }
-		bool isWaterRepellent() const restrict(amp) { return flags & Flags::waterRepellent; }
+		inline bool isWaterRepellent() const { return flags & Flags::waterRepellent; }
+		inline bool isWaterRepellent() const restrict(amp) { return flags & Flags::waterRepellent; }
 	};
 
 

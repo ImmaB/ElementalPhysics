@@ -26,7 +26,7 @@
 
 
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-void b2ParticleGroupDef::FreeShapesMemory() {
+void ParticleGroup::Def::FreeShapesMemory() {
 	if (circleShapes)
 	{
 		delete[] circleShapes;
@@ -40,7 +40,7 @@ void b2ParticleGroupDef::FreeShapesMemory() {
 	}
 }
 
-void b2ParticleGroupDef::SetCircleShapesFromVertexList(void* inBuf,
+void ParticleGroup::Def::SetCircleShapesFromVertexList(void* inBuf,
 	int numShapes,
 	float radius)
 {

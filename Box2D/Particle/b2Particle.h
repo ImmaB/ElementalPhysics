@@ -22,319 +22,152 @@
 #include <Box2D/Common/b2Settings.h>
 #include <Box2D/Common/b2IntrusiveList.h>
 
-struct b2Color;
-struct b2ParticleGroup;
+struct ParticleGroup;
 
-/// @file
-/// The particle type. Can be combined with the | operator.
-enum b2ParticleFlag
+struct Particle
 {
-	/// Water particle.
-	b2_waterParticle = 1,
-	/// Removed after next simulation step.
-	b2_zombieParticle = 1 << 1,
-	/// Zero velocity.
-	b2_wallParticle = 1 << 2,
-	/// With restitution from stretching.
-	b2_springParticle = 1 << 3,
-	/// With restitution from deformation.
-	b2_elasticParticle = 1 << 4,
-	/// With viscosity.
-	b2_viscousParticle = 1 << 5,
-	/// Without isotropic pressure.
-	b2_powderParticle = 1 << 6,
-	/// With surface tension.
-	b2_tensileParticle = 1 << 7,
-	/// Mix color between contacting particles.
-	b2_colorMixingParticle = 1 << 8,
-	/// Call b2DestructionListener on destruction.
-	b2_destructionListenerParticle = 1 << 9,
-	/// Prevents other particles from leaking.
-	b2_barrierParticle = 1 << 10,
-	/// Less compressibility.
-	b2_staticPressureParticle = 1 << 11,
-	/// Makes pairs or triads with other particles.
-	b2_reactiveParticle = 1 << 12,
-	/// With high repulsive force.
-	b2_repulsiveParticle = 1 << 13,
-	/// Call b2ContactListener when this particle is about to interact with
-	/// a rigid body or stops interacting with a rigid body.
-	/// This results in an expensive operation compared to using
-	/// b2_fixtureContactFilterParticle to detect collisions between
-	/// particles.
-	b2_fixtureContactListenerParticle = 1 << 14,
-	/// Call b2ContactListener when this particle is about to interact with
-	/// another particle or stops interacting with another particle.
-	/// This results in an expensive operation compared to using
-	/// b2_particleContactFilterParticle to detect collisions between
-	/// particles.
-	b2_particleContactListenerParticle = 1 << 15,
-	/// Call b2ContactFilter when this particle interacts with rigid bodies.
-	b2_fixtureContactFilterParticle = 1 << 16,
-	/// Call b2ContactFilter when this particle interacts with other
-	/// particles.
-	b2_particleContactFilterParticle = 1 << 17,
-	/// makes Particles loose heat over time
-	b2_heatLoosingParticle = 1 << 18,
-	/// makes Particles fall down
-	b2_fallingParticle = 1 << 19,
-	/// makes Particle ignite other inflamable Materials
-	b2_risingParticle = 1 << 20,
-	/// makes Particle ignite other inflamable Materials
-	b2_burningParticle = 1 << 21,
-	/// makes Particle ignite other inflamable Materials
-	b2_flameParticle = 1 << 22,
-	/// markes Particles that are currently controlled
-	b2_controlledParticle = 1 << 23,
-	/// markes Particles that are Air
-	b2_airParticle = 1 << 24
-};
-
-/// Small color object for each particle
-/*class b2ParticleColor
-{
-public:
-	b2ParticleColor() {}
-	/// Constructor with four elements: r (red), g (green), b (blue), and a
-	/// (opacity).
-	/// Each element can be specified 0 to 255.
-	b2Inline b2ParticleColor(uint8 r, uint8 g, uint8 b, uint8 a)
+	struct Def
 	{
-		Set(r, g, b, a);
-	}
+		Def()
+		{
+			flags = 0;
+			position = b2Vec3_zero;
+			velocity = b2Vec3_zero;
+			color = 0;
+			groupIdx = b2_invalidIndex;
+			matIdx = b2_invalidIndex;
+			heat = 0.0f;
+			health = 1.0f;
+		}
+		uint32 flags;
+		b2Vec3 position;
+		b2Vec3 velocity;
+		int32 color;
 
-	/// Constructor that initializes the above four elements with the value of
-	/// the b2Color object.
-	b2ParticleColor(const b2Color& color);
+		float32 heat;
+		float32 health;
 
-	/// True when all four color elements equal 0. When true, a particle color
-	/// buffer isn't allocated by CreateParticle().
-	///
-	bool IsZero() const
+		int32 groupIdx;
+		int32 matIdx;
+	};
+
+	enum Flag
 	{
-		return !r && !g && !b && !a;
-	}
+		Zombie = 1 << 0,			/// Removed after next simulation step.
+		Reactive = 1 << 1,			/// Makes pairs or triads with other particles.
+		Controlled = 1 << 2,		/// markes Particles that are currently controlled
+		Burning = 1 << 3,			/// Burning down to other mat
+	};
 
-	/// Used internally to convert the value of b2Color.
-	///
-	b2Color GetColor() const;
-
-	/// Sets color for current object using the four elements described above.
-	///
-	b2Inline void Set(uint8 r_, uint8 g_, uint8 b_, uint8 a_)
+	struct Mat
 	{
-		r = r_;
-		g = g_;
-		b = b_;
-		a = a_;
-	}
+		struct Def
+		{
+			uint32  flags;
+			float32 density;
+			float32 mass;
+			float32 stability;
+			float32 heatConductivity;
+		};
+		struct ChangeDef
+		{
+			float32 coldThreshold;
+			int32 changeToColdMatIdx;
+			float32 hotThreshold;
+			int32 changeToHotMatIdx;
+			float32 ignitionThreshold;
+			int32 changeToBurnedMatIdx;
+		};
 
-	/// Initializes the object with the value of the b2Color.
-	///
-	void Set(const b2Color& color);
+		enum Flag
+		{
+			Fluid = 1 << 8,				/// Fluid particle.
+			Gas = 1 << 9,				/// Gas particle.
+			Wall = 1 << 10,				/// Zero velocity.
+			Spring = 1 << 11,			/// With restitution from stretching.
+			Elastic = 1 << 12,			/// With restitution from deformation.
+			Viscous = 1 << 13,			/// With viscosity.
+			Powder = 1 << 14,			/// Without isotropic pressure.
+			Tensile = 1 << 15,			/// With surface tension.
+			ColorMixing = 1 << 16,		/// Mix color between contacting particles.
+			Barrier = 1 << 17,			/// Prevents other particles from leaking.
+			StaticPressure = 1 << 18,	/// Less compressibility.
+			Repulsive = 1 << 19,		/// With high repulsive force.
+			HeatLoosing = 1 << 20,		/// makes Particles loose heat over time
+			Flame = 1 << 21,			/// makes Particle ignite other inflamable Materials
+			Inflammable = 1 << 22,
+			Extinguishing = 1 << 23,
+			HeatConducting = 1 << 24,
+			ElectricityConducting = 1 << 25,
 
-	/// Assign a b2ParticleColor to this instance.
-	b2ParticleColor& operator = (const b2ParticleColor &color)
-	{
-		Set(color.r, color.g, color.b, color.a);
-		return *this;
-	}
+			ChangeWhenCold = 1 << 30,
+			ChangeWhenHot = 1 << 31
+		};
+		/// All particle types that require creating pairs
+		static const uint32 k_pairFlags = Flag::Spring | Flag::Barrier;
+		/// All particle types that require creating triads
+		static const uint32 k_triadFlags = Flag::Elastic;
+		/// All particle types that do not produce dynamic pressure
+		static const uint32 k_noPressureFlags = Flag::Powder | Flag::Tensile;
+		/// All particle types that apply extra damping force with bodies
+		static const uint32 k_extraDampingFlags = Flag::StaticPressure;
+		/// All particle types that apply extra damping force with bodies
+		static const uint32 k_wallOrSpringOrElasticFlags = Flag::Wall | Flag::Spring | Flag::Elastic;
+		static const uint32 k_barrierWallFlags = Flag::Wall | Flag::Barrier;
 
-	/// Multiplies r, g, b, a members by s where s is a value between 0.0
-	/// and 1.0.
-	b2ParticleColor& operator *= (float32 s)
-	{
-		Set((uint8)(r * s), (uint8)(g * s), (uint8)(b * s), (uint8)(a * s));
-		return *this;
-	}
+		/// For only getting mat flags from uint32
+		static const uint32 k_mask = 0xFFFFFF00;
 
-	/// Scales r, g, b, a members by s where s is a value between 0 and 255.
-	b2ParticleColor& operator *= (uint8 s)
-	{
-		// 1..256 to maintain the complete dynamic range.
-		const int32 scale = (int32)s + 1;
-		Set((uint8)(((int32)r * scale) >> k_bitsPerComponent),
-			(uint8)(((int32)g * scale) >> k_bitsPerComponent),
-			(uint8)(((int32)b * scale) >> k_bitsPerComponent),
-			(uint8)(((int32)a * scale) >> k_bitsPerComponent));
-		return *this;
-	}
+		uint32 m_flags;
 
-	/// Scales r, g, b, a members by s returning the modified b2ParticleColor.
-	b2ParticleColor operator * (float32 s) const
-	{
-		return MultiplyByScalar(s);
-	}
+		float32 m_mass;
+		float32 m_invMass;
+		float32 m_stability;
+		float32 m_invStability;
+		float32 m_heatConductivity;
 
-	/// Scales r, g, b, a members by s returning the modified b2ParticleColor.
-	b2ParticleColor operator * (uint8 s) const
-	{
-		return MultiplyByScalar(s);
-	}
+		float32 m_coldThreshold;
+		int32 m_changeToColdMatIdx;
+		float32 m_hotThreshold;
+		int32 m_changeToHotMatIdx;
+		float32 m_ignitionThreshold;
+		int32 m_changeToBurnedMatIdx;
 
-	/// Add two colors.  This is a non-saturating addition so values
-	/// overflows will wrap.
-	b2Inline b2ParticleColor& operator += (const b2ParticleColor &color)
-	{
-		r += color.r;
-		g += color.g;
-		b += color.b;
-		a += color.a;
-		return *this;
-	}
 
-	/// Add two colors.  This is a non-saturating addition so values
-	/// overflows will wrap.
-	b2ParticleColor operator + (const b2ParticleColor &color) const
-	{
-		b2ParticleColor newColor(*this);
-		newColor += color;
-		return newColor;
-	}
+		bool Compare(const Def& def)
+		{
+			return def.flags == m_flags && def.mass == m_mass &&
+				def.stability == m_stability && def.heatConductivity == m_heatConductivity;
+		}
 
-	/// Subtract a color from this color.  This is a subtraction without
-	/// saturation so underflows will wrap.
-	b2Inline b2ParticleColor& operator -= (const b2ParticleColor &color)
-	{
-		r -= color.r;
-		g -= color.g;
-		b -= color.b;
-		a -= color.a;
-		return *this;
-	}
+		void Set(const Def& def)
+		{
+			m_flags = def.flags;
+			m_mass = def.mass;
+			m_invMass = 1 / def.mass;
+			m_stability = def.stability;
+			m_invStability = 1 / def.stability;
+			m_heatConductivity = def.heatConductivity;
+		}
 
-	/// Subtract a color from this color returning the result.  This is a
-	/// subtraction without saturation so underflows will wrap.
-	b2ParticleColor operator - (const b2ParticleColor &color) const
-	{
-		b2ParticleColor newColor(*this);
-		newColor -= color;
-		return newColor;
-	}
+		void SetMatChanges(const ChangeDef& changeDef)
+		{
+			m_coldThreshold = changeDef.coldThreshold;
+			m_changeToColdMatIdx = changeDef.changeToColdMatIdx;
+			m_hotThreshold = changeDef.hotThreshold;
+			m_changeToHotMatIdx = changeDef.changeToHotMatIdx;
+			m_ignitionThreshold = changeDef.ignitionThreshold;
+			m_changeToBurnedMatIdx = changeDef.changeToBurnedMatIdx;
+		}
 
-	/// Compare this color with the specified color.
-	bool operator == (const b2ParticleColor &color) const
-	{
-		return r == color.r && g == color.g && b == color.b && a == color.a;
-	}
+		inline bool HasFlag(Flag flag) const { return m_flags & flag; }
+		inline bool HasFlag(Flag flag) const restrict(amp) { return m_flags & flag; }
+		inline bool IsWallSpringOrElastic() const { return m_flags & k_wallOrSpringOrElasticFlags; }
+		inline bool IsWallSpringOrElastic() const restrict(amp) { return m_flags & k_wallOrSpringOrElasticFlags; }
+	};
 
-	/// Mix mixColor with this color using strength to control how much of
-	/// mixColor is mixed with this color and vice versa.  The range of
-	/// strength is 0..128 where 0 results in no color mixing and 128 results
-	/// in an equal mix of both colors.  strength 0..128 is analogous to an
-	/// alpha channel value between 0.0f..0.5f.
-	b2Inline void Mix(int32 mixColor, const int32 strength)
-	{
-		MixColors(this, mixColor, strength);
-	}
-
-	/// Mix colorA with colorB using strength to control how much of
-	/// colorA is mixed with colorB and vice versa.  The range of
-	/// strength is 0..128 where 0 results in no color mixing and 128 results
-	/// in an equal mix of both colors.  strength 0..128 is analogous to an
-	/// alpha channel value between 0.0f..0.5f.
-	static b2Inline void MixColors(int32 colorA, int32 colorB,
-									const int32 strength)
-	{
-		const uint8 dr = (uint8)((strength * (colorB->r - colorA->r)) >>
-								 k_bitsPerComponent);
-		const uint8 dg = (uint8)((strength * (colorB->g - colorA->g)) >>
-								 k_bitsPerComponent);
-		const uint8 db = (uint8)((strength * (colorB->b - colorA->b)) >>
-								 k_bitsPerComponent);
-		const uint8 da = (uint8)((strength * (colorB->a - colorA->a)) >>
-								 k_bitsPerComponent);
-		colorA->r += dr;
-		colorA->g += dg;
-		colorA->b += db;
-		colorA->a += da;
-		colorB->r -= dr;
-		colorB->g -= dg;
-		colorB->b -= db;
-		colorB->a -= da;
-	}
-
-private:
-	/// Generalization of the multiply operator using a scalar in-place
-	/// multiplication.
-	template <typename T>
-	b2ParticleColor MultiplyByScalar(T s) const
-	{
-		b2ParticleColor color(*this);
-		color *= s;
-		return color;
-	}
-
-public:
-	uint8 r, g, b, a;
-
-protected:
-	/// Maximum value of a b2ParticleColor component.
-	static const float32 k_maxValue;
-	/// 1.0 / k_maxValue.
-	static const float32 k_inverseMaxValue;
-	/// Number of bits used to store each b2ParticleColor component.
-	static const uint8 k_bitsPerComponent;
-};*/
-
-//extern b2ParticleColor b2ParticleColor_zero;
-
-/// A particle definition holds all the data needed to construct a particle.
-/// You can safely re-use these definitions.
-struct b2ParticleDef
-{
-	b2ParticleDef()
-	{
-		flags = 0;
-		position = b2Vec3_zero;
-		velocity = b2Vec3_zero;
-		color = 0;
-		lifetime = 0.0f;
-		userData = NULL;
-		groupIdx = b2_invalidIndex;
-		matIdx = b2_invalidIndex;
-		heat = 0.0f;
-		health = 1.0f;
-	}
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	/// Set position with direct floats
-	void SetPosition(float32 x, float32 y);
-
-	/// Set color with direct ints.
-	void SetColor(int32 r, int32 g, int32 b, int32 a);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-	/// \brief Specifies the type of particle (see #b2ParticleFlag).
-	///
-	/// A particle may be more than one type.
-	/// Multiple types are chained by logical sums, for example:
-	/// pd.flags = b2_elasticParticle | b2_viscousParticle
-	uint32 flags;
-
-	/// The world position of the particle.
-	b2Vec3 position;
-
-	/// The linear velocity of the particle in world co-ordinates.
-	b2Vec3 velocity;
-
-	/// The color of the particle.
-	int32	color;
-
-	float32 heat;
-	float32 health;
-
-	/// Lifetime of the particle in seconds.  A value <= 0.0f indicates a
-	/// particle with infinite lifetime.
-	float32 lifetime;
-
-	/// Use this to store application-specific body data.
-	int32 userData;
-
-	/// An existing particle group to which the particle will be added.
-	int32 groupIdx;
-
-	int32 matIdx;
+	/// For only getting particle flags from uint32
+	static const uint32 k_mask = 0x000000FF;
 };
 
 /// A helper function to calculate the optimal number of iterations.

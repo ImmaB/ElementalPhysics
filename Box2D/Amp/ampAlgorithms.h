@@ -137,7 +137,6 @@ namespace amp
 		if (const int32 size = end - start; size > 0)
 			Concurrency::copy(a.section(start, size), dest.data() + start);
 	}
-
 	template<typename T>
 	static ampCopyFuture copyAsync(const ampArray<T>& a, std::vector<T>& v, const int32 size = 0)
 	{
@@ -423,29 +422,28 @@ namespace amp
 	template<typename F>
 	static int32 reduce(const ampArray<int32>& cnts, const int32 elemCnt, const F& function)
 	{
+		if (!elemCnt) return 0;
 		using namespace concurrency;
         const auto computeDomain = ampExtent(elemCnt).tile<TILE_SIZE>().pad();
 		const int32 tileCnt = computeDomain[0] / TILE_SIZE;
         ampArray<int32> tileSums(tileCnt);
-        ampArrayView<int32> tileSumsView(tileSums);
-		ampArrayView<const int32> inputView(cnts);
-		ampArrayView<int32> outputView(elemCnt);
+		ampArray<int32> output(elemCnt);
 
         // 1 & 2. Scan all tiles and store results in tile_results.
-        parallel_for_each(computeDomain, [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+        parallel_for_each(computeDomain, [=, &cnts, &tileSums, &output](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
         {
             const int32 gi = tIdx.global[0];
 			const int32 li = tIdx.local[0];
             tile_static int32 tileData[TILE_SIZE];
-			const int32 origValue = tileData[li] = (gi < elemCnt) ? inputView[gi] : 0;
+			const int32 origValue = tileData[li] = (gi < elemCnt) ? cnts[gi] : 0;
             tIdx.barrier.wait_with_tile_static_memory_fence();
 
             const int32 val = _reduce_detail::scanTileExclusive<TILE_SIZE>(tileData, tIdx);
             if (li == (TILE_SIZE - 1))
-                tileSumsView[tIdx.tile] = val + origValue;
+                tileSums[tIdx.tile] = val + origValue;
 
 			if (gi < elemCnt)
-				outputView[gi] = tileData[li];// -inputView[gi];
+				output[gi] = tileData[li];// -cnts[gi];
         });
 
         // 3. Scan tile results.
@@ -456,33 +454,33 @@ namespace amp
 		//	});
         //else
         {
-            parallel_for_each(computeDomain, [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+            parallel_for_each(computeDomain, [=, &tileSums](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
             {
                 const int32 gi = tIdx.global[0];
                 const int32 li = tIdx.local[0];
 
                 tile_static int32 tileData[TILE_SIZE];
-				tileData[li] = (gi < tileCnt) ? tileSumsView[gi] : 0;
+				tileData[li] = (gi < tileCnt) ? tileSums[gi] : 0;
 
                 tIdx.barrier.wait_with_tile_static_memory_fence();
 
 				_reduce_detail::scanTileExclusive<TILE_SIZE>(tileData, tIdx);
 
-                tileSumsView[gi] = tileData[li];
+				tileSums[gi] = tileData[li];
                 tIdx.barrier.wait_with_tile_static_memory_fence();
             });
         }
 		int32 lastStart, lastTileStart;
-		ampCopyFuture lastTileStartProm = copyAsync(tileSumsView, tileCnt - 1, lastStart);
-		ampCopyFuture lastStartProm = copyAsync(outputView, elemCnt - 1, lastTileStart);
+		ampCopyFuture lastTileStartProm = copyAsync(tileSums, tileCnt - 1, lastStart);
+		ampCopyFuture lastStartProm = copyAsync(output, elemCnt - 1, lastTileStart);
 
         // 4. Add the tile results to the individual results for each tile.
 
-        parallel_for_each(computeDomain, [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+        parallel_for_each(computeDomain, [=, &output, &tileSums](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
         {
             const int32 gi = tIdx.global[0];
 			if (gi < elemCnt)
-				function(gi, outputView[gi] + tileSumsView[tIdx.tile]);
+				function(gi, output[gi] + tileSums[tIdx.tile]);
         });
 		lastTileStartProm.wait();
 		lastStartProm.wait();

@@ -166,13 +166,14 @@ struct Body
 
 		enum Flag
 		{
-			extinguishing = 1 << 0,
-			changeWhenCold = 1 << 1,
-			changeWhenHot = 1 << 2,
-			flammable = 1 << 3,
-			heatConducting = 1 << 4,
-			electricityConducting = 1 << 5,
-			waterRepellent = 1 << 6,
+			WaterRepellent = 1 << 6,
+			Inflammable = 1 << 23,
+			Extinguishing = 1 << 24,
+			HeatConducting = 1 << 25,
+			ElectricityConducting = 1 << 26,
+
+			ChangeWhenCold = 1 << 30,
+			ChangeWhenHot = 1 << 31,
 		};
 
 		uint32 m_matFlags;
@@ -199,22 +200,22 @@ struct Body
 		{}
 		~Mat() {}
 
-		bool HasFlag(const uint32 flag) const { return m_matFlags & flag; }
-		bool HasFlag(const uint32 flag) const restrict(amp) { return m_matFlags & flag; }
+		bool HasFlag(const Flag flag) const { return m_matFlags & flag; }
+		bool HasFlag(const Flag flag) const restrict(amp) { return m_matFlags & flag; }
 	};
 
 	enum Flag
 	{
-		island = 1 << 0,
-		awake = 1 << 1,
-		autoSleep = 1 << 2,	//also called allow sleep
-		bullet = 1 << 3,
-		fixedRotation = 1 << 4,
-		active = 1 << 5,
-		toi = 1 << 6,
-		breakable = 1 << 7,
-		burning = 1 << 8,
-		wet = 1 << 9
+		Island = 1 << 0,
+		Awake = 1 << 1,
+		AutoSleep = 1 << 2,	//also called allow sleep
+		Bullet = 1 << 3,
+		FixedRotation = 1 << 4,
+		Active = 1 << 5,
+		Toi = 1 << 6,
+		Breakable = 1 << 7,
+		Burning = 1 << 8,
+		Wet = 1 << 9
 	};
 
 	int32 m_idx;
@@ -395,19 +396,19 @@ struct Body
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
-	bool IsType(b2BodyType t) { return m_type == t; }
+	inline bool IsType(b2BodyType t) { return m_type == t; }
 
-	void AddFlag(uint32 flags) { m_flags |= flags; }
-	void AddFlag(uint32 flags) restrict(amp) { m_flags |= flags; }
-	void RemFlag(uint32 flags) { m_flags &= ~flags; }
-	void RemFlag(uint32 flags) restrict(amp) { m_flags &= ~flags; }
+	inline void AddFlag(Flag flags) { m_flags |= flags; }
+	inline void AddFlag(Flag flags) restrict(amp) { m_flags |= flags; }
+	inline void RemFlag(Flag flags) { m_flags &= ~flags; }
+	inline void RemFlag(Flag flags) restrict(amp) { m_flags &= ~flags; }
 
-	bool HasFlag(uint32 flag) const { return m_flags & flag; }
-	bool HasFlag(uint32 flag) const restrict(amp) { return m_flags & flag; }
+	inline bool HasFlag(Flag flag) const { return m_flags & flag; }
+	inline bool HasFlag(Flag flag) const restrict(amp) { return m_flags & flag; }
 
-	bool IsAwake() const restrict(amp) { return HasFlag(Flag::awake); }
+	inline bool IsAwake() const restrict(amp) { return HasFlag(Flag::Awake); }
 
-	bool atomicAddFlag(uint32 flag) restrict(amp)
+	inline bool atomicAddFlag(Flag flag) restrict(amp)
 	{
 		if (amp::atomicAddFlag(m_flags, flag)) return true;
 		return false;
@@ -521,11 +522,11 @@ inline b2Vec2 Body::GetLinearVelocityFromLocalPoint(const b2Vec2& localPoint) co
 
 inline void Body::SetBullet(bool flag)
 {
-	if (flag) AddFlag(Flag::bullet); else RemFlag(Flag::bullet);
+	if (flag) AddFlag(Flag::Bullet); else RemFlag(Flag::Bullet);
 }
 inline bool Body::IsBullet() const
 {
-	return (m_flags & bullet);
+	return (m_flags & Bullet);
 }
 
 inline void Body::SetAwake(bool flag)
@@ -534,13 +535,13 @@ inline void Body::SetAwake(bool flag)
 	{
 		if (!IsAwake())
 		{
-			m_flags |= awake;
+			m_flags |= Awake;
 			m_sleepTime = 0.0f;
 		}
 	}
 	else
 	{
-		m_flags &= ~awake;
+		m_flags &= ~Awake;
 		m_sleepTime = 0.0f;
 		m_linearVelocity.SetZero();
 		m_angularVelocity = 0.0f;
@@ -552,15 +553,15 @@ inline void Body::SetAwake(bool flag) restrict(amp)
 {
 	if (flag)
 	{
-		if ((m_flags & awake) == 0)
+		if ((m_flags & Awake) == 0)
 		{
-			m_flags |= awake;
+			m_flags |= Awake;
 			m_sleepTime = 0.0f;
 		}
 	}
 	else
 	{
-		m_flags &= ~awake;
+		m_flags &= ~Awake;
 		m_sleepTime = 0.0f;
 		m_linearVelocity.SetZero();
 		m_angularVelocity = 0.0f;
@@ -570,32 +571,32 @@ inline void Body::SetAwake(bool flag) restrict(amp)
 }
 inline bool Body::IsAwake() const
 {
-	return HasFlag(Flag::awake);
+	return HasFlag(Flag::Awake);
 }
 
 inline bool Body::IsActive() const
 {
-	return HasFlag(Flag::active);
+	return HasFlag(Flag::Active);
 }
 
 inline bool Body::IsFixedRotation() const
 {
-	return HasFlag(fixedRotation);
+	return HasFlag(FixedRotation);
 }
 
 inline void Body::SetSleepingAllowed(bool flag)
 {
 	if (flag)
-		AddFlag(Flag::autoSleep);
+		AddFlag(Flag::AutoSleep);
 	else
 	{
-		RemFlag(Flag::autoSleep);
+		RemFlag(Flag::AutoSleep);
 		SetAwake(true);
 	}
 }
 inline bool Body::IsSleepingAllowed() const
 {
-	return HasFlag(autoSleep);
+	return HasFlag(AutoSleep);
 }
 
 inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake)
@@ -711,15 +712,3 @@ inline void Body::Advance(float32 alpha)
 	m_xf.q.Set(m_sweep.a);
 	m_xf.p = m_sweep.c - b2Mul(m_xf.q, m_sweep.localCenter);
 }
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-inline void b2BodyDef::SetPosition(float32 positionX, float32 positionY)
-{
-	position.Set(positionX, positionY);
-}
-
-inline void b2Body::SetTransform(float32 positionX, float32 positionY, float32 angle)
-{
-	SetTransform(b2Vec2(positionX, positionY), angle);
-}
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API

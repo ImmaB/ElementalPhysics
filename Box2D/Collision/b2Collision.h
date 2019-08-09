@@ -145,7 +145,7 @@ struct b2ClipVertex
 /// Ray-cast input data. The ray extends from p1 to p1 + maxFraction * (p2 - p1).
 struct b2RayCastInput
 {
-	b2RayCastInput() : p1(b2Vec2_zero), p2(b2Vec2_zero), maxFraction(0) {};
+	b2RayCastInput() {};
 	b2RayCastInput() restrict(amp) {};
 	b2Vec2 p1, p2;
 	float32 maxFraction;
@@ -164,7 +164,7 @@ struct b2RayCastOutput
 /// An axis aligned bounding box.
 struct b2AABB
 {
-	b2AABB() { lowerBound = b2Vec2(FLT_MAX, FLT_MAX); upperBound = b2Vec2(-FLT_MAX, -FLT_MAX); };
+	b2AABB() {};
 	b2AABB() restrict(amp) {};
 
 	/// Verify that the bounds are sorted.

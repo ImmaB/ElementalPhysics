@@ -133,6 +133,7 @@ typedef unsigned long long uint64;
 #endif
 
 #define	b2_maxFloat		FLT_MAX
+#define	b2_minFloat		FLT_MIN
 #define	b2_epsilon		FLT_EPSILON
 #define b2_pi			3.14159265359f
 
@@ -279,9 +280,11 @@ typedef unsigned long long uint64;
 
 /// A body cannot sleep if its linear velocity is above this tolerance.
 #define b2_linearSleepTolerance		0.01f
+#define b2_linearSleepToleranceSqr	b2_linearSleepTolerance * b2_linearSleepTolerance
 
 /// A body cannot sleep if its angular velocity is above this tolerance.
 #define b2_angularSleepTolerance	(2.0f / 180.0f * b2_pi)
+#define b2_angularSleepToleranceSqr	b2_angularSleepTolerance * b2_angularSleepTolerance
 
 // Memory Allocation
 

@@ -352,18 +352,15 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 	{
 		float32 minSleepTime = b2_maxFloat;
 
-		const float32 linTolSqr = b2_linearSleepTolerance * b2_linearSleepTolerance;
-		const float32 angTolSqr = b2_angularSleepTolerance * b2_angularSleepTolerance;
-
 		for (int32 i = 0; i < m_bodyCount; ++i)
 		{
 			Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
 			if (b.m_type == b2_staticBody)
 				continue;
 
-			if ((b.m_flags & Body::Flag::autoSleep) == 0 ||
-				b.m_angularVelocity * b.m_angularVelocity > angTolSqr ||
-				b2Dot(b.m_linearVelocity, b.m_linearVelocity) > linTolSqr)
+			if (!b.HasFlag(Body::Flag::AutoSleep) ||
+				b.m_angularVelocity * b.m_angularVelocity > b2_angularSleepToleranceSqr ||
+				b2Dot(b.m_linearVelocity, b.m_linearVelocity) > b2_linearSleepToleranceSqr)
 			{
 				b.m_sleepTime = 0.0f;
 				minSleepTime = 0.0f;

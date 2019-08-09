@@ -37,10 +37,8 @@ void Body::Set(const b2BodyDef def)
 	b2Assert(def.material == NULL);
 
 	m_flags = def.flags;
-	if (def.awake)
-		m_flags |= awake;
-	if (def.active)
-		m_flags |= active;
+	if (def.awake) AddFlag(Flag::Awake);
+	if (def.active) AddFlag(Flag::Active);
 
 	m_xf = def.transform;
 	m_xf0 = m_xf;
@@ -65,7 +63,7 @@ void Body::Set(const b2BodyDef def)
 	m_sleepTime = 0.0f;
 
 	m_type = def.type;
-
+	
 	if (m_type == b2_dynamicBody)
 	{
 		m_mass = 1.0f;
@@ -101,7 +99,7 @@ void Body::SetMassData(const b2MassData& massData)
 
 	m_invMass = 1.0f / m_mass;
 
-	if (massData.I > 0.0f && !HasFlag(fixedRotation))
+	if (massData.I > 0.0f && !HasFlag(FixedRotation))
 	{
 		m_I = massData.I - m_mass * b2Dot(massData.center, massData.center);
 		b2Assert(m_I > 0.0f);

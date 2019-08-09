@@ -15,8 +15,7 @@
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 */
-#ifndef B2_PARTICLE_GROUP
-#define B2_PARTICLE_GROUP
+#pragma once
 
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Collision/Shapes/b2Shape.h>
@@ -24,162 +23,95 @@
 struct b2Shape;
 class b2World;
 class b2ParticleSystem;
-struct b2ParticleGroup;
+struct ParticleGroup;
 class b2ParticleColor;
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-struct b2CircleShape;
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 
-/// @file
-
-/// The particle group type.  Can be combined with the | operator.
-enum b2ParticleGroupFlag
+/// A group of particles. ParticleGroup::CreateParticleGroup creates these.
+struct ParticleGroup
 {
-	/// Prevents overlapping or leaking.
-	b2_solidParticleGroup = 1 << 0,
-	/// Keeps its shape.
-	b2_rigidParticleGroup = 1 << 1,
-	/// Won't be destroyed if it gets empty.
-	b2_particleGroupCanBeEmpty = 1 << 2,
-	/// Will be destroyed on next simulation step.
-	b2_particleGroupWillBeDestroyed = 1 << 3,
-	/// Updates depth data on next simulation step.
-	b2_particleGroupNeedsUpdateDepth = 1 << 4,
-	b2_particleGroupInternalMask =
-		b2_particleGroupWillBeDestroyed |
-		b2_particleGroupNeedsUpdateDepth,
-};
-
-/// A particle group definition holds all the data needed to construct a
-/// particle group.  You can safely re-use these definitions.
-struct b2ParticleGroupDef
-{
-
-	b2ParticleGroupDef()
+	enum Flag
 	{
-		idx = 0;
-		flags = 0;
-		groupFlags = 0;
-		transform = b2Transform();
-		linearVelocity = b2Vec3_zero;
-		angularVelocity = 0;
-		color = 0;
-		strength = 1;
-		shapeType = b2Shape::e_typeCount;
-		shapeIdx = b2_invalidIndex;
-		shapeCount = 0;
-		stride = 0;
-		particleCount = 0;
-		positionData = NULL;
-		colorData = NULL;
-		lifetime = 0.0f;
-		groupIdx = b2_invalidIndex;
-		matIdx = b2_invalidIndex;
-		collisionGroup = 0;
-		heat = 0.0f;
-		health = 1.0f;
-		timestamp = b2_invalidIndex;
+		/// Prevents overlapping or leaking.
+		Solid = 1 << 0,
+		/// Keeps its shape.
+		Rigid = 1 << 1,
+		/// Won't be destroyed if it gets empty.
+		CanBeEmpty = 1 << 2,
+		/// Will be destroyed on next simulation step.
+		WillBeDestroyed = 1 << 3,
+		/// Updates depth data on next simulation step.
+		NeedsUpdateDepth = 1 << 4,
+		InternalMask = WillBeDestroyed | NeedsUpdateDepth,
+	};
 
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-		circleShapes = NULL;
-		ownShapesArray = false;
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	}
-
-	~b2ParticleGroupDef()
+	struct Def
 	{
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-		FreeShapesMemory();
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	}
-	int32 idx;
-	/// The particle-behavior flags (See #b2ParticleFlag).
-	uint32 flags;
+		Def()
+		{
+			idx = 0;
+			flags = 0;
+			groupFlags = 0;
+			transform = b2Transform();
+			linearVelocity = b2Vec3_zero;
+			angularVelocity = 0;
+			color = 0;
+			strength = 1;
+			shapeType = b2Shape::e_typeCount;
+			shapeIdx = b2_invalidIndex;
+			shapeCount = 0;
+			stride = 0;
+			particleCount = 0;
+			positionData = NULL;
+			colorData = NULL;
+			groupIdx = b2_invalidIndex;
+			matIdx = b2_invalidIndex;
+			collisionGroup = 0;
+			heat = 0.0f;
+			health = 1.0f;
+			timestamp = b2_invalidIndex;
+		}
+		int32 idx;
 
-	/// The group-construction flags (See #b2ParticleGroupFlag).
-	uint32 groupFlags;
+		uint32 flags;
+		uint32 groupFlags;
 
-	/// The world position of the group.
-	/// Moves the group's shape a distance equal to the value of position.
-	b2Transform transform;
+		/// The world position of the group.
+		/// Moves the group's shape a distance equal to the value of position.
+		b2Transform transform;
+		b2Vec3 linearVelocity;
+		float32 angularVelocity;
 
-	/// The linear velocity of the group's origin in world co-ordinates.
-	b2Vec3 linearVelocity;
+		int32 color;
 
-	/// The angular velocity of the group.
-	float32 angularVelocity;
+		/// The strength of cohesion among the particles in a group with flag
+		/// b2_elasticParticle or b2_springParticle.
+		float32 strength;
 
-	/// The color of all particles in the group.
-	int32 color;
+		/// The shape where particles will be added.
+		b2Shape::Type shapeType;
+		int32 shapeIdx;
+		/// The number of shapes.
+		int32 shapeCount;
+		/// The interval of particles in the shape.
+		/// If it is 0, b2_particleStride * particleDiameter is used instead.
+		float32 stride;
 
-	/// The strength of cohesion among the particles in a group with flag
-	/// b2_elasticParticle or b2_springParticle.
-	float32 strength;
+		/// The initial positions of the particleCount particles.
+		int32 particleCount;
+		b2Vec3* positionData;
+		int32* colorData;
 
-	/// The shape where particles will be added.
-	b2Shape::Type shapeType;
-	int32 shapeIdx;
+		/// An existing particle group to which the particles will be added.
+		int32 groupIdx;
+		int32 matIdx;
+		int32 collisionGroup;
 
-	/// The number of shapes.
-	int32 shapeCount;
+		float32 heat;
+		float32 health;
 
-	/// The interval of particles in the shape.
-	/// If it is 0, b2_particleStride * particleDiameter is used instead.
-	float32 stride;
+		int32 timestamp;
+	};
 
-	/// The number of particles in addition to ones added in the shape.
-	int32 particleCount;
-
-	/// The initial positions of the particleCount particles.
-	b2Vec3* positionData;
-
-	int* colorData;
-
-	/// Lifetime of the particle group in seconds.  A value <= 0.0f indicates a
-	/// particle group with infinite lifetime.
-	float32 lifetime;
-
-	/// An existing particle group to which the particles will be added.
-	int32 groupIdx;
-
-	int32 matIdx;
-
-	int32 collisionGroup;
-
-	float32 heat;
-
-	float32 health;
-
-	int32 timestamp;
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	/// Storage for constructed CircleShapes from an incoming vertex list
-	const b2CircleShape* circleShapes;
-
-	/// True if we create the shapes array internally.
-	bool ownShapesArray;
-
-	/// Clean up all memory associated with SetCircleShapesFromVertexList
-	void FreeShapesMemory();
-
-	/// From a vertex list created by an external language API, construct
-	/// a list of circle shapes that can be used to create a b2ParticleGroup
-	/// This eliminates cumbersome array-interfaces between languages.
-	void SetCircleShapesFromVertexList(void* inBuf,
-									   int numShapes,
-									   float radius);
-
-	/// Set position with direct floats.
-	void SetPosition(float32 x, float32 y);
-
-	/// Set color with direct ints.
-	void SetColor(int32 r, int32 g, int32 b, int32 a);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-};
-
-/// A group of particles. b2ParticleGroup::CreateParticleGroup creates these.
-struct b2ParticleGroup
-{
 	/// Get the number of particles.
 	int32 GetParticleCount() const;
 	int32 GetFirstIndex() const;
@@ -193,6 +125,8 @@ struct b2ParticleGroup
 	
 	/// Get the construction flags for the group.
 	uint32 GetGroupFlags() const;
+	inline bool HasFlag(uint32 flag) const { return m_groupFlags & flag; }
+	inline bool HasFlag(uint32 flag) const restrict(amp) { return m_groupFlags & flag; }
 	
 	int32 GetMaterialIdx() const;
 
@@ -214,7 +148,7 @@ struct b2ParticleGroup
 	/// Set the user data. Use this to store your application specific data.
 	void SetUserData(int32 data);
 
-	b2ParticleGroup()
+	ParticleGroup()
 	{
 		m_firstIndex = 0;
 		m_lastIndex = 0;
@@ -252,98 +186,83 @@ struct b2ParticleGroup
 
 };
 
-//inline b2ParticleGroup* b2ParticleGroup::GetNext()
+//inline ParticleGroup* ParticleGroup::GetNext()
 //{
 //	return m_next;
 //}
 //
-//inline const b2ParticleGroup* b2ParticleGroup::GetNext() const
+//inline const ParticleGroup* ParticleGroup::GetNext() const
 //{
 //	return m_next;
 //}
 
-//inline b2ParticleSystem* b2ParticleGroup::GetParticleSystem()
+//inline b2ParticleSystem* ParticleGroup::GetParticleSystem()
 //{
 //	return m_system;
 //}
 //
-//inline const b2ParticleSystem* b2ParticleGroup::GetParticleSystem() const
+//inline const b2ParticleSystem* ParticleGroup::GetParticleSystem() const
 //{
 //	return m_system;
 //}
 
-inline int32 b2ParticleGroup::GetParticleCount() const
+inline int32 ParticleGroup::GetParticleCount() const
 {
 	return m_lastIndex - m_firstIndex;
 }
 
-inline int32 b2ParticleGroup::GetFirstIndex() const
+inline int32 ParticleGroup::GetFirstIndex() const
 {
 	return m_firstIndex;
 }
 
-inline int32 b2ParticleGroup::GetLastIndex() const
+inline int32 ParticleGroup::GetLastIndex() const
 {
 	return m_lastIndex;
 }
 
-inline bool b2ParticleGroup::ContainsParticle(int32 index) const
+inline bool ParticleGroup::ContainsParticle(int32 index) const
 {
 	return m_firstIndex <= index && index < m_lastIndex;
 }
 
-inline int32 b2ParticleGroup::GetBufferIndex() const
+inline int32 ParticleGroup::GetBufferIndex() const
 {
   return m_firstIndex;
 }
 
-inline uint32 b2ParticleGroup::GetGroupFlags() const
+inline uint32 ParticleGroup::GetGroupFlags() const
 {
-	return m_groupFlags & ~b2_particleGroupInternalMask;
+	return m_groupFlags & ~InternalMask;
 }
 
-inline int32 b2ParticleGroup::GetMaterialIdx() const
+inline int32 ParticleGroup::GetMaterialIdx() const
 {
 	return m_matIdx;
 }
 
-inline const b2Transform& b2ParticleGroup::GetTransform() const
+inline const b2Transform& ParticleGroup::GetTransform() const
 {
 	return m_transform;
 }
 
-inline const b2Vec2& b2ParticleGroup::GetPosition() const
+inline const b2Vec2& ParticleGroup::GetPosition() const
 {
 	return m_transform.p;
 }
 
-inline float32 b2ParticleGroup::GetAngle() const
+inline float32 ParticleGroup::GetAngle() const
 {
 	return m_transform.q.GetAngle();
 }
 
 
-inline int32 b2ParticleGroup::GetUserData() const
+inline int32 ParticleGroup::GetUserData() const
 {
 	return m_userData;
 }
 
-inline void b2ParticleGroup::SetUserData(int32 data)
+inline void ParticleGroup::SetUserData(int32 data)
 {
 	m_userData = data;
 }
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-inline void b2ParticleGroupDef::SetPosition(float32 x, float32 y)
-{
-	position.Set(x, y);
-}
-
-inline void b2ParticleGroupDef::SetColor(int32 r, int32 g, int32 b, int32 a)
-{
-	color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
-}
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-
-#endif

@@ -25,6 +25,7 @@ void b2CircleShape::Set(const b2Shape::Def& shapeDef)
 	const b2CircleShapeDef& circDef = (const b2CircleShapeDef&)shapeDef;
 	//m_type = Shape::e_circle;
 	m_radius = shapeDef.radius;
+	m_area = m_radius * m_radius * b2_pi;
 	m_p = circDef.p;
 }
 
@@ -106,9 +107,9 @@ void b2CircleShape::ComputeAABB(b2AABB& aabb, const b2Transform& transform, int3
 	aabb.upperBound.Set(p.x + m_radius, p.y + m_radius);
 }
 
-b2MassData b2CircleShape::ComputeMass(float32 density) const
+b2MassData b2CircleShape::ComputeMass(float32 density, float32 height) const
 {
-	const float32 mass = density * b2_pi * m_radius * m_radius;
+	const float32 mass = density * m_area * height;
 	return b2MassData(mass, m_p,
 		mass * (0.5f * m_radius * m_radius + b2Dot(m_p, m_p))
 	);

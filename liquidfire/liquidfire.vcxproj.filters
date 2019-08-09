@@ -413,9 +413,6 @@
     <ClInclude Include="..\Box2D\Particle\b2ParticleAssembly.h">
       <Filter>Headerdateien\Particle</Filter>
     </ClInclude>
-    <ClInclude Include="..\Box2D\Particle\b2ParticleGroup.h">
-      <Filter>Headerdateien\Particle</Filter>
-    </ClInclude>
     <ClInclude Include="..\Box2D\Rope\b2Rope.h">
       <Filter>Headerdateien\Rope</Filter>
     </ClInclude>
@@ -436,6 +433,9 @@
     </ClInclude>
     <ClInclude Include="..\Box2D\Dynamics\Ground.h">
       <Filter>Headerdateien\Dynamics</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Box2D\Particle\b2ParticleGroup.h">
+      <Filter>Headerdateien\Particle</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
