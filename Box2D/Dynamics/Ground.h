@@ -41,7 +41,7 @@ public:
 	};
 	typedef void(__stdcall* ChangeCallback)(int32*, Ground::Tile*, int32);
 
-	struct Material
+	struct Mat
 	{
 		enum Flags
 		{
@@ -57,7 +57,7 @@ public:
 			uint32 flags;
 		};
 
-		Material(const def& d) :
+		Mat(const def& d) :
 			friction(d.friction),
 			bounciness(d.bounciness),
 			flags(d.flags)
@@ -94,9 +94,9 @@ public:
 	vector<Tile> m_changedTiles;
 
 	float32 m_stride;
-	int32 m_sizeY;
-	int32 m_sizeX;
-	int32 m_size;
+	float32 m_invStride;
+	int32 m_tileCntY, m_tileCntX, m_tileCnt;
+	b2Vec2 m_size;
 	int32 m_chunkCntY;
 	int32 m_chunkCntX;
 	int32 m_chunkCnt;
@@ -105,16 +105,25 @@ public:
 	ampArray<int32> m_ampChunkHasChange;
 	ampArray<int32> m_ampTilesChangedIdxs;
 
-	vector<Material> m_materials;
-	ampArray<Material> m_ampMaterials;
+	vector<Mat> m_materials;
+	ampArray<Mat> m_ampMaterials;
 	int32 m_allMaterialFlags;
 
 	Ground(b2World& world, const def& gd);
 
 	void SetTiles(Tile* tiles);
 
-	int32 CreateMaterial(Material::def gmd);
+	int32 CreateMaterial(Mat::def gmd);
 
 	void CopyChangedTiles();
+
+	Tile GetTileAt(const b2Vec2& p) const;
+	Ground::Mat GetMat(const Ground::Tile& tile);
+
+
+private:
+
+	int32 GetIdx(const b2Vec2& p) const;
+
 };
 

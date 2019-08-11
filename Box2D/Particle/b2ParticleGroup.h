@@ -55,14 +55,11 @@ struct ParticleGroup
 			linearVelocity = b2Vec3_zero;
 			angularVelocity = 0;
 			color = 0;
-			strength = 1;
 			shapeType = b2Shape::e_typeCount;
 			shapeIdx = b2_invalidIndex;
 			shapeCount = 0;
 			stride = 0;
 			particleCount = 0;
-			positionData = NULL;
-			colorData = NULL;
 			groupIdx = b2_invalidIndex;
 			matIdx = b2_invalidIndex;
 			collisionGroup = 0;
@@ -83,10 +80,6 @@ struct ParticleGroup
 
 		int32 color;
 
-		/// The strength of cohesion among the particles in a group with flag
-		/// b2_elasticParticle or b2_springParticle.
-		float32 strength;
-
 		/// The shape where particles will be added.
 		b2Shape::Type shapeType;
 		int32 shapeIdx;
@@ -98,8 +91,8 @@ struct ParticleGroup
 
 		/// The initial positions of the particleCount particles.
 		int32 particleCount;
-		b2Vec3* positionData;
-		int32* colorData;
+		std::vector<b2Vec3> positionData;
+		std::vector<int32> colorData;
 
 		/// An existing particle group to which the particles will be added.
 		int32 groupIdx;

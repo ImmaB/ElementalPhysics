@@ -468,6 +468,8 @@ public:
 	/// Get the particle density.
 	float32 GetDensity() const;
 
+	void SetAtmosphereParticleMass(float32 density);
+
 	/// Change the particle gravity scale. Adjusts the effect of the global
 	/// gravity vector on particles.
 	void SetGravityScale(float32 gravityScale);
@@ -958,16 +960,14 @@ private:
 	void ResizeBodyContactBuffers(int32 size);
 	void ResizePairBuffers(int32 size);
 	void ResizeTriadBuffers(int32 size);
-	int32 CreateParticlesForGroup(const ParticleGroup::Def& groupDef, const vector<b2Vec2>& positions);
-	int32 CreateParticlesForGroup(const ParticleGroup::Def& groupDef,
-		const vector<b2Vec3>& poss, const vector<int32>& cols);
+	pair<int32, int32> CreateParticlesWithPositions(const ParticleGroup::Def& groupDef);
 	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
 		const b2Shape& shape,
 		const ParticleGroup::Def& groupDef, const b2Transform& xf);
 	pair<int32, int32> CreateParticlesFillShapeForGroup(
 		const b2Shape& shape,
-		const ParticleGroup::Def& groupDef);
-	pair<int32, int32> CreateParticlesWithShapeForGroup(const ParticleGroup::Def& gd);
+		ParticleGroup::Def& groupDef);
+	pair<int32, int32> CreateParticlesWithShapeForGroup(ParticleGroup::Def& gd);
 	int32 CloneParticle(int32 index, int32 groupIdx);
 
 	void UpdatePairsAndTriads(
@@ -999,7 +999,7 @@ private:
 
 public:
 	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
-	void AddFlagInsideFixture(const uint32 flag, const int32 matIdx,
+	void AddFlagInsideFixture(const Particle::Flag flag, const int32 matIdx,
 		const Fixture& fixture);
 
 private:
@@ -1162,6 +1162,7 @@ private:
 	float32 m_particleDiameter;
 	float32 m_particleRadius;
 	float32 m_particleVolume;
+	float32 m_atmosphereParticleMass;
 	float32 m_inverseDiameter;
 	float32 m_inverseRadius;
 	float32 m_squaredDiameter;
@@ -1513,6 +1514,11 @@ inline void b2ParticleSystem::SetDensity(float32 density)
 inline float32 b2ParticleSystem::GetDensity() const
 {
 	return m_def.density;
+}
+
+inline void b2ParticleSystem::SetAtmosphereParticleMass(float32 density)
+{
+	m_atmosphereParticleMass = m_particleVolume * density;
 }
 
 inline void b2ParticleSystem::SetGravityScale(float32 gravityScale)

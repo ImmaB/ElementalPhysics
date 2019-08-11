@@ -76,8 +76,8 @@ struct AmpCircleShape
 	b2Shape::Type m_type;
 	float32 m_radius;
 	float32 m_area;
-	b2Vec2 m_p;
 	int32 _placeholder;
+	b2Vec2 m_p;
 
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal) const restrict(amp)
 	{

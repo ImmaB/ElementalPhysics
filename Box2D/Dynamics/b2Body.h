@@ -34,106 +34,6 @@ struct b2FixtureDef;
 struct b2JointEdge;
 struct b2ContactEdge;
 
-/// The body type.
-/// static: zero mass, zero velocity, may be manually moved
-/// kinematic: zero mass, non-zero velocity set by user, moved by solver
-/// dynamic: positive mass, non-zero velocity determined by forces, moved by solver
-enum b2BodyType
-{
-	b2_staticBody = 0,
-	b2_kinematicBody = 1,
-	b2_dynamicBody = 2
-
-	// TODO_ERIN
-	//b2_bulletBody,
-};
-
-/// A body definition holds all the data needed to construct a rigid body.
-/// You can safely re-use body definitions. Shapes are added to a body after construction.
-struct b2BodyDef
-{
-	/// This constructor sets the body definition default values.
-	b2BodyDef()
-	{
-		transform.p.SetZero();
-		transform.q.SetIdentity();
-		linearVelocity.Set(0.0f, 0.0f);
-		angularVelocity = 0.0f;
-		linearDamping = 0.0f;
-		angularDamping = 0.0f;
-		materialIdx = b2_invalidIndex;
-		heat = 15.f;
-		health = 1.0f;
-		flags = 0;
-		allowSleep = true;
-		awake = true;
-		fixedRotation = false;
-		bullet = false;
-		type = b2_staticBody;
-		active = true;
-		gravityScale = 1.0f;
-	}
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-	/// Set position with direct floats.
-	void SetPosition(float32 positionX, float32 positionY);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-	/// The body type: static, kinematic, or dynamic.
-	/// Note: if a dynamic body would have zero mass, the mass is set to one.
-	b2BodyType type;
-
-	int32 materialIdx;
-
-	/// The world position of the body. Avoid creating bodies at the origin
-	/// since this can lead to many overlapping shapes.
-	b2Transform transform;
-
-	/// The linear velocity of the body's origin in world co-ordinates.
-	b2Vec2 linearVelocity;
-
-	/// The angular velocity of the body.
-	float32 angularVelocity;
-
-	/// Linear damping is use to reduce the linear velocity. The damping parameter
-	/// can be larger than 1.0f but the damping effect becomes sensitive to the
-	/// time step when the damping parameter is large.
-	float32 linearDamping;
-
-	/// Angular damping is use to reduce the angular velocity. The damping parameter
-	/// can be larger than 1.0f but the damping effect becomes sensitive to the
-	/// time step when the damping parameter is large.
-	float32 angularDamping;
-
-
-	/// Set this flag to false if this body should never fall asleep. Note that
-	/// this increases CPU usage.
-	bool allowSleep;
-
-	/// Is this body initially awake or sleeping?
-	bool awake;
-
-	/// Should this body be prevented from rotating? Useful for characters.
-	bool fixedRotation;
-
-	/// Is this a fast moving body that should be prevented from tunneling through
-	/// other moving bodies? Note that all bodies are prevented from tunneling through
-	/// kinematic and static bodies. This setting is only considered on dynamic bodies.
-	/// @warning You should use this flag sparingly since it increases processing time.
-	bool bullet;
-
-	/// Does this body start out active?
-	bool active;
-
-	/// Scale the gravity applied to this body.
-	float32 gravityScale;
-
-	float32 heat;
-	float32 health;
-	uint32 flags;
-};
-
-
 struct Body
 {
 	struct Mat
@@ -204,6 +104,16 @@ struct Body
 		bool HasFlag(const Flag flag) const restrict(amp) { return m_matFlags & flag; }
 	};
 
+	enum Type
+	{
+		Static = 0,		// zero mass, zero velocity, may be manually moved
+		Kinematic = 1,	// zero mass, non-zero velocity set by user, moved by solver
+		Dynamic = 2		// positive mass, non-zero velocity determined by forces, moved by solver
+
+		// TODO_ERIN
+		//b2_bulletBody,
+	};
+
 	enum Flag
 	{
 		Island = 1 << 0,
@@ -218,9 +128,90 @@ struct Body
 		Wet = 1 << 9
 	};
 
+
+	/// A body definition holds all the data needed to construct a rigid body.
+	/// You can safely re-use body definitions. Shapes are added to a body after construction.
+	struct Def
+	{
+		/// This constructor sets the body definition default values.
+		Def()
+		{
+			transform.p.SetZero();
+			transform.q.SetIdentity();
+			linearVelocity.Set(0.0f, 0.0f);
+			angularVelocity = 0.0f;
+			linearDamping = 0.0f;
+			angularDamping = 0.0f;
+			materialIdx = b2_invalidIndex;
+			heat = 15.f;
+			health = 1.0f;
+			flags = 0;
+			allowSleep = true;
+			awake = true;
+			fixedRotation = false;
+			bullet = false;
+			type = Type::Static;
+			active = true;
+			gravityScale = 1.0f;
+		}
+
+		/// The body type: static, kinematic, or dynamic.
+		/// Note: if a dynamic body would have zero mass, the mass is set to one.
+		Body::Type type;
+
+		int32 materialIdx;
+
+		/// The world position of the body. Avoid creating bodies at the origin
+		/// since this can lead to many overlapping shapes.
+		b2Transform transform;
+
+		/// The linear velocity of the body's origin in world co-ordinates.
+		b2Vec2 linearVelocity;
+
+		/// The angular velocity of the body.
+		float32 angularVelocity;
+
+		/// Linear damping is use to reduce the linear velocity. The damping parameter
+		/// can be larger than 1.0f but the damping effect becomes sensitive to the
+		/// time step when the damping parameter is large.
+		float32 linearDamping;
+
+		/// Angular damping is use to reduce the angular velocity. The damping parameter
+		/// can be larger than 1.0f but the damping effect becomes sensitive to the
+		/// time step when the damping parameter is large.
+		float32 angularDamping;
+
+
+		/// Set this flag to false if this body should never fall asleep. Note that
+		/// this increases CPU usage.
+		bool allowSleep;
+
+		/// Is this body initially awake or sleeping?
+		bool awake;
+
+		/// Should this body be prevented from rotating? Useful for characters.
+		bool fixedRotation;
+
+		/// Is this a fast moving body that should be prevented from tunneling through
+		/// other moving bodies? Note that all bodies are prevented from tunneling through
+		/// kinematic and static bodies. This setting is only considered on dynamic bodies.
+		/// @warning You should use this flag sparingly since it increases processing time.
+		bool bullet;
+
+		/// Does this body start out active?
+		bool active;
+
+		/// Scale the gravity applied to this body.
+		float32 gravityScale;
+
+		float32 heat;
+		float32 health;
+		uint32 flags;
+	};
+
 	int32 m_idx;
 
-	b2BodyType m_type;
+	Body::Type m_type;
 
 	uint32 m_flags;
 
@@ -252,7 +243,7 @@ struct Body
 
 	float32 m_health;
 
-	void Set(const b2BodyDef def);
+	void Set(const Body::Def& def);
 	
 	/// Set the sleep state of the body. A sleeping body has very
 	/// low CPU cost.
@@ -396,7 +387,7 @@ struct Body
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
 
-	inline bool IsType(b2BodyType t) { return m_type == t; }
+	inline bool IsType(Body::Type t) const { return m_type == t; }
 
 	inline void AddFlag(Flag flags) { m_flags |= flags; }
 	inline void AddFlag(Flag flags) restrict(amp) { m_flags |= flags; }
@@ -451,7 +442,7 @@ inline const b2Vec2 Body::GetLocalCenter() const restrict(amp)
 
 inline void Body::SetLinearVelocity(const b2Vec3& v)
 {
-	if (m_type == b2_staticBody)
+	if (m_type == Type::Static)
 		return;
 	if (b2Dot(v, v) > 0.0f)
 		SetAwake(true);
@@ -460,7 +451,7 @@ inline void Body::SetLinearVelocity(const b2Vec3& v)
 
 inline void Body::SetAngularVelocity(float32 w)
 {
-	if (m_type == b2_staticBody)
+	if (m_type == Type::Static)
 		return;
 	if (w * w > 0.0f)
 		SetAwake(true);
@@ -601,7 +592,7 @@ inline bool Body::IsSleepingAllowed() const
 
 inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -617,7 +608,7 @@ inline void Body::ApplyForce(const b2Vec2& force, const b2Vec2& point, bool wake
 
 inline void Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -629,7 +620,7 @@ inline void Body::ApplyForceToCenter(const b2Vec2& force, bool wake)
 }
 inline void Body::ApplyImpulseToCenter(const b2Vec2& impulse, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -642,7 +633,7 @@ inline void Body::ApplyImpulseToCenter(const b2Vec2& impulse, bool wake)
 
 inline void Body::ApplyTorque(float32 torque, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -655,7 +646,7 @@ inline void Body::ApplyTorque(float32 torque, bool wake)
 
 inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -670,7 +661,7 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 }
 inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake) restrict(amp)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())
@@ -686,7 +677,7 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 
 inline void Body::ApplyAngularImpulse(float32 impulse, bool wake)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Type::Dynamic)
 		return;
 
 	if (wake && !IsAwake())

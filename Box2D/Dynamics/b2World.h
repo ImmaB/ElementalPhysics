@@ -88,7 +88,7 @@ public:
 	/// Create a rigid body given a definition. No reference to the definition
 	/// is retained.
 	/// @warning This function is locked during callbacks.
-	int32 CreateBody(const b2BodyDef& def);
+	int32 CreateBody(const Body::Def& def);
 
 	/// Destroy a rigid body.
 	/// This function is locked during callbacks.
@@ -371,6 +371,7 @@ private:
 	friend class b2ParticleSystem;
 
 	void Solve(const b2TimeStep& step);
+	void SolveGravity(const b2TimeStep& step);
 	void SolveTOI(const b2TimeStep& step);
 
 	void DrawJoint(b2Joint* joint);
@@ -695,6 +696,8 @@ inline float32 b2World::GetRoomTemperature() const
 inline void b2World::SetAtmosphericDensity(float32 density)
 {
 	m_atmosphericDensity = density;
+	if (m_particleSystem != nullptr)
+		m_particleSystem->SetAtmosphereParticleMass(density);
 }
 inline float32 b2World::GettAtmosphericDensity() const
 {

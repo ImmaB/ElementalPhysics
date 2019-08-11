@@ -652,7 +652,9 @@ inline b2Vec2 b2MulT(const b2Rot & q, const b2Vec2 & v) restrict(amp) { return b
 inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2 & v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
 inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2 & v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
 inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec3 & v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
-inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec3 & v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
+inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec3& v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
+inline b2Vec3 b2Mul3D(const b2Transform& T, const b2Vec3& v) { return b2Vec3((T.q.c * v.x - T.q.s * v.y) + T.p.x, (T.q.s * v.x + T.q.c * v.y) + T.p.y, v.z + T.z); }
+inline b2Vec3 b2Mul3D(const b2Transform & T, const b2Vec3 & v) restrict(amp) { return b2Vec3((T.q.c * v.x - T.q.s * v.y) + T.p.x, (T.q.s * v.x + T.q.c * v.y) + T.p.y, v.z + T.z); }
 inline float32 b2MulX(const b2Transform & T, float32 x, float32 y) { return (T.q.c * x - T.q.s * y) + T.p.x; }
 inline float32 b2MulX(const b2Transform & T, float32 x, float32 y) restrict(amp) { return (T.q.c * x - T.q.s * y) + T.p.x; }
 inline float32 b2MulY(const b2Transform & T, float32 x, float32 y) { return (T.q.s * x + T.q.c * y) + T.p.y; }

@@ -26,8 +26,8 @@ bool b2ContactFilter::ShouldCollide(Fixture& fixtureA, Fixture& fixtureB)
 	const b2Filter& filterA = fixtureA.m_filter;
 	const b2Filter& filterB = fixtureB.m_filter;
 
-	if (filterA.groupIndex == filterB.groupIndex && filterA.groupIndex != 0)
-		return filterA.groupIndex > 0;
+	if (filterA.collisionGroup == filterB.collisionGroup && filterA.collisionGroup != 0)
+		return filterA.collisionGroup > 0;
 
 	bool collide = (filterA.maskBits & filterB.categoryBits) != 0 && (filterA.categoryBits & filterB.maskBits) != 0;
 	return collide;

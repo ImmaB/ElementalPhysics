@@ -25,7 +25,7 @@
 
 
 
-void Body::Set(const b2BodyDef def)
+void Body::Set(const Body::Def& def)
 {
 	b2Assert(def.position.IsValid());
 	b2Assert(def.linearVelocity.IsValid());
@@ -64,7 +64,7 @@ void Body::Set(const b2BodyDef def)
 
 	m_type = def.type;
 	
-	if (m_type == b2_dynamicBody)
+	if (m_type == Dynamic)
 	{
 		m_mass = 1.0f;
 		m_invMass = 1.0f;
@@ -80,13 +80,12 @@ void Body::Set(const b2BodyDef def)
 	
 	m_matIdx = def.materialIdx;
 	m_heat = def.heat;
-
 	m_health = def.health;
 }
 
 void Body::SetMassData(const b2MassData& massData)
 {
-	if (m_type != b2_dynamicBody)
+	if (m_type != Dynamic)
 		return;
 
 	m_invMass = 0.0f;

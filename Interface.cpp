@@ -138,24 +138,27 @@ EXPORT void SetWorldDamping(float32 s)
 }
 
 EXPORT int32 CreateParticleMaterial(uint32 flags, uint32 partFlags, float32 density, float32 stability,
-	float32 heatConductivity)
+	float32 heatConductivity, float32 strength)
 {
 	Particle::Mat::Def md;
 	md.flags = flags;
 	md.density = density;
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
+	md.strength = strength;
 	return pPartSys->CreateParticleMaterial(md);
 }
-EXPORT void AddParticleMatChangeMats(int32 matIdx, float32 coldThreshold, int32 changeToColdMatIdx,
-	float32 hotThreshold, int32 changeToHotMat, float32 ignitionThreshold, int32 changeToBurnedMatIdx)
+EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
+	float32 hotThreshold, int32 hotMat, float32 ignitionThreshold, int32 burnedMatIdx,
+	int32 fireMatIdx)
 {
 	Particle::Mat::ChangeDef mcd;
 	mcd.coldThreshold = coldThreshold;
-	mcd.changeToColdMatIdx = changeToColdMatIdx;
+	mcd.coldMatIdx = coldMatIdx;
 	mcd.hotThreshold = hotThreshold;
 	mcd.ignitionThreshold = ignitionThreshold;
-	mcd.changeToBurnedMatIdx = changeToBurnedMatIdx;
+	mcd.burnedMatIdx = burnedMatIdx;
+	mcd.fireMatIdx = fireMatIdx;
 	pPartSys->AddPartMatChange(matIdx, mcd);
 }
 
@@ -326,7 +329,7 @@ EXPORT int32 GetMaxParticleCount(void* partSysPtr) {
 #pragma endregion
 
 #pragma region API Particles
-EXPORT void AddFlagsToPartsWithMatInFixture(uint32 flag, int32 matIdx, int32 fixtureIdx)
+EXPORT void AddFlagsToPartsWithMatInFixture(Particle::Flag flag, int32 matIdx, int32 fixtureIdx)
 {
 	pPartSys->AddFlagInsideFixture(flag, matIdx, pWorld->GetFixture(fixtureIdx));
 }
@@ -363,7 +366,7 @@ EXPORT void GetPartBufPtrs(int32** pMatIdxs, b2Vec3** pPoss, b2Vec3** pVels,
 #pragma region ParticleGroups
 
 EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
-	float32 strength, float32 angVel, b2Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
+	float32 angVel, b2Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
 	b2Transform transform, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
 {
 	ParticleGroup::Def gd;
@@ -374,7 +377,6 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	gd.shapeType = shapeType;
 	gd.shapeIdx = shapeIdx;
 	gd.transform = transform;
-	gd.strength = strength;
 	gd.angularVelocity = angVel;
 	gd.linearVelocity = linVel;
 	gd.stride = stride;
@@ -385,22 +387,22 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	int32 idx = pPartSys->CreateGroup(gd);
 	return idx;
 }
-EXPORT int32 CreateParticles(int32 partCount, uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
-	float32 strength, b2Vec3* poss, b2Vec3 vel, int32* col, float32 health, float32 heat, int32 timestamp)
+EXPORT int32 CreateParticles(int32 partCount, b2Vec3* poss, int32* cols, b2Transform transform, uint32 partFlags,
+	uint32 groupFlags, int32 matIdx, int32 collisionGroup, b2Vec3 vel, float32 health, float32 heat, int32 timestamp)
 {
 	ParticleGroup::Def pd;
+	pd.particleCount = partCount;
+	pd.positionData = std::vector<b2Vec3>(poss, poss + partCount);
+	if (cols) pd.colorData = std::vector<int32>(cols, cols + partCount);
+	pd.transform = transform;
 	pd.flags = partFlags;
 	pd.groupFlags = groupFlags;
 	pd.matIdx = matIdx;
 	pd.collisionGroup = collisionGroup;
-	pd.strength = strength;
 	pd.linearVelocity = vel;
 	pd.health = health;
 	pd.heat = heat;
 	pd.timestamp = timestamp;
-	pd.particleCount = partCount;
-	pd.positionData = poss;
-	pd.colorData = col;
 	return pPartSys->CreateGroup(pd);
 }
 EXPORT void JoinParticleGroups(void* partSysPtr, int32 groupAIdx, int32 groupBIdx)
@@ -489,10 +491,10 @@ EXPORT void SetCirclePosition(int32 shapeIdx, b2Vec3 pos)
 
 #pragma region Body
 
-EXPORT int32 CreateBody(b2BodyType type, b2Transform transform, float32 linearDamping,
-	float32 angularDamping, int32 materialIdx, float32 heat, float32 health, uint32 flags, float32 gravityScale)
+EXPORT int32 CreateBody(Body::Type type, b2Transform transform, float32 linearDamping, float32 angularDamping,
+	int32 materialIdx, float32 heat, float32 health, uint32 flags, float32 gravityScale)
 {
-    b2BodyDef bd;
+    Body::Def bd;
     bd.type = type;
     bd.transform = transform;
     bd.linearDamping = linearDamping;
@@ -591,7 +593,7 @@ EXPORT void SetGroundTileChangeCallback(Ground::ChangeCallback callback)
 }
 EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, uint32 flags)
 {
-	Ground::Material::def gmd;
+	Ground::Mat::def gmd;
 	gmd.friction = friction;
 	gmd.bounciness = bounciness;
 	gmd.flags = flags;
@@ -603,20 +605,17 @@ EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, uint32 flag
 #pragma region Fixture
 
 EXPORT int32 AddFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx,
-	bool isSensor, int32 groupIndex,uint16 categoryBits, uint16 maskBits)
+	bool isSensor, int32 collisionGroup,uint16 categoryBits, uint16 maskBits)
 {
     b2FixtureDef fd;
 	fd.isSensor = isSensor;
 	fd.bodyIdx = bodyIdx;
 	fd.shapeType = shapeType;
     fd.shapeIdx = shapeIdx;
+    fd.filter.collisionGroup = collisionGroup;
+    fd.filter.maskBits = maskBits;
+    fd.filter.categoryBits = categoryBits;
     int32 idx = pWorld->CreateFixture(fd);
-
-	b2Filter filter = b2Filter();
-	filter.groupIndex = groupIndex;
-	filter.maskBits = maskBits;
-	filter.categoryBits = categoryBits;
-	pWorld->SetFilterData(pWorld->GetFixture(idx), filter);
 
     return idx;
 }
@@ -630,18 +629,18 @@ EXPORT bool TestPoint(Fixture* pFixture, float32 x, float32 y)
 	return pWorld->TestPoint(*pFixture, b2Vec2(x, y));
 }
 
-EXPORT void SetFixtureFilterData(int32 idx, int32 groupIndex, uint16 categoryBits, uint16 maskBits)
+EXPORT void SetFixtureFilterData(int32 idx, int32 collisionGroup, uint16 categoryBits, uint16 maskBits)
 {
     b2Filter filter = b2Filter();
-    filter.groupIndex = groupIndex;
+    filter.collisionGroup = collisionGroup;
     filter.maskBits = maskBits;
     filter.categoryBits = categoryBits;
 	Fixture& fixture = pWorld->GetFixture(idx);
 	pWorld->SetFilterData(fixture, filter);
 }
-EXPORT uint16 GetFixtureGroupIndex(Fixture* pFixture)
+EXPORT uint16 GetFixtureCollisionGroup(int32 idx)
 {
-    return pFixture->m_filter.groupIndex;
+    return pWorld->GetFixture(idx).m_filter.collisionGroup;
 }
 EXPORT uint16 GetFixtureMaskBits(Fixture* pFixture)
 {

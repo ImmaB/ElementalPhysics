@@ -36,7 +36,7 @@ struct b2MassData
 	float32 I;
 
 
-	b2MassData(const float32 mass, const b2Vec2& center, const float32 I, float a)
+	b2MassData(const float32 mass, const b2Vec2& center, const float32 I)
 		: mass(mass), center(center), I(I) {};
 };
 

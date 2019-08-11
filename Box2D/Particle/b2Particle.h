@@ -68,15 +68,17 @@ struct Particle
 			float32 mass;
 			float32 stability;
 			float32 heatConductivity;
+			float32 strength;
 		};
 		struct ChangeDef
 		{
 			float32 coldThreshold;
-			int32 changeToColdMatIdx;
+			int32 coldMatIdx;
 			float32 hotThreshold;
-			int32 changeToHotMatIdx;
+			int32 hotMatIdx;
 			float32 ignitionThreshold;
-			int32 changeToBurnedMatIdx;
+			int32 burnedMatIdx;
+			int32 fireMatIdx;
 		};
 
 		enum Flag
@@ -125,6 +127,7 @@ struct Particle
 		float32 m_stability;
 		float32 m_invStability;
 		float32 m_heatConductivity;
+		float32 m_strength;
 
 		float32 m_coldThreshold;
 		int32 m_changeToColdMatIdx;
@@ -132,6 +135,7 @@ struct Particle
 		int32 m_changeToHotMatIdx;
 		float32 m_ignitionThreshold;
 		int32 m_changeToBurnedMatIdx;
+		int32 m_changeToFireMatIdx;
 
 
 		bool Compare(const Def& def)
@@ -148,16 +152,18 @@ struct Particle
 			m_stability = def.stability;
 			m_invStability = 1 / def.stability;
 			m_heatConductivity = def.heatConductivity;
+			m_strength = def.strength;
 		}
 
 		void SetMatChanges(const ChangeDef& changeDef)
 		{
 			m_coldThreshold = changeDef.coldThreshold;
-			m_changeToColdMatIdx = changeDef.changeToColdMatIdx;
+			m_changeToColdMatIdx = changeDef.coldMatIdx;
 			m_hotThreshold = changeDef.hotThreshold;
-			m_changeToHotMatIdx = changeDef.changeToHotMatIdx;
+			m_changeToHotMatIdx = changeDef.hotMatIdx;
 			m_ignitionThreshold = changeDef.ignitionThreshold;
-			m_changeToBurnedMatIdx = changeDef.changeToBurnedMatIdx;
+			m_changeToBurnedMatIdx = changeDef.burnedMatIdx;
+			m_changeToFireMatIdx = changeDef.fireMatIdx;
 		}
 
 		inline bool HasFlag(Flag flag) const { return m_flags & flag; }

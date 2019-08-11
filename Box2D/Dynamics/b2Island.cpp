@@ -201,7 +201,7 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 		b.m_sweep.c0 = b.m_sweep.c;
 		b.m_sweep.a0 = b.m_sweep.a;
 
-		if (b.m_type == b2_dynamicBody)
+		if (b.IsType(Body::Type::Dynamic))
 		{
 			// Integrate velocities.
 			v += h * (b.m_gravityScale * gravity + b.m_invMass * b.m_force);
@@ -355,7 +355,7 @@ void b2Island::Solve(b2Profile& profile, const b2TimeStep& step, const b2Vec2& g
 		for (int32 i = 0; i < m_bodyCount; ++i)
 		{
 			Body& b = m_world.m_bodyBuffer[m_bodyIdxs[i]];
-			if (b.m_type == b2_staticBody)
+			if (b.IsType(Body::Type::Static))
 				continue;
 
 			if (!b.HasFlag(Body::Flag::AutoSleep) ||

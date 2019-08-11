@@ -118,7 +118,7 @@ void b2World::SetDebugDraw(b2Draw* debugDraw)
 	m_debugDraw = debugDraw;
 }
 
-int32 b2World::CreateBody(const b2BodyDef& def)
+int32 b2World::CreateBody(const Body::Def& def)
 {
 	b2Assert(!IsLocked());
 	if (IsLocked()) return b2_invalidIndex;
@@ -390,7 +390,7 @@ void b2World::Solve(const b2TimeStep& step)
 			continue;
 
 		// The seed can be dynamic or kinematic.
-		if (seed.m_type == b2_staticBody)
+		if (seed.IsType(Body::Type::Static))
 			continue;
 
 		// Reset island and stack.
@@ -412,7 +412,7 @@ void b2World::Solve(const b2TimeStep& step)
 
 			// To keep islands as small as possible, we don't
 			// propagate islands across static bodies.
-			if (b.m_type == b2_staticBody)
+			if (b.IsType(Body::Type::Static))
 				continue;
 
 			// Search all contacts connected to this body.
@@ -485,7 +485,7 @@ void b2World::Solve(const b2TimeStep& step)
 		{
 			// Allow static bodies to participate in other islands.
 			Body& b = m_bodyBuffer[island.m_bodyIdxs[i]];
-			if (b.IsType(b2_staticBody))
+			if (b.IsType(Body::Type::Static))
 				b.RemFlag(Body::Flag::Island);
 		}
 	}
@@ -503,7 +503,7 @@ void b2World::Solve(const b2TimeStep& step)
 				if (!b.HasFlag(Body::Flag::Island))
 					continue;
 
-				if (b.IsType(b2_staticBody))
+				if (b.IsType(Body::Type::Static))
 					continue;
 
 				// Update fixtures (for broad-phase).
@@ -514,6 +514,36 @@ void b2World::Solve(const b2TimeStep& step)
 		// Look for new contacts.
 		m_contactManager.FindNewContacts();
 		m_profile.broadphase = timer.GetMilliseconds();
+	}
+}
+
+void b2World::SolveGravity(const b2TimeStep& step)
+{
+
+	for (Body& b : m_bodyBuffer)
+	{
+		if (b.m_idx == b2_invalidIndex) continue;
+		if (!b.IsAwake() || !b.IsActive()) continue;
+		const b2Vec3 bp = b.GetPosition();
+		const Ground::Tile& groundTile = m_ground->GetTileAt(bp);
+
+		// above Ground
+		if (bp.z > groundTile.height + b2_linearSlop)
+		{
+			b.ApplyForceToCenter(m_gravity, false);
+		}
+		else // on Ground
+		{
+			// TODO handle as Contact like Body-Body
+			//float groundArea = 0;
+			//for (const int32 fixtureIdx : m_bodyFixtureIdxsBuffer[b.m_idx])
+			//{
+			//	const Fixture& f = m_fixtureBuffer[fixtureIdx];
+			//	if (f.m_zPos == 0)
+			//		groundArea += GetShape(f).m_area;
+			//}
+			b.m_linearVelocity *= (1 - m_ground->GetMat(groundTile).friction * m_bodyMaterials[b.m_matIdx].m_friction);
+		}
 	}
 }
 
@@ -574,16 +604,16 @@ void b2World::SolveTOI(const b2TimeStep& step)
 				Body& bA = m_bodyBuffer[fA.m_bodyIdx];
 				Body& bB = m_bodyBuffer[fB.m_bodyIdx];
 
-				b2BodyType typeA = bA.m_type;
-				b2BodyType typeB = bB.m_type;
+				Body::Type typeA = bA.m_type;
+				Body::Type typeB = bB.m_type;
 				b2Assert(typeA == b2_dynamicBody || typeB == b2_dynamicBody);
 
 				// Is at least one body active (awake and dynamic or kinematic)?
-				if ((!bA.IsAwake() || typeA == b2_staticBody) && (!bB.IsAwake() || typeB == b2_staticBody))
+				if ((!bA.IsAwake() || typeA == Body::Type::Static) && (!bB.IsAwake() || typeB == Body::Type::Static))
 					continue;
 				
 				// Are these two non-bullet dynamic bodies?
-				if (!bA.IsBullet() && typeA == b2_dynamicBody && !bB.IsBullet() && typeB == b2_dynamicBody)
+				if (!bA.IsBullet() && typeA == Body::Type::Dynamic && !bB.IsBullet() && typeB == Body::Type::Dynamic)
 					continue;
 
 				// Compute the TOI for this contact.
@@ -687,7 +717,7 @@ void b2World::SolveTOI(const b2TimeStep& step)
 		// Get contacts on bodyA and bodyB.
 		for (Body* body : { &bA, &bB })
 		{
-			if (body->m_type == b2_dynamicBody)
+			if (body->IsType(Body::Type::Dynamic))
 			{
 				for (b2ContactEdge* ce = m_bodyContactListBuffer[body->m_idx]; ce; ce = ce->next)
 				{
@@ -705,7 +735,7 @@ void b2World::SolveTOI(const b2TimeStep& step)
 
 					// Only add static, kinematic, or bullet bodies.
 					Body& other = m_bodyBuffer[ce->otherIdx];
-					if (other.m_type == b2_dynamicBody &&
+					if (other.IsType(Body::Type::Dynamic) &&
 						!body->IsBullet() && !other.IsBullet())
 						continue;
 
@@ -750,7 +780,7 @@ void b2World::SolveTOI(const b2TimeStep& step)
 					// Add the other body to the island.
 					other.AddFlag(Body::Flag::Island);
 
-					if (other.m_type != b2_staticBody)
+					if (!other.IsType(Body::Type::Static))
 						other.SetAwake(true);
 
 					island.Add(other);
@@ -774,7 +804,7 @@ void b2World::SolveTOI(const b2TimeStep& step)
 			Body& body = m_bodyBuffer[island.m_bodyIdxs[i]];
 			body.RemFlag(Body::Flag::Island);
 
-			if (!body.IsType(b2_dynamicBody))
+			if (!body.IsType(Body::Type::Dynamic))
 				continue;
 
 			SynchronizeFixtures(body);
@@ -821,6 +851,7 @@ void b2World::StepPreParticle()
 		m_contactManager.FindNewContacts();
 		m_flags &= ~e_newFixture;
 	}
+	SolveGravity(m_step);
 
 	m_flags |= e_locked;
 
@@ -1064,9 +1095,9 @@ void b2World::DrawDebugData()
 						Fixture& f = m_fixtureBuffer[fIdx];
 						if (!b.IsActive())
 							DrawShape(f, xf, b2Color(0.5f, 0.5f, 0.3f));
-						else if (b.m_type == b2_staticBody)
+						else if (b.IsType(Body::Type::Static))
 							DrawShape(f, xf, b2Color(0.5f, 0.9f, 0.5f));
-						else if (b.m_type == b2_kinematicBody)
+						else if (b.IsType(Body::Type::Kinematic))
 							DrawShape(f, xf, b2Color(0.5f, 0.5f, 0.9f));
 						else if (!b.IsAwake())
 							DrawShape(f, xf, b2Color(0.6f, 0.6f, 0.6f));
@@ -1399,7 +1430,6 @@ int32 b2World::CreateFixture(b2FixtureDef& def)
 
 	f.Set(def, idxInBody, m_bodyMaterials[b.m_matIdx]);
 
-
 	// Reserve proxy space
 	f.m_proxyCount = GetShape(f).GetChildCount();
 	b2FixtureProxy* proxyBuffer = m_fixtureProxiesBuffer[f.m_idx] = (b2FixtureProxy*)m_blockAllocator.Allocate(f.m_proxyCount * sizeof(b2FixtureProxy));
@@ -1417,6 +1447,7 @@ int32 b2World::CreateFixture(b2FixtureDef& def)
 	if (f.m_density > 0.0f)
 		ResetMassData(b);
 
+	Refilter(f);
 
 	// Let the world know we have a new fixture. This will cause new contacts
 	// to be created at the beginning of the next time step.
@@ -1562,7 +1593,7 @@ bool b2World::ShouldBodiesCollide(int32 bodyAIdx, int32 bodyBIdx) const
 bool b2World::ShouldCollide(const Body& b, const Body& other) const
 {
 	// At least one body should be dynamic.
-	if (b.m_type != b2_dynamicBody && other.m_type != b2_dynamicBody)
+	if (!b.IsType(Body::Type::Dynamic) && !other.IsType(Body::Type::Dynamic))
 		return false;
 
 	// Does a joint prevent collision?
@@ -1601,7 +1632,7 @@ void b2World::ResetMassData(Body& b)
 	b.m_sweep.localCenter.SetZero();
 
 	// Static and kinematic bodies have zero mass.
-	if (b.m_type == b2_staticBody || b.m_type == b2_kinematicBody)
+	if (b.IsType(Body::Type::Static)|| b.IsType(Body::Type::Kinematic))
 	{
 		b.m_sweep.c0 = b.m_xf.p;
 		b.m_sweep.c = b.m_xf.p;
