@@ -6064,25 +6064,21 @@ void b2ParticleSystem::SolveWater()
 			flags[i] = Particle::Flag::Zombie;
 		};
 
-		const int32 txMax = m_world.m_ground->m_tileCntX;
-		const int32 tyMax = m_world.m_ground->m_tileCntY;
-		const float32 invStride = 1.0f / m_world.m_ground->m_stride;
-		const float32 partRadius = GetRadius();
 		auto& groundTiles = m_world.m_ground->m_ampTiles;
-		auto& groundChunkHasChange = m_world.m_ground->m_ampChunkHasChange;
 		auto& groundMats = m_world.m_ground->m_ampMaterials;
+		auto& groundChunkHasChange = m_world.m_ground->m_ampChunkHasChange;
 		auto& matIdxs = m_ampMatIdxs;
-		AmpForEachGroundContact(Particle::Mat::Flag::Fluid, [=, &flags, &groundTiles,
-			&groundChunkHasChange, &groundMats, &matIdxs](const int32 i, const b2PartGroundContact& contact) restrict(amp)
+		AmpForEachGroundContact(Particle::Mat::Flag::Fluid, [=, &groundTiles, &groundMats,
+			&groundChunkHasChange, &matIdxs](const int32 i, const b2PartGroundContact& contact) restrict(amp)
 		{
-			Ground::Tile& groundTile = groundTiles[contact.groundTileIdx];
-			if (!groundTile.isWet() && !groundMats[contact.groundMatIdx].isWaterRepellent() &&
-				groundTile.atomicAddFlag(Ground::Tile::Flags::wet))
-			{
-				killParticle(i);
-				groundTile.wetPartMatIdx = matIdxs[i];
-				groundChunkHasChange[contact.groundChunkIdx] = 1;
-			}
+			Ground::Tile& tile = groundTiles[contact.groundTileIdx];
+			const Ground::Mat& mat = groundMats[tile.matIdx];
+			if (mat.isWaterRepellent()) return;
+			if (int32 cap = mat.particleCapacity; cap <= 0 || !amp::atomicInc(tile.particleCnt, cap)) return;
+			killParticle(i);
+			tile.particleIdxs[tile.particleCnt - 1] = matIdxs[i];
+			groundChunkHasChange[contact.groundChunkIdx] = 1;
+			
 		});
 
 		auto& bodies = m_ampBodies;

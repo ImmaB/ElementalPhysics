@@ -601,11 +601,12 @@ EXPORT void SetGroundTileChangeCallback(Ground::ChangeCallback callback)
 {
 	pGround->m_changeCallback = callback;
 }
-EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, uint32 flags)
+EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 particleCapacity, uint32 flags)
 {
 	Ground::Mat::def gmd;
 	gmd.friction = friction;
 	gmd.bounciness = bounciness;
+	gmd.particleCapacity = particleCapacity;
 	gmd.flags = flags;
 	return pGround->CreateMaterial(gmd);
 }

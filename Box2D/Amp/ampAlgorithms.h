@@ -691,6 +691,24 @@ namespace amp
 		if (dest & flag) return false;
 		return Concurrency::atomic_compare_exchange(&dest, &dest, dest | flag);
 	}
+
+	// returns value before increment
+	inline int32 atomicInc(int32& dest) restrict(amp)
+	{
+		return Concurrency::atomic_fetch_inc(&dest);
+	}
+	inline bool atomicInc(int32& dest, const int32 max) restrict(amp)
+	{
+		if (dest >= max) return false;
+		int32 expected = dest;
+		int32 newValue = expected + 1;
+		while (!Concurrency::atomic_compare_exchange(&dest, &expected, newValue))
+		{
+			newValue = expected + 1;
+			if (newValue > max) return false;
+		}
+		return true;
+	}
 };
 
 

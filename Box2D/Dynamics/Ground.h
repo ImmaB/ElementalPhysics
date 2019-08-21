@@ -19,8 +19,9 @@ public:
 			wet = 1 << 1,
 		};
 		int32 matIdx;
-		int32 wetPartMatIdx;
 		float32 height;
+		int32 particleCnt;
+		int32 particleIdxs[8];
 		int32 textureSeed;
 		uint32 flags;
 
@@ -54,23 +55,27 @@ public:
 
 			float32 friction;
 			float32 bounciness;
+			int32 particleCapacity;
 			uint32 flags;
 		};
 
 		Mat(const def& d) :
 			friction(d.friction),
 			bounciness(d.bounciness),
+			particleCapacity(d.particleCapacity),
 			flags(d.flags)
 		{}
 
 		float32 friction;
 		float32 bounciness;
+		int32 particleCapacity;
 		uint32 flags;
 
 		bool compare(const def& d)
 		{
 			return friction == d.friction &&
 				bounciness == d.bounciness &&
+				particleCapacity == d.particleCapacity &&
 				flags == d.flags;
 		}
 

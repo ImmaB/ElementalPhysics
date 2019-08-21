@@ -87,12 +87,12 @@ void Ground::CopyChangedTiles()
 
 	ampArrayView<int32> hasChange(1);
 	amp::fill(hasChange, 0);
-	auto& tilesTileHasChange = m_ampChunkHasChange;
-	amp::forEach(m_chunkCnt, [=, &tilesTileHasChange](int32 i) restrict(amp)
+	auto& chunkHasChanged = m_ampChunkHasChange;
+	amp::forEach(m_chunkCnt, [=, &chunkHasChanged](int32 i) restrict(amp)
 	{
-		if (int32& tileHasChange = tilesTileHasChange[i]; tileHasChange)
+		if (int32& chunkHasChange = chunkHasChanged[i]; chunkHasChange)
 		{
-			tileHasChange = 0;
+			chunkHasChange = 0;
 			hasChange[0] = 1;
 		}
 	});
