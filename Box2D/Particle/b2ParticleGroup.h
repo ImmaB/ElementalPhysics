@@ -56,16 +56,16 @@ struct ParticleGroup
 			angularVelocity = 0;
 			color = 0;
 			shapeType = b2Shape::e_typeCount;
-			shapeIdx = b2_invalidIndex;
+			shapeIdx = INVALID_IDX;
 			shapeCount = 0;
 			stride = 0;
 			particleCount = 0;
-			groupIdx = b2_invalidIndex;
-			matIdx = b2_invalidIndex;
+			groupIdx = INVALID_IDX;
+			matIdx = INVALID_IDX;
 			collisionGroup = 0;
 			heat = 0.0f;
 			health = 1.0f;
-			timestamp = b2_invalidIndex;
+			timestamp = INVALID_IDX;
 		}
 		int32 idx;
 
@@ -147,9 +147,9 @@ struct ParticleGroup
 		m_lastIndex = 0;
 		m_groupFlags = 0;
 		m_strength = 1.0f;
-		m_matIdx = b2_invalidIndex;
+		m_matIdx = INVALID_IDX;
 		m_collisionGroup = 0;
-		m_timestamp = b2_invalidIndex;
+		m_timestamp = INVALID_IDX;
 		m_mass = 0;
 		m_inertia = 0;
 		m_center = b2Vec2_zero;

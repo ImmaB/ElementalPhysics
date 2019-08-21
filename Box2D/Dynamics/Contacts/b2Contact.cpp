@@ -84,12 +84,12 @@ b2Contact::b2Contact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtu
 	m_nodeA.contact = NULL;
 	m_nodeA.prev = NULL;
 	m_nodeA.next = NULL;
-	m_nodeA.otherIdx = b2_invalidIndex;
+	m_nodeA.otherIdx = INVALID_IDX;
 
 	m_nodeB.contact = NULL;
 	m_nodeB.prev = NULL;
 	m_nodeB.next = NULL;
-	m_nodeB.otherIdx = b2_invalidIndex;
+	m_nodeB.otherIdx = INVALID_IDX;
 
 	m_toiCount = 0;
 

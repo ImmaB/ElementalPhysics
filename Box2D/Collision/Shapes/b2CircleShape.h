@@ -55,7 +55,7 @@ struct b2CircleShape : public b2Shape
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density, float32 height) const;
+	b2MassData ComputeMass(float32 density) const;
 
 	/// Get the supporting vertex index in the given direction.
 	int32 GetSupport(const b2Vec2& d) const;
@@ -75,8 +75,11 @@ struct AmpCircleShape
 	int32 _vfptr[2];
 	b2Shape::Type m_type;
 	float32 m_radius;
+	float32 m_zPos;
+	float32 m_height;
 	float32 m_area;
 	int32 _placeholder;
+
 	b2Vec2 m_p;
 
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal) const restrict(amp)
@@ -125,6 +128,11 @@ struct AmpCircleShape
 		b2Vec2 center = xf.p + b2Mul(xf.q, m_p);
 		b2Vec2 d = p - center;
 		return b2Dot(d, d) <= m_radius * m_radius;
+	}
+	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
+	{
+		z -= (m_zPos + xf.z);
+		return z >= 0 && z <= m_height;
 	}
 };
 

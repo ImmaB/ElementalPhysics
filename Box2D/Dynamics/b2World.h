@@ -263,7 +263,7 @@ public:
 	float32 GetRoomTemperature() const;
 
 	void SetAtmosphericDensity(float32 density);
-	float32 GettAtmosphericDensity() const;
+	float32 GetAtmosphericDensity() const;
 
 	void SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside);
 
@@ -464,14 +464,14 @@ public:
 	set<int32> m_freeShapeNormalIdxs;
 
 	/// Creates a fixture from a shape and attach it to this body.
-	/// This is a convenience function. Use b2FixtureDef if you need to set parameters
+	/// This is a convenience function. Use Fixture::Def if you need to set parameters
 	/// like friction, restitution, user data, or filtering.
 	/// If the density is non-zero, this function automatically updates the mass of the body.
 	/// @param shape the shape to be cloned.
 	/// @param density the shape density (set to zero for static bodies).
 	/// @warning This function is locked during callbacks.
 	int32 CreateFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx, float32 density);
-	int32 CreateFixture(b2FixtureDef& def);
+	int32 CreateFixture(Fixture::Def& def);
 
 	void DestroyShape(b2Shape::Type type, int32 idx);
 
@@ -560,7 +560,7 @@ public:
 	void CreateProxies(Fixture& f, b2BroadPhase& broadPhase, const b2Transform& xf);
 	void DestroyProxies(Fixture& f);
 
-	int32 CreateShape(b2Shape::Def& shapeDef);
+	int32 CreateShape(const b2Shape::Def& shapeDef);
 
 	void DestroyShape(Fixture& f);
 
@@ -696,10 +696,8 @@ inline float32 b2World::GetRoomTemperature() const
 inline void b2World::SetAtmosphericDensity(float32 density)
 {
 	m_atmosphericDensity = density;
-	if (m_particleSystem != nullptr)
-		m_particleSystem->SetAtmosphereParticleMass(density);
 }
-inline float32 b2World::GettAtmosphericDensity() const
+inline float32 b2World::GetAtmosphericDensity() const
 {
 	return m_atmosphericDensity;
 }

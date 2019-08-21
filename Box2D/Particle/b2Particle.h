@@ -34,8 +34,8 @@ struct Particle
 			position = b2Vec3_zero;
 			velocity = b2Vec3_zero;
 			color = 0;
-			groupIdx = b2_invalidIndex;
-			matIdx = b2_invalidIndex;
+			groupIdx = INVALID_IDX;
+			matIdx = INVALID_IDX;
 			heat = 0.0f;
 			health = 1.0f;
 		}
@@ -53,10 +53,10 @@ struct Particle
 
 	enum Flag
 	{
-		Zombie = 1 << 0,			/// Removed after next simulation step.
-		Reactive = 1 << 1,			/// Makes pairs or triads with other particles.
-		Controlled = 1 << 2,		/// markes Particles that are currently controlled
-		Burning = 1 << 3,			/// Burning down to other mat
+		Zombie = 1u << 0,			/// Removed after next simulation step.
+		Reactive = 1u << 1,			/// Makes pairs or triads with other particles.
+		Controlled = 1u << 2,		/// markes Particles that are currently controlled
+		Burning = 1u << 3,			/// Burning down to other mat
 	};
 
 	struct Mat
@@ -79,31 +79,33 @@ struct Particle
 			float32 ignitionThreshold;
 			int32 burnedMatIdx;
 			int32 fireMatIdx;
+			int32 deadMatIdx;
 		};
 
 		enum Flag
 		{
-			Fluid = 1 << 8,				/// Fluid particle.
-			Gas = 1 << 9,				/// Gas particle.
-			Wall = 1 << 10,				/// Zero velocity.
-			Spring = 1 << 11,			/// With restitution from stretching.
-			Elastic = 1 << 12,			/// With restitution from deformation.
-			Viscous = 1 << 13,			/// With viscosity.
-			Powder = 1 << 14,			/// Without isotropic pressure.
-			Tensile = 1 << 15,			/// With surface tension.
-			ColorMixing = 1 << 16,		/// Mix color between contacting particles.
-			Barrier = 1 << 17,			/// Prevents other particles from leaking.
-			StaticPressure = 1 << 18,	/// Less compressibility.
-			Repulsive = 1 << 19,		/// With high repulsive force.
-			HeatLoosing = 1 << 20,		/// makes Particles loose heat over time
-			Flame = 1 << 21,			/// makes Particle ignite other inflamable Materials
-			Inflammable = 1 << 22,
-			Extinguishing = 1 << 23,
-			HeatConducting = 1 << 24,
-			ElectricityConducting = 1 << 25,
+			Fluid = 1u << 8,					/// Fluid particle.
+			Gas = 1u << 9,						/// Gas particle.
+			Wall = 1u << 10,					/// Zero velocity.
+			Spring = 1u << 11,					/// With restitution from stretching.
+			Elastic = 1u << 12,					/// With restitution from deformation.
+			Viscous = 1u << 13,					/// With viscosity.
+			Powder = 1u << 14,					/// Without isotropic pressure.
+			Tensile = 1u << 15,					/// With surface tension.
+			ColorMixing = 1u << 16,				/// Mix color between contacting particles.
+			Barrier = 1u << 17,					/// Prevents other particles from leaking.
+			StaticPressure = 1u << 18,			/// Less compressibility.
+			Repulsive = 1u << 19,				/// With high repulsive force.
+			HeatLoosing = 1u << 20,				/// makes Particles loose heat over time
+			Flame = 1u << 21,					/// makes Particle ignite other inflamable Materials
+			Inflammable = 1u << 22,
+			Extinguishing = 1u << 23,
+			HeatConducting = 1u << 24,
+			ElectricityConducting = 1u << 25,
+			KillIfNotMoving = 1u << 26, 
 
-			ChangeWhenCold = 1 << 30,
-			ChangeWhenHot = 1 << 31
+			ChangeWhenCold = 1u << 29,
+			ChangeWhenHot = 1u << 30,
 		};
 		/// All particle types that require creating pairs
 		static const uint32 k_pairFlags = Flag::Spring | Flag::Barrier;
@@ -136,6 +138,7 @@ struct Particle
 		float32 m_ignitionThreshold;
 		int32 m_changeToBurnedMatIdx;
 		int32 m_changeToFireMatIdx;
+		int32 m_changeToDeadMatIdx;
 
 
 		bool Compare(const Def& def)
@@ -164,6 +167,7 @@ struct Particle
 			m_ignitionThreshold = changeDef.ignitionThreshold;
 			m_changeToBurnedMatIdx = changeDef.burnedMatIdx;
 			m_changeToFireMatIdx = changeDef.fireMatIdx;
+			m_changeToDeadMatIdx = changeDef.deadMatIdx;
 		}
 
 		inline bool HasFlag(Flag flag) const { return m_flags & flag; }
@@ -193,7 +197,7 @@ class b2ParticleHandle : public b2TypedIntrusiveListNode<b2ParticleHandle>
 
 public:
 	/// Initialize the index associated with the handle to an invalid index.
-	b2ParticleHandle() : m_index(b2_invalidIndex) { }
+	b2ParticleHandle() : m_index(INVALID_IDX) { }
 	/// Empty destructor.
 	~b2ParticleHandle() { }
 

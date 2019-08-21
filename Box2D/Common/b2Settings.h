@@ -240,7 +240,7 @@ typedef unsigned long long uint64;
 #endif
 
 /// A symbolic constant that stands for particle allocation error.
-#define b2_invalidIndex		(-1)
+#define INVALID_IDX		(-1)
 
 #ifdef B2_USE_16_BIT_PARTICLE_INDICES
 #define b2_maxParticleIndex			0x7FFF

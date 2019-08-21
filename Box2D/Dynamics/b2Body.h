@@ -25,12 +25,10 @@
 #include <memory>
 #include <vector>
 
-class b2Fixture;
 class b2Joint;
 class b2Contact;
 class b2Controller;
 class b2World;
-struct b2FixtureDef;
 struct b2JointEdge;
 struct b2ContactEdge;
 
@@ -142,7 +140,7 @@ struct Body
 			angularVelocity = 0.0f;
 			linearDamping = 0.0f;
 			angularDamping = 0.0f;
-			materialIdx = b2_invalidIndex;
+			materialIdx = INVALID_IDX;
 			heat = 15.f;
 			health = 1.0f;
 			flags = 0;

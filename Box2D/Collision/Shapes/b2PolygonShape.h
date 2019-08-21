@@ -88,7 +88,7 @@ struct b2PolygonShape : public b2Shape
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density, float32 height) const;
+	b2MassData ComputeMass(float32 density) const;
 
 	/// Get the vertex count.
 	int32 GetVertexCount() const { return m_count; }
@@ -103,16 +103,19 @@ struct b2PolygonShape : public b2Shape
 
 struct AmpPolygonShape
 {
-	int32 _vfptr[3];
+	int32 _vfptr[2];
 	b2Shape::Type m_type;
 	float32 m_radius;
+	float32 m_zPos;
+	float32 m_height;
 	float32 m_area;
+	int32 _placeholder;
 
 	b2Vec2 m_centroid;
 	b2Vec2 m_vertices[b2_maxPolygonVertices];
 	b2Vec2 m_normals[b2_maxPolygonVertices];
 	int32 m_count;
-	int32 _placeholder;
+	int32 _placeholder2;
 
 	void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
 		float32& distance, b2Vec2& normal) const restrict(amp)
@@ -231,6 +234,11 @@ struct AmpPolygonShape
 				return false;
 		}
 		return true;
+	}
+	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
+	{
+		z -= (m_zPos + xf.z);
+		return z >= 0 && z <= m_height;
 	}
 };
 

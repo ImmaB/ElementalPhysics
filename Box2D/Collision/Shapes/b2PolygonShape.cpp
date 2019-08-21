@@ -147,6 +147,9 @@ void b2PolygonShape::Set(const b2Shape::Def& shapeDef)
 {
 	const b2PolygonShapeDef& polyDef = (const b2PolygonShapeDef&)shapeDef;
 
+	m_zPos = shapeDef.zPos;
+	m_height = shapeDef.height;
+
 	b2Assert(3 <= polyDef.count && polyDef.count <= b2_maxPolygonVertices);
 	if (polyDef.count < 3)
 	{
@@ -432,7 +435,7 @@ void b2PolygonShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 chil
 	aabb.upperBound = upper + r;
 }
 
-b2MassData b2PolygonShape::ComputeMass(float32 density, float32 height) const
+b2MassData b2PolygonShape::ComputeMass(float32 density) const
 {
 	// Polygon mass, centroid, and inertia.
 	// Let rho be the polygon density in mass per unit area.
@@ -501,7 +504,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density, float32 height) const
 	// Total mass
 	b2Assert(area > b2_epsilon);
 	center *= 1.0f / area;
-	float32 mMass = density * area * height;
+	float32 mMass = density * area * m_height;
 
 	// Center of mass
 	b2Vec2 mCenter = center + s;

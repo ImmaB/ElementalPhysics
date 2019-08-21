@@ -78,8 +78,8 @@ struct b2JointDef
 	{
 		type = e_unknownJoint;
 		userData = NULL;
-		bodyAIdx = b2_invalidIndex;
-		bodyBIdx = b2_invalidIndex;
+		bodyAIdx = INVALID_IDX;
+		bodyBIdx = INVALID_IDX;
 		collideConnected = false;
 	}
 

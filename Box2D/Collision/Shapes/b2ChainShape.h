@@ -87,7 +87,7 @@ struct b2ChainShape : public b2Shape
 
 	/// Chains have zero mass.
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density, float32 height) const;
+	b2MassData ComputeMass(float32 density) const;
 };
 
 struct AmpChainShape
@@ -95,6 +95,8 @@ struct AmpChainShape
 	int32 _vfptr[3];
 	b2Shape::Type m_type;
 	float32 m_radius;
+	float32 m_zPos;
+	float32 m_height;
 	float32 m_area;
 	/// The vertices. Owned by this class.
 	b2Vec2 m_vertices[b2_maxChainVertices];
@@ -157,6 +159,12 @@ struct AmpChainShape
 		edgeShape.m_vertex2 = m_vertices[i2];
 
 		return edgeShape.RayCast(output, input, xf);
+	}
+
+	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
+	{
+		z -= (m_zPos + xf.z);
+		return z >= 0 && z <= m_height;
 	}
 };
 

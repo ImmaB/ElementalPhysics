@@ -137,7 +137,7 @@ EXPORT void SetWorldDamping(float32 s)
 	pWorld->SetDamping(s);
 }
 
-EXPORT int32 CreateParticleMaterial(uint32 flags, uint32 partFlags, float32 density, float32 stability,
+EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
 	float32 heatConductivity, float32 strength)
 {
 	Particle::Mat::Def md;
@@ -150,7 +150,7 @@ EXPORT int32 CreateParticleMaterial(uint32 flags, uint32 partFlags, float32 dens
 }
 EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
 	float32 hotThreshold, int32 hotMat, float32 ignitionThreshold, int32 burnedMatIdx,
-	int32 fireMatIdx)
+	int32 fireMatIdx, int32 deadMatIdx)
 {
 	Particle::Mat::ChangeDef mcd;
 	mcd.coldThreshold = coldThreshold;
@@ -159,6 +159,7 @@ EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 col
 	mcd.ignitionThreshold = ignitionThreshold;
 	mcd.burnedMatIdx = burnedMatIdx;
 	mcd.fireMatIdx = fireMatIdx;
+	mcd.deadMatIdx = deadMatIdx;
 	pPartSys->AddPartMatChange(matIdx, mcd);
 }
 
@@ -199,13 +200,14 @@ EXPORT void SetContactCallback(ContactCallback callback)
 #pragma region API Particle Systems
 
 EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 damping,
-	float32 gravityScale, float32 heatLossRatio)
+	float32 gravityScale, float32 airResFactor, float32 heatLossRatio)
 {
 	if (!pPartSys) pPartSys = pWorld->CreateParticleSystem();
 	pPartSys->SetAccelerate(accelerate);
 	pPartSys->SetRadius(radius);
 	pPartSys->SetDamping(damping);
 	pPartSys->SetGravityScale(gravityScale);
+	pPartSys->SetAirResistanceFactor(airResFactor);
 	pPartSys->SetHeatLossRatio(heatLossRatio);
 }
 EXPORT void DestroyAllParticles() { pPartSys->DestroyAllParticles(); }
@@ -244,6 +246,7 @@ EXPORT void SolveStaticPressure() { pPartSys->SolveStaticPressure(); }
 EXPORT void SolvePressure() { pPartSys->SolvePressure(); }
 EXPORT void SolveDamping() { pPartSys->SolveDamping(); }
 EXPORT void SolveExtraDamping() { pPartSys->SolveExtraDamping(); }
+EXPORT void SolveAirResistance() { pPartSys->SolveAirResistance(); }
 EXPORT void SolveElastic() { pPartSys->SolveElastic(); }
 EXPORT void SolveSpring() { pPartSys->SolveSpring(); }
 EXPORT void LimitVelocity() { pPartSys->LimitVelocity(); }
@@ -253,20 +256,21 @@ EXPORT void SolveCollision() { pPartSys->SolveCollision(); }
 EXPORT void SolveRigid() { pPartSys->SolveRigid(); }
 EXPORT void SolveWall() { pPartSys->SolveWall(); }
 EXPORT void CopyVelocities() { pPartSys->CopyVelocities(); }
-EXPORT void SolveAir() { pPartSys->SolveAir(); }
+EXPORT void SolveKillNotMoving() { pPartSys->SolveKillNotMoving(); }
 EXPORT void SolveWater() { pPartSys->SolveWater(); }
+
 EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
 
 EXPORT void SolveFlame() { pPartSys->SolveFlame(); }
 EXPORT void SolveIgnite() { pPartSys->SolveIgnite(); }
 EXPORT void SolveExtinguish() { pPartSys->SolveExtinguish(); }
-EXPORT void CopyHealths() { pPartSys->CopyHealths(); }
 EXPORT void SolveHeatConduct() { pPartSys->SolveHeatConduct(); }
 EXPORT void SolveLooseHeat() { pPartSys->SolveLooseHeat(); }
 EXPORT void CopyHeats() { pPartSys->CopyHeats(); }
 EXPORT void SolveChangeMat() { pPartSys->SolveChangeMat(); }
 
 EXPORT void SolveHealth() { pPartSys->SolveHealth(); }
+EXPORT void CopyHealths() { pPartSys->CopyHealths(); }
 EXPORT void CopyFlags() { pPartSys->CopyFlags(); }
 EXPORT void CopyBodies() { pPartSys->CopyBodies(); }
 
@@ -440,13 +444,17 @@ EXPORT int32 AddBoxShape(b2Vec2 size, float32 height, b2Vec3 pos, float32 angle)
 {
 	b2PolygonShapeDef sd;
 	sd.type = b2Shape::e_polygon;
+	sd.zPos = pos.z;
+	sd.height = height;
 	sd.SetAsBox(size, pos, angle);
 	return pWorld->CreateShape(sd);
 }
-EXPORT int32 AddPolygonShape(b2Vec2* vertices, int32 count)
+EXPORT int32 AddPolygonShape(b2Vec2* vertices, int32 count, float32 zPos, float32 height)
 {
 	b2PolygonShapeDef sd;
 	sd.type = b2Shape::e_polygon;
+	sd.zPos = zPos;
+	sd.height = height;
 	std::memcpy(sd.vertices, vertices, sizeof b2Vec2 * count);
 	sd.count = count;
 	return pWorld->CreateShape(sd);
@@ -455,6 +463,8 @@ EXPORT int32 AddCircleShape(float32 radius, float32 height, b2Vec3 pos)
 {
 	b2CircleShapeDef sd;
 	sd.type = b2Shape::e_circle;
+	sd.zPos = pos.z;
+	sd.height = height;
 	sd.p = pos;
 	sd.radius = radius;
 	return pWorld->CreateShape(sd);
@@ -607,7 +617,7 @@ EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, uint32 flag
 EXPORT int32 AddFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx,
 	bool isSensor, int32 collisionGroup,uint16 categoryBits, uint16 maskBits)
 {
-    b2FixtureDef fd;
+    Fixture::Def fd;
 	fd.isSensor = isSensor;
 	fd.bodyIdx = bodyIdx;
 	fd.shapeType = shapeType;

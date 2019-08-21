@@ -115,10 +115,10 @@ struct b2PartGroundContact
 	b2Vec3 normal;
 	float32 mass;
 
-	void setInvalid() { groundTileIdx = b2_invalidIndex; }
-	void setInvalid() restrict(amp) { groundTileIdx = b2_invalidIndex; }
-	bool getValid() const { return groundTileIdx != b2_invalidIndex; }
-	bool getValid() const restrict(amp) { return groundTileIdx != b2_invalidIndex; }
+	void setInvalid() { groundTileIdx = INVALID_IDX; }
+	void setInvalid() restrict(amp) { groundTileIdx = INVALID_IDX; }
+	bool getValid() const { return groundTileIdx != INVALID_IDX; }
+	bool getValid() const restrict(amp) { return groundTileIdx != INVALID_IDX; }
 };
 
 /// Connection between two particles
@@ -288,6 +288,8 @@ struct b2ParticleSystemDef
 	/// With the value set to 1/60 the maximum lifetime or age of a particle is
 	/// 2.27 years.
 	float32 lifetimeGranularity;
+
+	float32 airResistanceFactor;
 };
 
 class b2ParticleSystem
@@ -323,11 +325,12 @@ public:
 	void WaitForComputeWeight();
 	void SolveTensile();			// Needs: weight
 	void SolveSolid();
-	void SolveGravity();
+	void SolveGravity();			// Needs: Mass		| Modifies: Velocity
 	void SolveStaticPressure();
 	void SolvePressure();
 	void SolveDamping();
 	void SolveExtraDamping();
+	void SolveAirResistance();		// Needs: Mass		| Modifies: Velocity
 	void SolveElastic();
 	void SolveSpring();
 	void LimitVelocity();
@@ -337,20 +340,20 @@ public:
 	void SolveRigid();
 	void SolveWall();
 	void CopyVelocities();
-	void SolveAir();
+	void SolveKillNotMoving();		// Needs: Velocity	| Modifies: Flags
 	void SolveWater();				// Needs: Flags		| Modifies: Flags
 
 	// Burning and Heat
 	void SolveFlame();
 	void SolveIgnite();
 	void SolveExtinguish();
-	void CopyHealths();
 	void SolveHeatConduct();
 	void SolveLooseHeat();
 	void CopyHeats();
 	void SolveChangeMat();
 
 	void SolveHealth();
+	void CopyHealths();
 	void CopyFlags();
 	void CopyBodies();
 
@@ -401,7 +404,7 @@ public:
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
 	int32 CreateGroup(ParticleGroup::Def& def);
-	void DestroyGroup(int32 groupIdx, int32 timestamp = b2_invalidIndex, bool destroyParticles = false);
+	void DestroyGroup(int32 groupIdx, int32 timestamp = INVALID_IDX, bool destroyParticles = false);
 
 	void CopyParticleRangeToGpu(const uint32 first, const uint32 last);
 
@@ -468,8 +471,6 @@ public:
 	/// Get the particle density.
 	float32 GetDensity() const;
 
-	void SetAtmosphereParticleMass(float32 density);
-
 	/// Change the particle gravity scale. Adjusts the effect of the global
 	/// gravity vector on particles.
 	void SetGravityScale(float32 gravityScale);
@@ -484,6 +485,8 @@ public:
 
 	/// Get damping for particles
 	float32 GetDamping() const;
+
+	void SetAirResistanceFactor(float32 airResFactor);
 
 	/// Change the number of iterations when calculating the static pressure of
 	/// particles. By default, 8 iterations. You can reduce the number of
@@ -1163,6 +1166,7 @@ private:
 	float32 m_particleRadius;
 	float32 m_particleVolume;
 	float32 m_atmosphereParticleMass;
+	float32 m_atmosphereParticleInvMass;
 	float32 m_inverseDiameter;
 	float32 m_inverseRadius;
 	float32 m_squaredDiameter;
@@ -1494,17 +1498,6 @@ inline void b2ParticleSystem::SetAccelerate(bool accelerate)
 	m_accelerate = accelerate;
 }
 
-
-inline void b2ParticleSystem::SetRadius(float32 radius)
-{
-	m_particleRadius = radius;
-	m_inverseRadius = 1 / radius;
-	m_particleDiameter = 2 * radius;
-	m_squaredDiameter = m_particleDiameter * m_particleDiameter;
-	m_inverseDiameter = 1 / m_particleDiameter;
-	m_particleVolume = (4.0 / 3.0) * b2_pi * pow(radius, 3);
-}
-
 inline void b2ParticleSystem::SetDensity(float32 density)
 {
 	m_def.density = density;
@@ -1514,11 +1507,6 @@ inline void b2ParticleSystem::SetDensity(float32 density)
 inline float32 b2ParticleSystem::GetDensity() const
 {
 	return m_def.density;
-}
-
-inline void b2ParticleSystem::SetAtmosphereParticleMass(float32 density)
-{
-	m_atmosphereParticleMass = m_particleVolume * density;
 }
 
 inline void b2ParticleSystem::SetGravityScale(float32 gravityScale)
@@ -1539,6 +1527,11 @@ inline void b2ParticleSystem::SetDamping(float32 damping)
 inline float32 b2ParticleSystem::GetDamping() const
 {
 	return m_def.dampingStrength;
+}
+
+inline void b2ParticleSystem::SetAirResistanceFactor(float32 airResFactor)
+{
+	m_def.airResistanceFactor = airResFactor;
 }
 
 inline void b2ParticleSystem::SetStaticPressureIterations(int32 iterations)
@@ -1701,7 +1694,7 @@ inline uint32 b2ParticleSystem::GetParticleFlags(int32 index)
 inline bool b2ParticleSystem::ValidateParticleIndex(const int32 index) const
 {
 	return index >= 0 && index < GetParticleCount() &&
-		index != b2_invalidIndex;
+		index != INVALID_IDX;
 }
 
 inline bool b2ParticleSystem::GetDestructionByAge() const

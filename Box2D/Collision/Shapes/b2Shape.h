@@ -57,13 +57,15 @@ struct b2Shape
 	struct Def
 	{
 		b2Shape::Type type;
+		float32 radius;
 		float32 zPos;
 		float32 height;
-		float32 radius;
 	};
 
 	Type m_type = Type::e_typeCount;
 	float32 m_radius = 0;
+	float32 m_zPos = 0;
+	float32 m_height = 0;
 	float32 m_area = 0;
 
 	virtual void Set(const Def& shapeDef) {};
@@ -107,5 +109,5 @@ struct b2Shape
 	/// The inertia tensor is computed about the local origin.
 	/// @param massData returns the mass data for this shape.
 	/// @param density the density in kilograms per meter squared.
-	virtual b2MassData ComputeMass(float32 density, float32 height) const = 0;
+	virtual b2MassData ComputeMass(float32 density) const = 0;
 };

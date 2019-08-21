@@ -52,45 +52,6 @@ struct b2Filter
 	int32 collisionGroup;
 };
 
-/// A fixture definition is used to create a fixture. This class defines an
-/// abstract fixture definition. You can reuse fixture definitions safely.
-struct b2FixtureDef
-{
-	/// The constructor sets the default fixture definition values.
-	b2FixtureDef()
-	{
-		bodyIdx = b2_invalidIndex;
-		shapeType = b2Shape::Type::e_typeCount;
-		shapeIdx = b2_invalidIndex;
-		friction = 0.2f;
-		restitution = 0.0f;
-		density = 0.0f;
-		isSensor = false;
-	}
-
-	int32 bodyIdx;
-
-	/// The shape, this must be set. The shape will be cloned, so you
-	/// can create the shape on the stack.
-	b2Shape::Type shapeType;
-	int32 shapeIdx;
-
-	/// The friction coefficient, usually in the range [0,1].
-	float32 friction;
-
-	/// The restitution (elasticity) usually in the range [0,1].
-	float32 restitution;
-
-	/// The density, usually in kg/m^2.
-	float32 density;
-
-	/// A sensor shape collects contact information but never generates a collision
-	/// response.
-	bool isSensor;
-
-	/// Contact filtering data.
-	b2Filter filter;
-};
 
 /// This proxy is used internally to connect fixtures to the broad-phase.
 struct b2FixtureProxy
@@ -102,14 +63,41 @@ struct b2FixtureProxy
 
 	b2FixtureProxy()
 	{
-		fixtureIdx = b2_invalidIndex;
-		proxyId = b2_invalidIndex;
-		childIndex = b2_invalidIndex;
+		fixtureIdx = INVALID_IDX;
+		proxyId = INVALID_IDX;
+		childIndex = INVALID_IDX;
 	}
 };
 
 struct Fixture
 {
+	struct Def
+	{
+		/// The constructor sets the default fixture definition values.
+		Def()
+		{
+			bodyIdx = INVALID_IDX;
+			shapeType = b2Shape::Type::e_typeCount;
+			shapeIdx = INVALID_IDX;
+			friction = 0.2f;
+			restitution = 0.0f;
+			density = 0.0f;
+			isSensor = false;
+		}
+
+		int32 bodyIdx;		
+		b2Shape::Type shapeType;
+		int32 shapeIdx;
+
+		float32 friction;	/// The friction coefficient, usually in the range [0,1].
+		float32 restitution;	/// The restitution (elasticity) usually in the range [0,1].
+		float32 density;	/// The density, usually in kg/m^2.
+
+		bool isSensor;	/// A sensor shape collects contact information but never generates a collision response.
+
+		b2Filter filter;	/// Contact filtering data.
+	};
+
 	int32 m_idx;
 
 	float32 m_density;
@@ -129,24 +117,12 @@ struct Fixture
 
 	bool m_isSensor;
 
-	float32 m_zPos;
-	float32 m_height;
-
-	bool TestZPos(float32 z) const
-	{
-		return m_zPos <= z && z <= m_zPos + m_height;
-	}
-	bool TestZPos(float32 z) const restrict(amp)
-	{
-		return m_zPos <= z && z <= m_zPos + m_height;
-	}
-
-
-	void Set(const b2FixtureDef& def, const int32 idxInBody, const Body::Mat& mat);
+	void Set(const Fixture::Def& def, const int32 idxInBody, const Body::Mat& mat);
 
 	/// Set the density of this fixture. This will _not_ automatically adjust the mass
 	/// of the body. You must call b2Body::ResetMassData to update the body's mass.
 	void SetDensity(float32 density);
+
 };
 
 inline void Fixture::SetDensity(float32 density)

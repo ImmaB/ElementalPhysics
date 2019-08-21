@@ -195,12 +195,12 @@ b2Joint::b2Joint(const b2JointDef* def, b2World& world) : m_world(world)
 	m_userData = def->userData;
 
 	m_edgeA.joint = NULL;
-	m_edgeA.otherIdx = b2_invalidIndex;
+	m_edgeA.otherIdx = INVALID_IDX;
 	m_edgeA.prev = NULL;
 	m_edgeA.next = NULL;
 
 	m_edgeB.joint = NULL;
-	m_edgeB.otherIdx = b2_invalidIndex;
+	m_edgeB.otherIdx = INVALID_IDX;
 	m_edgeB.prev = NULL;
 	m_edgeB.next = NULL;
 }

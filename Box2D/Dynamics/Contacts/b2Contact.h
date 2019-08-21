@@ -180,7 +180,7 @@ protected:
 						b2Shape::Type typeA, b2Shape::Type typeB);
 	static void InitializeRegisters();
 
-	b2Contact() : m_fixtureIdxA(b2_invalidIndex), m_fixtureIdxB(b2_invalidIndex) {}
+	b2Contact() : m_fixtureIdxA(INVALID_IDX), m_fixtureIdxB(INVALID_IDX) {}
 	b2Contact(const Fixture& fixtureA, int32 indexA, const Fixture& fixtureB, int32 indexB);
 	virtual ~b2Contact() {}
 
