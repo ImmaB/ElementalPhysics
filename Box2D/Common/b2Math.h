@@ -159,6 +159,13 @@ struct b2Vec2
 		y *= invLength;
 		return length;
 	}
+	b2Vec2 Normalized() const restrict(amp)
+	{
+		float32 length = Length();
+		if (length < b2_epsilon) return b2Vec2(0, 0);
+		float32 invLength = 1.0f / length;
+		return b2Vec2(x * invLength, y * invLength);
+	}
 
 	/// Does this vector contain finite coordinates?
 	bool IsValid() const { return b2IsValid(x) && b2IsValid(y); }
@@ -262,6 +269,13 @@ struct b2Vec3
 		y *= invLength;
 		z *= invLength;
 		return length;
+	}
+	b2Vec3 Normalized() const restrict(amp)
+	{
+		float32 length = Length();
+		if (length < b2_epsilon) return b2Vec3(0, 0, 0);
+		float32 invLength = 1.0f / length;
+		return b2Vec3(x * invLength, y * invLength, z * invLength);
 	}
 
 	/// conversion to b2Vec2 (type-cast operator)
@@ -439,8 +453,8 @@ struct b2Rot
 struct b2Transform
 {
 	/// The default constructor does nothing.
-	b2Transform() {}
-	b2Transform() restrict(amp) {}
+	b2Transform() { p.SetZero(); q.SetIdentity(); z = 0; }
+	b2Transform() restrict(amp) { p.SetZero(); q.SetIdentity(); z = 0; }
 
 	/// Initialize using a position vector and a rotation.
 	b2Transform(const b2Vec2& position, const b2Rot& rotation) : p(position), q(rotation) {}
@@ -451,8 +465,8 @@ struct b2Transform
 	b2Transform(float32 posX, float32 posY, const b2Rot& rotation) restrict(amp) : p(b2Vec2(posX, posY)), q(rotation) {}
 
 	/// Set this to the identity transform.
-	void SetIdentity() { p.SetZero(); q.SetIdentity(); }
-	void SetIdentity() restrict(amp) { p.SetZero(); q.SetIdentity(); }
+	void SetIdentity() { p.SetZero(); q.SetIdentity();  z = 0; }
+	void SetIdentity() restrict(amp) { p.SetZero(); q.SetIdentity(); z = 0; }
 
 	/// Set this based on the position and angle.
 	void Set(const b2Vec2& position, float32 angle) { p = position; q.Set(angle); }
@@ -609,7 +623,6 @@ inline float32 b2Dot(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return 
 inline b2Vec3 b2Cross(const b2Vec3 & a, const b2Vec3 & b) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 inline b2Vec3 b2Cross(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 
-
 inline b2Mat22 operator + (const b2Mat22 & A, const b2Mat22 & B) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
 inline b2Mat22 operator + (const b2Mat22 & A, const b2Mat22 & B) restrict(amp) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
 
@@ -638,8 +651,10 @@ inline b2Rot b2MulT(const b2Rot & q, const b2Rot & r) { b2Rot qr; qr.s = q.c * r
 inline b2Rot b2MulT(const b2Rot & q, const b2Rot & r) restrict(amp) { b2Rot qr; qr.s = q.c * r.s - q.s * r.c; qr.c = q.c * r.c + q.s * r.s; return qr; }
 
 /// Rotate a vector
-inline b2Vec2 b2Mul(const b2Rot & q, const b2Vec2 & v) { return b2Vec2(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y); }
-inline b2Vec2 b2Mul(const b2Rot & q, const b2Vec2 & v) restrict(amp) { return b2Vec2(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y); }
+inline b2Vec2 b2Mul(const b2Rot& q, const b2Vec2& v) { return b2Vec2(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y); }
+inline b2Vec2 b2Mul(const b2Rot& q, const b2Vec2& v) restrict(amp) { return b2Vec2(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y); }
+inline b2Vec3 b2Mul(const b2Rot& q, const b2Vec3& v) { return b2Vec3(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y, v.z); }
+inline b2Vec3 b2Mul(const b2Rot& q, const b2Vec3& v) restrict(amp) { return b2Vec3(q.c * v.x - q.s * v.y, q.s * v.x + q.c * v.y, v.z); }
 inline float32 b2MulX(const b2Rot & q, float32 x, float32 y) { return q.c* x - q.s * y; }
 inline float32 b2MulX(const b2Rot & q, float32 x, float32 y) restrict(amp) { return q.c* x - q.s * y; }
 inline float32 b2MulY(const b2Rot & q, float32 x, float32 y) { return q.s* x + q.c * y; }
@@ -684,12 +699,21 @@ inline b2Mat22 b2Abs(const b2Mat22 & A) restrict(amp) { return b2Mat22(b2Abs(A.e
 
 template <typename T> inline T b2Min(T a, T b) { return a < b ? a : b; }
 template <typename T> inline T b2Min(T a, T b) restrict(amp) { return a < b ? a : b; }
+template <typename T> inline T b2AbsMin(T a, T b) { return b2Abs(a) < b2Abs(b) ? a : b; }
+template <typename T> inline T b2AbsMin(T a, T b) restrict(amp) { return b2Abs(a) < b2Abs(b) ? a : b; }
 
 inline b2Vec2 b2Min(const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
 inline b2Vec2 b2Min(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
 
+inline b2Vec3 b2Min(const b2Vec3& a, const b2Vec3& b) { return b2Vec3(b2Min(a.x, b.x), b2Min(a.y, b.y), b2Min(a.z, b.z)); }
+inline b2Vec3 b2Min(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return b2Vec3(b2Min(a.x, b.x), b2Min(a.y, b.y), b2Min(a.z, b.z)); }
+inline b2Vec3 b2AbsMin(const b2Vec3& a, const b2Vec3& b) { return a.Length() < b.Length() ? a : b; }
+inline b2Vec3 b2AbsMin(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.Length() < b.Length() ? a : b; }
+
 template <typename T> inline T b2Max(T a, T b) { return a > b ? a : b; }
 template <typename T> inline T b2Max(T a, T b) restrict(amp) { return a > b ? a : b; }
+template <typename T> inline T b2AbsMax(T a, T b) { return b2Abs(a) > b2Abs(b) ? a : b; }
+template <typename T> inline T b2AbsMax(T a, T b) restrict(amp) { return b2Abs(a) > b2Abs(b) ? a : b; }
 
 inline b2Vec2 b2Max(const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
 inline b2Vec2 b2Max(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
@@ -758,4 +782,9 @@ inline void b2Sweep::Normalize() restrict(amp)
 	float32 d = twoPi * ampFloor(a0 / twoPi);
 	a0 -= d;
 	a -= d;
+}
+
+inline float32 Random(const float32 min = 0, const float32 max = 1)
+{
+	return min + (((float32)rand()) / (float32)RAND_MAX) * (max - min);
 }

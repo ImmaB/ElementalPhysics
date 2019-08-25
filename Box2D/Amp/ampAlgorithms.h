@@ -73,101 +73,93 @@ namespace amp
 		return ampExtent(getTilable(size, tileCnt));
 	}
 
-	template<typename T>
-	static void copy(const ampArray<T>& a, std::vector<T>& v, const int32 size = 0)
+	#define COPY_SYNC template<typename T> static void
+	#define COPY_ASYNC template<typename T> static ampCopyFuture
+
+	COPY_SYNC copy(const ampArray<T>& src, std::vector<T>& dst, const int32 size = 0)
 	{
-		if (size)
-			Concurrency::copy(a.section(0, size), v.data());
-		else
-			Concurrency::copy(a, v.data());
+		Concurrency::copy(size ? src.section(0, size) : src, dst.data());
 	}
-	template<typename T>
-	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 size = 0)
+	COPY_ASYNC copyAsync(const ampArray<T>& src, std::vector<T>& dst, const int32 size = 0)
 	{
-		if (size)
-			Concurrency::copy(vec.data(), vec.data() + size, a);
-		else
-			Concurrency::copy(vec.data(), vec.data() + vec.size(), a);
+		return Concurrency::copy_async(size ? src.section(0, size) : src, dst.data());
 	}
-	template<typename T>
-	static void copy(const std::vector<T>& vec, ampArrayView<T>& av, int32 size = 0)
+
+	COPY_SYNC copy(const std::vector<T>& src, ampArray<T>& dst, const int32 size = 0)
 	{
-		if (!size) size = vec.size();
-		Concurrency::copy(vec.data(), vec.data() + size, av);
+		Concurrency::copy(src.data(), src.data() + (size ? size : src.size()), dst);
 	}
-	template<typename T>
-	static void copy(const std::vector<T>& vec, ampArray<T>& a, const int32 start, const int32 size)
+	COPY_ASYNC copyAsync(const std::vector<T>& src, ampArray<T>& dst, const int32 size = 0)
 	{
-		Concurrency::copy(vec.data() + start, vec.data() + start + size, a.section(start, size));
+		return Concurrency::copy_async(src.data(), src.data() + (size ? size : src.size()), dst);
 	}
-	template<typename T>
-	static void copy(const T* buffer, ampArray<T>& a, const int32 size)
+
+	COPY_SYNC copy(const std::vector<T>& src, ampArrayView<T>& dst, const int32 size = 0)
 	{
-		if (size)
-			Concurrency::copy(buffer, buffer + size, a);
+		Concurrency::copy(src.data(), src.data() + (size ? size : src.size()), dst);
 	}
-	template<typename T>
-	static void copy(const ampArray<T>& a, const int32 idx, T& dest)
+
+	COPY_SYNC copy(const std::vector<T>& src, ampArray<T>& dst, const int32 start, const int32 size)
 	{
-		Concurrency::copy(a.section(idx, 1), &dest);
+		Concurrency::copy(src.data() + start, src.data() + start + size, dst.section(start, size));
 	}
-	template<typename T>
-	static void copy(const ampArrayView<T>& av, const int32 idx, T& dest)
+	COPY_ASYNC copyAsync(const std::vector<T>& src, ampArray<T>& dst, const int32 start, const int32 size)
 	{
-		Concurrency::copy(av.section(idx, 1), &dest);
+		return Concurrency::copy_async(src.data() + start, src.data() + start + size, dst.section(start, size));
 	}
-	template<typename T>
-	static void copy(const ampArrayView<T>& av, std::vector<T>& dest)
+
+	COPY_SYNC copy(const T* src, ampArray<T>& dst, const int32 size)
 	{
-		Concurrency::copy(av, dest.data());
+		if (size) Concurrency::copy(src, src + size, dst);
 	}
-	template<typename T>
-	static void copy(const ampArrayView<T>& av, T* dest)
+
+	COPY_SYNC copy(const ampArray<T>& src, const int32 idx, T& dst)
 	{
-		Concurrency::copy(av, dest);
+		Concurrency::copy(src.section(idx, 1), &dst);
 	}
-	template<typename T>
-	static void copy(const T& elem, ampArray<T>& dest, const int32 idx)
+	COPY_ASYNC copyAsync(const ampArray<T>& src, const int32 idx, T& dst)
 	{
-		Concurrency::copy(&elem, &elem + 1, dest.section(idx, 1));
+		return Concurrency::copy_async(src.section(idx, 1), &dst);
 	}
-	template<typename T>
-	static void copyRange(const ampArray<T>& a, std::vector<T>& dest, const int32 start, const int32 end)
+
+	COPY_SYNC copy(const ampArrayView<T>& src, const int32 idx, T& dst)
+	{
+		Concurrency::copy(src.section(idx, 1), &dst);
+	}
+	COPY_ASYNC copyAsync(const ampArrayView<T>& src, const int32 idx, T& dst)
+	{
+		return Concurrency::copy_async(src.section(idx, 1), &dst);
+	}
+
+	COPY_SYNC copy(const ampArrayView<T>& src, std::vector<T>& dst)
+	{
+		Concurrency::copy(src, dst.data());
+	}
+
+	COPY_SYNC copy(const ampArrayView<T>& src, T* dst)
+	{
+		Concurrency::copy(src, dst);
+	}
+
+	COPY_SYNC copy(const T& src, ampArray<T>& dst, const int32 idx)
+	{
+		Concurrency::copy(&src, &src + 1, dst.section(idx, 1));
+	}
+
+	COPY_SYNC copy(const ampArray<T>& src, std::vector<T>& dst, const int32 start, const int32 end)
 	{
 		if (const int32 size = end - start; size > 0)
-			Concurrency::copy(a.section(start, size), dest.data() + start);
+			Concurrency::copy(src.section(start, size), dst.data() + start);
 	}
-	template<typename T>
-	static ampCopyFuture copyAsync(const ampArray<T>& a, std::vector<T>& v, const int32 size = 0)
+	COPY_ASYNC copyAsync(const ampArray<T>& a, std::vector<T>& dst, const int32 start, const int32 end)
 	{
-		if (size)
-			return Concurrency::copy_async(a.section(0, size), v.data());
-		else
-			return Concurrency::copy_async(a, v.data());
+		const int32 size = end - start;
+		return Concurrency::copy_async(a.section(start, size), dst.data() + start);
 	}
-	template<typename T>
-	static ampCopyFuture copyAsync(const std::vector<T>& vec, ampArray<T>& a, const int32 size = 0)
+
+	COPY_ASYNC copyAsync(const T* src, ampArray<T>& dst, const int32 size)
 	{
-		if (size)
-			return Concurrency::copy_async(vec.data(), vec.data() + size, a);
-		else
-			return Concurrency::copy_async(vec.data(), vec.data() + vec.size(), a);
-	}
-	template<typename T>
-	static ampCopyFuture copyAsync(const T* buffer, ampArray<T>& a, const int32 size)
-	{
-		if (!size) return ampCopyFuture();
-		return Concurrency::copy_async(buffer, buffer + size, a);
-	}
-	template<typename T>
-	static ampCopyFuture copyAsync(const ampArray<T>& a, const int32 idx, T& dest)
-	{
-		return Concurrency::copy_async(a.section(idx, 1), &dest);
-	}
-	template<typename T>
-	static ampCopyFuture copyAsync(const ampArrayView<T>& a, const int32 idx, T& dest)
-	{
-		return Concurrency::copy_async(a.section(idx, 1), &dest);
+		return size ? Concurrency::copy_async(src, src + size, dst) : ampCopyFuture();
 	}
 
 

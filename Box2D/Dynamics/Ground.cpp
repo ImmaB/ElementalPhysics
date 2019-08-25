@@ -2,6 +2,7 @@
 
 #include <Box2D/Dynamics/Ground.h>
 #include <Box2D/Dynamics/b2World.h>
+#include <Box2D/Collision/Shapes/b2Shape.h>
 
 Ground::Ground(b2World& world, const def& gd) :
 	m_world(world),
@@ -13,6 +14,7 @@ Ground::Ground(b2World& world, const def& gd) :
 	m_ampMaterials = ampArray<Mat>(16, amp::getGpuAccelView());
 	m_stride = gd.stride;
 	m_invStride = 1 / gd.stride;
+	m_halfStride = gd.stride / 2;
 	m_tileCntY = gd.ySize;
 	m_tileCntX = gd.xSize;
 	m_tileCnt = m_tileCntY * m_tileCntX;
@@ -105,16 +107,58 @@ void Ground::CopyChangedTiles()
 
 Ground::Tile Ground::GetTileAt(const b2Vec2& p) const
 {
-	if (p.x < 0 || p.y < 0 || p.x > m_size.x || p.y > m_size.y) return Tile();
+	if (!IsPositionInGrid(p)) return Tile();
 	return m_tiles[GetIdx(p)];
-}
-
-int32 Ground::GetIdx(const b2Vec2& p) const
-{
-	return p.y * m_invStride * m_tileCntX + p.y * m_invStride;
 }
 
 Ground::Mat Ground::GetMat(const Ground::Tile& tile)
 {
 	return m_materials[tile.matIdx];
+}
+
+void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform,
+							  int32 partMatIdx, uint32 partFlags, float32 probability)
+{
+	vector<b2Vec3> positions;
+	const float32 heightOffset = m_world.GetParticleSystem()->GetRadius() + b2_linearSlop;
+	auto range = ForEachTileInsideShape(shape, transform, [=, &positions](Tile& tile, const b2Vec2& tileCenter)
+	{
+		if (!tile.particleCnt) return;
+		for (int32 i = tile.particleCnt - 1; i >= 0; i--)
+		{
+			if (tile.particleMatIdxs[i] != partMatIdx) continue;
+			if (Random() > probability) return;
+			tile.removeParticle(i);
+			positions.push_back(b2Vec3(GetRandomTilePosition(tileCenter), tile.height + heightOffset));
+			return;
+		}
+	});
+	if (positions.empty()) return;
+	ParticleGroup::Def pgd;
+	pgd.particleCount = positions.size();
+	pgd.positionData = positions;
+	pgd.matIdx = partMatIdx;
+	pgd.flags = partFlags;
+	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles, range.first, range.second - range.first);
+	m_world.GetParticleSystem()->CreateGroup(pgd);
+	if (m_changeCallback)
+		m_changeCallback(nullptr, m_tiles.data(), m_tileCnt);	// TODO just use range
+	copyFuture.wait();
+}
+
+template<typename F>
+pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape, const b2Transform& transform, F& function)
+{
+	if (shape.m_type == b2Shape::Type::e_chain || shape.m_type == b2Shape::Type::e_edge) return pair<int32, int32>(0, 0);
+	b2AABB b;
+	shape.ComputeAABB(b, transform, 0);
+	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),
+		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
+	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
+	{
+		const b2Vec2 p = GetTileCenter(x, y);
+		if (IsPositionInGrid(p) && shape.TestPoint(transform, b2Vec3(p, 0)))
+			function(m_tiles[GetIdx(x, y)], p);
+	}
+	return pair<int32, int32>(GetIdx(lowerXIdx, lowerYIdx), GetIdx(upperXIdx, upperYIdx));
 }

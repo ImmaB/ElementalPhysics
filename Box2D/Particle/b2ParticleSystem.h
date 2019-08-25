@@ -326,6 +326,7 @@ public:
 	void SolveTensile();			// Needs: weight
 	void SolveSolid();
 	void SolveGravity();			// Needs: Mass		| Modifies: Velocity
+	void SolveWind();				// Needs: Mass		| Modifies: Velocity
 	void SolveStaticPressure();
 	void SolvePressure();
 	void SolveDamping();
@@ -573,7 +574,7 @@ public:
 	/// Set flags for a particle. See the b2ParticleFlag enum.
 	void SetParticleFlags(int32 index, uint32 flags);
 	void AddParticleFlags(int32 index, uint32 flags);
-	void RemovePartFlagsFromAll(uint32 flags);
+	void RemovePartFlagFromAll(const uint32 flags);
 	/// Get flags for a particle. See the b2ParticleFlag enum.
 	uint32 GetParticleFlags(const int32 index);
 
@@ -751,7 +752,7 @@ public:
 	/// @param force the world force vector, usually in Newtons (N).
 	void ApplyForce(const ParticleGroup& group, const b2Vec3& force);
 	void ApplyForce(int32 firstIndex, int32 lastIndex, const b2Vec3& force);
-	void ApplyForceInDirIfHasFlag(const b2Vec3& pos, float32 strength, uint32 flag);
+	void PullIntoCircle(const b2Vec3& pos, const float32 radius, float32 strength, uint32 flag, bool ignoreMass);
 
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();

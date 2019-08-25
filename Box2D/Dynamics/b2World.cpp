@@ -33,6 +33,7 @@
 #include <Box2D/Collision/b2TimeOfImpact.h>
 #include <Box2D/Common/b2Draw.h>
 #include <Box2D/Common/b2Timer.h>
+#include <time.h>  
 #include <new>
 
 b2World::b2World() :
@@ -67,6 +68,14 @@ b2World::b2World() :
 	m_allBodyMaterialFlags = 0;
 
 	memset(&m_profile, 0, sizeof(b2Profile));
+
+	srand((unsigned)time(NULL));
+}
+void b2World::SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside)
+{
+	m_lowerBorder = lower;
+	m_upperBorder = upper;
+	m_deleteOutside = deleteOutside;
 }
 
 b2World::~b2World()

@@ -86,26 +86,30 @@ InterfaceContactListener* pContactListener;
 #pragma endregion
 
 #pragma region API World
-EXPORT void CreateWorld(b2Vec3 grav, b2Vec3 lowerBorder, b2Vec3 upperBorder, bool deleteOutside,
-	float32 roomTemp, float32 athmosDensity)
+EXPORT void CreateWorld()
 {
 	amp::testCompatibilty();
 	if (!pWorld) pWorld = new b2World();
-	pWorld->SetGravity(grav);
-	pWorld->SetBorders(lowerBorder, upperBorder, deleteOutside);
-	pWorld->SetRoomTemperature(roomTemp);
-	pWorld->SetAtmosphericDensity(athmosDensity);
 }
+EXPORT void SetStepParams(float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations)
+{
+	pWorld->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
+}
+EXPORT void SetDamping(float32 damping) { pWorld->m_dampingStrength = damping; }
+
+EXPORT void SetBorders(b2Vec3 lower, b2Vec3 upper, bool deleteOutside) { pWorld->SetBorders(lower, upper, deleteOutside); }
+EXPORT void SetGravity(b2Vec3 gravity) { pWorld->m_gravity = gravity; }
+EXPORT void SetRoomTemperature(float32 temperature) { pWorld->m_roomTemperature = temperature; }
+EXPORT void SetAtmosphericDensity(float32 density) { pWorld->m_atmosphericDensity = density; }
+EXPORT void SetWind(b2Vec3 wind) { pWorld->m_wind = wind; }
+
+
 EXPORT void DestroyWorld()
 {
 	if (pWorld)
 		delete pWorld;
 }
 
-EXPORT void SetStepParams(float32 timeStep, int32 velocityIterations, int32 positionIterations, int32 particleIterations)
-{
-	pWorld->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
-}
 EXPORT void StepPreParticle()
 {
 	pWorld->StepPreParticle();
@@ -126,15 +130,7 @@ EXPORT void SetAllowSleeping(b2World* pWorld, bool flag)
 
 EXPORT b2Vec3 GetWorldGravity()
 {
-	return pWorld->GetGravity();
-}
-EXPORT void SetWorldGravity(b2Vec3 gravity)
-{
-	pWorld->SetGravity(gravity);
-}
-EXPORT void SetWorldDamping(float32 s)
-{
-	pWorld->SetDamping(s);
+	return pWorld->m_gravity;
 }
 
 EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
@@ -242,6 +238,7 @@ EXPORT void WaitForComputeWeight() { pPartSys->WaitForComputeWeight(); }
 EXPORT void SolveTensile() { pPartSys->SolveTensile(); }
 EXPORT void SolveSolid() { pPartSys->SolveSolid(); }
 EXPORT void SolveGravity() { pPartSys->SolveGravity(); }
+EXPORT void SolveWind() { pPartSys->SolveWind(); }
 EXPORT void SolveStaticPressure() { pPartSys->SolveStaticPressure(); }
 EXPORT void SolvePressure() { pPartSys->SolvePressure(); }
 EXPORT void SolveDamping() { pPartSys->SolveDamping(); }
@@ -338,11 +335,11 @@ EXPORT void AddFlagsToPartsWithMatInFixture(Particle::Flag flag, int32 matIdx, i
 	pPartSys->AddFlagInsideFixture(flag, matIdx, pWorld->GetFixture(fixtureIdx));
 }
 
-EXPORT void RemoveFlagsFromAll(int32 flags) { pPartSys->RemovePartFlagsFromAll(flags); }
+EXPORT void RemoveFlagFromAll(uint32 flags) { pPartSys->RemovePartFlagFromAll(flags); }
 
-EXPORT void ApplyForceInDirIfHasFlag(b2Vec3 pos, float32 strength, int32 flag)
+EXPORT void PullPartsIntoCircle(b2Vec3 pos, float32 radius, float32 strength, int32 flag, bool ignoreMass)
 {
-	pPartSys->ApplyForceInDirIfHasFlag(pos, strength, flag);
+	pPartSys->PullIntoCircle(pos, radius, strength, flag, ignoreMass);
 }
 
 EXPORT void GetAmpPositions(void* partSysPtr, void** dstPtr)
@@ -600,6 +597,10 @@ EXPORT void SetGroundTiles(Ground::Tile* pTiles)
 EXPORT void SetGroundTileChangeCallback(Ground::ChangeCallback callback)
 {
 	pGround->m_changeCallback = callback;
+}
+EXPORT void ExtractGroundParticles(int32 fixtureIdx, int32 partMatIdx, uint32 partFlags, float32 strength)
+{
+	pGround->ExtractParticles(pWorld->GetShape(fixtureIdx), b2Transform(), partMatIdx, partFlags, strength);
 }
 EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 particleCapacity, uint32 flags)
 {

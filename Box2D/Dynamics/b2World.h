@@ -59,14 +59,6 @@ public:
 	/// Destruct the world. All physics entities are destroyed and all heap memory is released.
 	~b2World();
 
-	/// Damping is used to reduce the velocity of particles. The damping
-	/// parameter can be larger than 1.0f but the damping effect becomes
-	/// sensitive to the time step when the damping parameter is large.
-	void SetDamping(float32 damping);
-
-	/// Get damping for particles
-	float32 GetDamping() const;
-
 	/// Register a destruction listener. The listener is owned by you and must
 	/// remain in scope.
 	void SetDestructionListener(b2DestructionListener* listener);
@@ -255,20 +247,10 @@ public:
 	/// The minimum is 1.
 	float32 GetTreeQuality() const;
 
-	/// Change the global gravity vector.
-	void SetGravity(const b2Vec3& gravity);
-	b2Vec3 GetGravity() const;
-
-	void SetRoomTemperature(float32 roomTemp);
-	float32 GetRoomTemperature() const;
-
-	void SetAtmosphericDensity(float32 density);
-	float32 GetAtmosphericDensity() const;
-
 	void SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside);
 
 	/// Is the world locked (in the middle of a time step).
-	bool IsLocked() const;
+	bool IsLocked() const { return (m_flags & e_locked) == e_locked; };
 
 	/// Set flag to control automatic clearing of forces after each time step.
 	void SetAutoClearForces(bool flag);
@@ -345,14 +327,19 @@ public:
 		return m_polygonShapeBuffer[idx];
 	}
 
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-public:
-	/// Constructor which takes direct floats.
-	b2World(float32 gravityX, float32 gravityY);
+	b2Vec3 m_gravity;
+	/// Damping is used to reduce the velocity of particles. The damping
+	/// parameter can be larger than 1.0f but the damping effect becomes
+	/// sensitive to the time step when the damping parameter is large.
+	float32 m_dampingStrength;
+	float32 m_roomTemperature;
+	float32 m_atmosphericDensity;
+	b2Vec3 m_wind;
 
-	/// Set gravity with direct floats.
-	void SetGravity(float32 gravityX, float32 gravityY);
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
+	b2Vec3 m_lowerBorder;
+	b2Vec3 m_upperBorder;
+	bool m_deleteOutside;
+
 
 private:
 
@@ -394,14 +381,6 @@ private:
 
 	int32 m_jointCount;
 
-	float32 m_roomTemperature;
-	b2Vec3 m_gravity;
-	float32 m_atmosphericDensity;
-	b2Vec3 m_lowerBorder;
-	b2Vec3 m_upperBorder;
-	float32 m_deleteOutside;
-
-	float32 m_dampingStrength;
 	bool m_allowSleep;
 
 	b2DestructionListener* m_destructionListener;
@@ -592,16 +571,6 @@ public:
 					   const b2Transform& xfA, const b2Transform& xfB);
 };
 
-inline void b2World::SetDamping(float32 damping)
-{
-	m_dampingStrength = damping;
-}
-
-inline float32 b2World::GetDamping() const
-{
-	return m_dampingStrength;
-}
-
 inline const Body b2World::GetBody(const int32 idx) const
 {
 	return m_bodyBuffer[idx];
@@ -672,46 +641,6 @@ inline int32 b2World::GetJointCount() const
 inline int32 b2World::GetContactCount() const
 {
 	return m_contactManager.m_contactCount;
-}
-
-inline void b2World::SetGravity(const b2Vec3& gravity)
-{
-	m_gravity = gravity;
-}
-
-inline b2Vec3 b2World::GetGravity() const
-{
-	return m_gravity;
-}
-
-inline void b2World::SetRoomTemperature(float32 roomTemp)
-{
-	m_roomTemperature = roomTemp;
-}
-inline float32 b2World::GetRoomTemperature() const
-{
-	return m_roomTemperature;
-}
-
-inline void b2World::SetAtmosphericDensity(float32 density)
-{
-	m_atmosphericDensity = density;
-}
-inline float32 b2World::GetAtmosphericDensity() const
-{
-	return m_atmosphericDensity;
-}
-
-inline void b2World::SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside)
-{
-	m_lowerBorder = lower;
-	m_upperBorder = upper;
-	m_deleteOutside = deleteOutside;
-}
-
-inline bool b2World::IsLocked() const
-{
-	return (m_flags & e_locked) == e_locked;
 }
 
 inline void b2World::SetAutoClearForces(bool flag)

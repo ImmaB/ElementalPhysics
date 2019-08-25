@@ -7,6 +7,7 @@
 using namespace std;
 
 class b2World;
+struct b2Shape;
 
 class Ground
 {
@@ -21,7 +22,7 @@ public:
 		int32 matIdx;
 		float32 height;
 		int32 particleCnt;
-		int32 particleIdxs[8];
+		int32 particleMatIdxs[8];
 		int32 textureSeed;
 		uint32 flags;
 
@@ -39,6 +40,14 @@ public:
 		}
 		inline void remWet() { flags &= ~Flags::wet; setChanged(); }
 		inline void remWet() restrict(amp) { flags &= ~Flags::wet; setChanged(); }
+
+		void removeParticle(int32 idx)
+		{
+			particleCnt--;
+			if (idx < particleCnt)
+				for (int32 prevIdx = idx++; idx <= particleCnt; idx++)
+					particleMatIdxs[prevIdx] = particleMatIdxs[idx];
+		}
 	};
 	typedef void(__stdcall* ChangeCallback)(int32*, Ground::Tile*, int32);
 
@@ -100,6 +109,7 @@ public:
 
 	float32 m_stride;
 	float32 m_invStride;
+	float32 m_halfStride;
 	int32 m_tileCntY, m_tileCntX, m_tileCnt;
 	b2Vec2 m_size;
 	int32 m_chunkCntY;
@@ -125,10 +135,22 @@ public:
 	Tile GetTileAt(const b2Vec2& p) const;
 	Ground::Mat GetMat(const Ground::Tile& tile);
 
+	void ExtractParticles(const b2Shape& shape, const b2Transform& transform,
+						  int32 partMatIdx, uint32 partFlags, float32 probability);
 
 private:
 
-	int32 GetIdx(const b2Vec2& p) const;
+	inline bool IsPositionInGrid(const b2Vec2& p) const { return p.x >= 0 && p.y >= 0 && p.x <= m_size.x && p.y <= m_size.y; }
+	inline int32 GetIdx(const b2Vec2& p) const { return p.y * m_invStride * m_tileCntX + p.x * m_invStride; }
+	inline int32 GetIdx(const float32 f) const { return f * m_invStride; }
+	inline int32 GetIdx(const int32 x, const int32 y) const { return y * m_tileCntX + x; }
 
+	b2Vec2 GetTileCenter(const int32 x, const int32 y) const { return b2Vec2(x * m_stride + m_halfStride, y * m_stride + m_halfStride); }
+
+	template<typename F>
+	pair<int32, int32> ForEachTileInsideShape(const b2Shape& shape, const b2Transform& transform, F& function);
+
+	inline b2Vec2 GetRandomTilePosition(const b2Vec2& center) const { return center + b2Vec2(0.5 - Random(), 0.5 - Random()) * m_stride; };
 };
+
 
