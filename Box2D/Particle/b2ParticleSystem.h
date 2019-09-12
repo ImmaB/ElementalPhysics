@@ -303,6 +303,7 @@ private:
 
 public:
 	bool m_accelerate;
+	bool m_debugContacts;
 	int MyIndex;
 	void SetIndex(int ind);
 
@@ -353,12 +354,14 @@ public:
 	void CopyHeats();
 	void SolveChangeMat();
 
+	// Find Dead
 	void SolveHealth();
 	void CopyHealths();
+	void SolvePosition();
+	void SolveOutOfBounds();		// Needs: Position	| Modifies: Flags
 	void CopyFlags();
 	void CopyBodies();
 
-	void SolvePosition();
 	void IncrementIteration();
 
 	void SolveEnd();
@@ -505,6 +508,7 @@ public:
 	void SetHeatLossRatio(float32 heatLossRatio);
 
 	void SetAccelerate(const bool acc);
+	void SetDebugContacts(const bool debug);
 
 	/// Change the particle radius.
 	/// You should set this only once, on world start.
@@ -599,6 +603,7 @@ public:
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
 	const b2ParticleContact* GetContacts() const;
+	b2ParticleContact* GetContacts();
 	const int32 GetContactCount() const;
 
 	std::vector<Body> GetBodyBuffer();
@@ -752,7 +757,8 @@ public:
 	/// @param force the world force vector, usually in Newtons (N).
 	void ApplyForce(const ParticleGroup& group, const b2Vec3& force);
 	void ApplyForce(int32 firstIndex, int32 lastIndex, const b2Vec3& force);
-	void PullIntoCircle(const b2Vec3& pos, const float32 radius, float32 strength, uint32 flag, bool ignoreMass);
+	void PullIntoCircle(const b2Vec3& pos, const float32 radius,
+		float32 strength, uint32 flag, bool ignoreMass, float32 step);
 
 	/// Get the next particle-system in the world's particle-system list.
 	b2ParticleSystem* GetNext();
@@ -942,6 +948,8 @@ private:
 	/// Reallocate the handle / index map and schedule the allocation of a new
 	/// pool for handle allocation.
 	void ReallocateHandleBuffers(int32 newCapacity);
+
+	template<typename F> void ForEachGroup(const F& function) const;
 
 	template<typename F> void AmpForEachParticle(const F& function) const;
 	template<typename F> void AmpForEachParticle(const uint32 flag, const F& function) const;
@@ -1142,6 +1150,7 @@ private:
 	ampArray<AmpEdgeShape>	  m_ampEdgeShapes;
 	ampArray<AmpPolygonShape> m_ampPolygonShapes;
 
+	amp::CopyFuture m_ampCopyFutContacts;
 	amp::CopyFuture m_ampCopyFutBodies;
 	amp::CopyFuture m_ampCopyFutFixtures;
 	amp::CopyFuture m_ampCopyFutChainShapes;
@@ -1171,6 +1180,7 @@ private:
 	float32 m_inverseDiameter;
 	float32 m_inverseRadius;
 	float32 m_squaredDiameter;
+	float32 m_cubicDiameter;
 
 	float32 m_heatLossRatio;
 
@@ -1298,8 +1308,8 @@ private:
 	ampArray2D<b2PartBodyContact> m_localBodyContacts;
 	int32 m_bodyContactFixtureCnt = 0;
 
-	vector<b2ParticleContact> m_partContactBuf;
-	vector<b2PartBodyContact> m_bodyContactBuf;
+	vector<b2ParticleContact> m_contacts;
+	vector<b2PartBodyContact> m_bodyContacts;
 	ampArray<b2ParticleContact> m_ampContacts;
 	ampArray<b2PartBodyContact> m_ampBodyContacts;
 	ampArray<b2PartGroundContact> m_ampGroundContacts;
@@ -1430,7 +1440,11 @@ inline bool b2ParticleSystem::GetPaused() const
 
 inline const b2ParticleContact* b2ParticleSystem::GetContacts() const
 {
-	return m_partContactBuf.data();
+	return m_contacts.data();
+}
+inline b2ParticleContact* b2ParticleSystem::GetContacts()
+{
+	return m_contacts.data();
 }
 
 inline const int32 b2ParticleSystem::GetContactCount() const
@@ -1440,7 +1454,7 @@ inline const int32 b2ParticleSystem::GetContactCount() const
 
 inline const b2PartBodyContact* b2ParticleSystem::GetBodyContacts() const
 {
-	return m_bodyContactBuf.data();
+	return m_bodyContacts.data();
 }
 
 inline int32 b2ParticleSystem::GetBodyContactCount() const
@@ -1497,6 +1511,10 @@ inline void b2ParticleSystem::SetHeatLossRatio(float32 heatLossRatio)
 inline void b2ParticleSystem::SetAccelerate(bool accelerate)
 {
 	m_accelerate = accelerate;
+}
+inline void b2ParticleSystem::SetDebugContacts(const bool debug)
+{
+	m_debugContacts = debug;
 }
 
 inline void b2ParticleSystem::SetDensity(float32 density)

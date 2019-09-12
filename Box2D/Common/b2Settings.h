@@ -136,6 +136,7 @@ typedef unsigned long long uint64;
 #define	b2_minFloat		FLT_MIN
 #define	b2_epsilon		FLT_EPSILON
 #define b2_pi			3.14159265359f
+#define b2_2pi			6.28318530718f
 
 #if !defined(b2Inline)
 #if defined(__GNUC__)

@@ -28,6 +28,7 @@ struct b2MassData
 {
 	/// The mass of the shape, usually in kilograms.
 	float32 mass;
+	float32 surfaceMass;
 
 	/// The position of the shape's centroid relative to the shape's origin.
 	b2Vec2 center;
@@ -36,8 +37,8 @@ struct b2MassData
 	float32 I;
 
 
-	b2MassData(const float32 mass, const b2Vec2& center, const float32 I)
-		: mass(mass), center(center), I(I) {};
+	b2MassData(const float32 mass, const float32 surfaceMass, const b2Vec2& center, const float32 I)
+		: mass(mass), surfaceMass(surfaceMass), center(center), I(I) {};
 };
 
 
@@ -109,5 +110,5 @@ struct b2Shape
 	/// The inertia tensor is computed about the local origin.
 	/// @param massData returns the mass data for this shape.
 	/// @param density the density in kilograms per meter squared.
-	virtual b2MassData ComputeMass(float32 density) const = 0;
+	virtual b2MassData ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const = 0;
 };

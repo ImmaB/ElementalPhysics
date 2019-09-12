@@ -187,8 +187,10 @@ void b2ChainShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childI
 	aabb.upperBound = b2Max(v1, v2);
 }
 
-b2MassData b2ChainShape::ComputeMass(float32 density) const
+b2MassData b2ChainShape::ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const
 {
 	B2_NOT_USED(density);
-	return b2MassData(0.0f, b2Vec2_zero, 0.0f);
+	B2_NOT_USED(surfaceThickness);
+	B2_NOT_USED(massMult);
+	return b2MassData(0.0f, 0.0f, b2Vec2_zero, 0.0f);
 }

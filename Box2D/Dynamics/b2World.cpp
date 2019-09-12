@@ -1429,13 +1429,13 @@ int32 b2World::CreateFixture(Fixture::Def& def)
 
 
 	// Update Fixture List of Body
-	int32 idx, idxInBody;
-
+	int32 idx;
 	Fixture& f = InsertIntoBuffers(m_fixtureBuffer, m_fixtureProxiesBuffer, m_freeFixtureIdxs, idx);
 	f.m_idx = idx;
 
 	Body& b = m_bodyBuffer[def.bodyIdx];
-	idxInBody = InsertIntoBuffer(idx, m_bodyFixtureIdxsBuffer[b.m_idx], m_bodyFreeFixtureIdxsBuffer[b.m_idx]);
+	const int32 idxInBody = InsertIntoBuffer(idx, m_bodyFixtureIdxsBuffer[b.m_idx], m_bodyFreeFixtureIdxsBuffer[b.m_idx]);
+	def.density = m_bodyMaterials[b.m_matIdx].m_density;
 
 	f.Set(def, idxInBody, m_bodyMaterials[b.m_matIdx]);
 
@@ -1636,6 +1636,7 @@ void b2World::ResetMassData(Body& b)
 	// Compute mass data from shapes. Each shape has its own density.
 	b.m_mass = 0.0f;
 	b.m_invMass = 0.0f;
+	b.m_surfaceMass = 0.0f;
 	b.m_I = 0.0f;
 	b.m_invI = 0.0f;
 	b.m_sweep.localCenter.SetZero();
@@ -1649,19 +1650,21 @@ void b2World::ResetMassData(Body& b)
 		return;
 	}
 
-	b2Assert(b.m_type == b2_dynamicBody);
+	b2Assert(b.m_type == Body::Type::Dynamic);
 
 	// Accumulate mass over all fixtures.
 	b2Vec2 localCenter = b2Vec2_zero;
 	for (int32 fIdx : m_bodyFixtureIdxsBuffer[b.m_idx])
 	{
 		if (fIdx == INVALID_IDX) continue;
-		Fixture& f = m_fixtureBuffer[fIdx];
+		const Fixture& f = m_fixtureBuffer[fIdx];
 		if (f.m_density == 0.0f)
 			continue;
 
-		b2MassData massData = GetMassData(f);
+		const b2MassData massData = GetMassData(f);
+		if (massData.mass == 0.0f) continue;
 		b.m_mass += massData.mass;
+		b.m_surfaceMass += massData.surfaceMass;
 		localCenter += massData.mass * massData.center;
 		b.m_I += massData.I;
 	}
@@ -1670,6 +1673,7 @@ void b2World::ResetMassData(Body& b)
 	if (b.m_mass > 0.0f)
 	{
 		b.m_invMass = 1.0f / b.m_mass;
+		b.m_surfaceInvMass = 1.0f / b.m_surfaceMass;
 		localCenter *= b.m_invMass;
 	}
 	else
@@ -1677,6 +1681,8 @@ void b2World::ResetMassData(Body& b)
 		// Force all dynamic bodies to have a positive mass.
 		b.m_mass = 1.0f;
 		b.m_invMass = 1.0f;
+		b.m_surfaceMass = 1.0f;
+		b.m_surfaceInvMass = 1.0f;
 	}
 
 	if (b.m_I > 0.0f && !b.HasFlag(Body::Flag::FixedRotation))
@@ -1721,7 +1727,7 @@ bool b2World::RayCast(const Fixture& f, b2RayCastOutput& output, const b2RayCast
 
 b2MassData b2World::GetMassData(const Fixture& f) const
 {
-	return GetShape(f).ComputeMass(f.m_density);
+	return GetShape(f).ComputeMass(f.m_density, m_surfaceThickness, m_massMultiplicator);
 }
 
 const b2AABB& b2World::GetAABB(const Fixture& f, int32 childIdx) const
@@ -1843,9 +1849,9 @@ b2Shape& b2World::InsertSubShapeIntoBuffer(b2Shape::Type shapeType, int32& outId
 {
 	switch (shapeType)
 	{
-		case b2Shape::Type::e_chain:	 return InsertIntoBuffer(m_chainShapeBuffer, m_freeChainShapeIdxs, outIdx);
+		case b2Shape::Type::e_chain:   return InsertIntoBuffer(m_chainShapeBuffer, m_freeChainShapeIdxs, outIdx);
 		case b2Shape::Type::e_circle:  return InsertIntoBuffer(m_circleShapeBuffer, m_freeCircleShapeIdxs, outIdx);
-		case b2Shape::Type::e_edge:	 return InsertIntoBuffer(m_edgeShapeBuffer, m_freeEdgeShapeIdxs, outIdx);
+		case b2Shape::Type::e_edge:	   return InsertIntoBuffer(m_edgeShapeBuffer, m_freeEdgeShapeIdxs, outIdx);
 		case b2Shape::Type::e_polygon: return InsertIntoBuffer(m_polygonShapeBuffer, m_freePolygonShapeIdxs, outIdx);
 	}
 }

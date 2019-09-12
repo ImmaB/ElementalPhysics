@@ -68,11 +68,15 @@ void Body::Set(const Body::Def& def)
 	{
 		m_mass = 1.0f;
 		m_invMass = 1.0f;
+		m_surfaceMass = 1.0f;
+		m_surfaceInvMass = 1.0f;
 	}
 	else
 	{
 		m_mass = 0.0f;
 		m_invMass = 0.0f;
+		m_surfaceMass = 0.0f;
+		m_surfaceInvMass = 0.0f;
 	}
 
 	m_I = 0.0f;
@@ -80,6 +84,7 @@ void Body::Set(const Body::Def& def)
 	
 	m_matIdx = def.materialIdx;
 	m_heat = def.heat;
+	m_surfaceHeat = def.surfaceHeat;
 	m_health = def.health;
 }
 
@@ -93,12 +98,15 @@ void Body::SetMassData(const b2MassData& massData)
 	m_invI = 0.0f;
 
 	m_mass = massData.mass;
-	if (m_mass <= 0.0f)
-		m_mass = 1.0f;
-
+	if (m_mass <= 0.0f) m_mass = 1.0f;
 	m_invMass = 1.0f / m_mass;
 
-	if (massData.I > 0.0f && !HasFlag(FixedRotation))
+	m_surfaceMass = massData.surfaceMass;
+	if (m_surfaceMass <= 0.0f) m_surfaceMass = 1.0f;
+	m_surfaceInvMass = 1.0f / m_surfaceMass;
+
+
+	if (massData.I > 0.0f && !IsFixedRotation())
 	{
 		m_I = massData.I - m_mass * b2Dot(massData.center, massData.center);
 		b2Assert(m_I > 0.0f);

@@ -108,10 +108,11 @@ void b2CircleShape::ComputeAABB(b2AABB& aabb, const b2Transform& transform, int3
 	aabb.upperBound.Set(p.x + m_radius, p.y + m_radius);
 }
 
-b2MassData b2CircleShape::ComputeMass(float32 density) const
+b2MassData b2CircleShape::ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const
 {
-	const float32 mass = density * m_area * m_height;
-	return b2MassData(mass, m_p,
+	const float32 mass = density * m_area * m_height * massMult;
+	const float32 sMass = (m_radius * b2_2pi * m_height + m_area * 2) * density * surfaceThickness * massMult;
+	return b2MassData(mass, sMass, m_p,
 		mass * (0.5f * m_radius * m_radius + b2Dot(m_p, m_p))
 	);
 }

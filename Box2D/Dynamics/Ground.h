@@ -25,6 +25,8 @@ public:
 		int32 particleMatIdxs[8];
 		int32 textureSeed;
 		uint32 flags;
+		
+		Tile() : matIdx(INVALID_IDX), height(-b2_maxFloat) {}
 
 		inline bool getChanged() { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
 		inline bool getChanged() restrict(amp) { if (flags & Flags::changed) { flags &= ~Flags::changed; return true; } return false; }
@@ -140,7 +142,7 @@ public:
 
 private:
 
-	inline bool IsPositionInGrid(const b2Vec2& p) const { return p.x >= 0 && p.y >= 0 && p.x <= m_size.x && p.y <= m_size.y; }
+	inline bool IsPositionInGrid(const b2Vec2& p) const { return p.x > 0 && p.y > 0 && p.x < m_size.x && p.y < m_size.y; }
 	inline int32 GetIdx(const b2Vec2& p) const { return p.y * m_invStride * m_tileCntX + p.x * m_invStride; }
 	inline int32 GetIdx(const float32 f) const { return f * m_invStride; }
 	inline int32 GetIdx(const int32 x, const int32 y) const { return y * m_tileCntX + x; }

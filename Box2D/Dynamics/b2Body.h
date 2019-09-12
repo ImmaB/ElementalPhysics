@@ -142,6 +142,7 @@ struct Body
 			angularDamping = 0.0f;
 			materialIdx = INVALID_IDX;
 			heat = 15.f;
+			surfaceHeat = heat;
 			health = 1.0f;
 			flags = 0;
 			allowSleep = true;
@@ -203,6 +204,7 @@ struct Body
 		float32 gravityScale;
 
 		float32 heat;
+		float32 surfaceHeat;
 		float32 health;
 		uint32 flags;
 	};
@@ -240,6 +242,10 @@ struct Body
 	float32 m_heat;
 
 	float32 m_health;
+
+	float32 m_surfaceMass;
+	float32 m_surfaceInvMass;
+	float32 m_surfaceHeat;
 
 	void Set(const Body::Def& def);
 	
@@ -384,6 +390,7 @@ struct Body
 
 	/// Does this body have fixed rotation?
 	bool IsFixedRotation() const;
+	bool IsFixedRotation() const restrict(amp);
 
 	inline bool IsType(Body::Type t) const { return m_type == t; }
 
@@ -469,7 +476,7 @@ inline float32 Body::GetInertia() const restrict(amp)
 inline b2MassData Body::GetMassData() const
 {
 	return b2MassData(
-		m_mass,
+		m_mass, m_surfaceMass,
 		m_sweep.localCenter,
 		m_I + m_mass * b2Dot(m_sweep.localCenter, m_sweep.localCenter)
 	);
@@ -570,7 +577,11 @@ inline bool Body::IsActive() const
 
 inline bool Body::IsFixedRotation() const
 {
-	return HasFlag(FixedRotation);
+	return HasFlag(Flag::FixedRotation);
+}
+inline bool Body::IsFixedRotation() const restrict(amp)
+{
+	return HasFlag(Flag::FixedRotation);
 }
 
 inline void Body::SetSleepingAllowed(bool flag)
@@ -654,7 +665,8 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 	if (IsAwake())
 	{
 		m_linearVelocity += m_invMass * impulse;
-		m_angularVelocity += m_invI * b2Cross(point - m_sweep.c, impulse);
+		if (!IsFixedRotation())
+			m_angularVelocity += m_invI * b2Cross(point - m_sweep.c, impulse);
 	}
 }
 inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point, bool wake) restrict(amp)
@@ -669,7 +681,8 @@ inline void Body::ApplyLinearImpulse(const b2Vec2& impulse, const b2Vec2& point,
 	if (IsAwake())
 	{
 		amp::atomicAdd(m_linearVelocity, m_invMass * impulse);
-		amp::atomicAdd(m_angularVelocity, m_invI * b2Cross(point - m_sweep.c, impulse));
+		if (!IsFixedRotation())
+			amp::atomicAdd(m_angularVelocity, m_invI * b2Cross(point - m_sweep.c, impulse));
 	}
 }
 

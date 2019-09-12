@@ -70,15 +70,31 @@ inline float32 b2InvSqrt(float32 x) restrict(amp)
 	x = x * (1.5f - xhalf * x * x);
 	return x;
 }
+inline float32 b2InvCurt(float32 x) restrict(amp)
+{
+	union
+	{
+		float32 f;
+		int32 i;
+	} convert;
+
+	convert.f = x;
+	convert.i = 0x54a2fa8c - (convert.i / 3);
+	float32 y = convert.f;
+	y = (2.0f / 3) * y + 1 / (3.0f * y * y * x);
+	y = (2.0f / 3) * y + 1 / (3.0f * y * y * x);
+	return y;
+}
 
 
 #define	b2Sqrt(x)	sqrtf(x)
-#define	ampSqrt(x)	concurrency::fast_math::sqrtf(x)
+#define	ampSqrt(x)	concurrency::precise_math::sqrtf(x)
 #define	b2Atan2(y, x)	atan2f(y, x)
-#define	ampAtan2(y, x)	concurrency::fast_math::atan2f(y, x)
-#define	ampSin(x)	concurrency::fast_math::sinf(x)
-#define	ampCos(x)	concurrency::fast_math::cosf(x)
-#define	ampFloor(x)	concurrency::fast_math::floorf(x)
+#define	ampAtan2(y, x)	concurrency::precise_math::atan2f(y, x)
+#define	ampSin(x)	concurrency::precise_math::sinf(x)
+#define	ampCos(x)	concurrency::precise_math::cosf(x)
+#define	ampFloor(x)	concurrency::precise_math::floorf(x)
+#define ampPow(x, p) concurrency::precise_math::powf(x, p)
 
 struct b2Int2
 {
@@ -96,6 +112,7 @@ struct b2Vec2
 	b2Vec2() restrict(amp) : x(0), y(0) {}
 
 	/// Construct using coordinates
+	b2Vec2(float32 v) : x(v), y(v) {}
 	b2Vec2(float32 x, float32 y) : x(x), y(y) {}
 	b2Vec2(float32 x, float32 y) restrict(amp) : x(x), y(y) {}
 
@@ -120,12 +137,12 @@ struct b2Vec2
 	float32& operator () (int32 i) restrict(amp) { return (&x)[i]; }
 
 	/// Add a vector to this vector.
-	void operator += (const b2Vec2 & v) { x += v.x; y += v.y; }
-	void operator += (const b2Vec2 & v) restrict(amp) { x += v.x; y += v.y; }
+	void operator += (const b2Vec2& v) { x += v.x; y += v.y; }
+	void operator += (const b2Vec2& v) restrict(amp) { x += v.x; y += v.y; }
 
 	/// Subtract a vector from this vector.
-	void operator -= (const b2Vec2 & v) { x -= v.x; y -= v.y; }
-	void operator -= (const b2Vec2 & v) restrict(amp) { x -= v.x; y -= v.y; }
+	void operator -= (const b2Vec2& v) { x -= v.x; y -= v.y; }
+	void operator -= (const b2Vec2& v) restrict(amp) { x -= v.x; y -= v.y; }
 
 	/// Multiply this vector by a scalar.
 	void operator *= (float32 a) { x *= a; y *= a; }
@@ -179,20 +196,20 @@ struct b2Vec2
 };
 
 /// Add a float to a vector
-inline b2Vec2 operator + (const b2Vec2 & v, float f) { return b2Vec2(v.x + f, v.y + f); }
-inline b2Vec2 operator + (const b2Vec2 & v, float f) restrict(amp) { return b2Vec2(v.x + f, v.y + f); }
+inline b2Vec2 operator + (const b2Vec2& v, float f) { return b2Vec2(v.x + f, v.y + f); }
+inline b2Vec2 operator + (const b2Vec2& v, float f) restrict(amp) { return b2Vec2(v.x + f, v.y + f); }
 
 /// Substract a float from a vector.
-inline b2Vec2 operator - (const b2Vec2 & v, float f) { return b2Vec2(v.x - f, v.y - f); }
-inline b2Vec2 operator - (const b2Vec2 & v, float f) restrict(amp) { return b2Vec2(v.x - f, v.y - f); }
+inline b2Vec2 operator - (const b2Vec2& v, float f) { return b2Vec2(v.x - f, v.y - f); }
+inline b2Vec2 operator - (const b2Vec2& v, float f) restrict(amp) { return b2Vec2(v.x - f, v.y - f); }
 
 /// Multiply a float with a vector.
-inline b2Vec2 operator * (const b2Vec2 & v, float f) { return b2Vec2(v.x * f, v.y * f); }
-inline b2Vec2 operator * (const b2Vec2 & v, float f) restrict(amp) { return b2Vec2(v.x * f, v.y * f); }
+inline b2Vec2 operator * (const b2Vec2& v, float f) { return b2Vec2(v.x * f, v.y * f); }
+inline b2Vec2 operator * (const b2Vec2& v, float f) restrict(amp) { return b2Vec2(v.x * f, v.y * f); }
 
 /// Divide a vector by a float.
-inline b2Vec2 operator / (const b2Vec2 & v, float f) { return b2Vec2(v.x / f, v.y / f); }
-inline b2Vec2 operator / (const b2Vec2 & v, float f) restrict(amp) { return b2Vec2(v.x / f, v.y / f); }
+inline b2Vec2 operator / (const b2Vec2& v, float f) { return b2Vec2(v.x / f, v.y / f); }
+inline b2Vec2 operator / (const b2Vec2& v, float f) restrict(amp) { return b2Vec2(v.x / f, v.y / f); }
 
 /// A 3D column vector with 3 elements.
 struct b2Vec3
@@ -202,6 +219,7 @@ struct b2Vec3
 	b2Vec3() restrict(amp) : x(0), y(0), z(0) {}
 
 	/// Construct using coordinates.
+	b2Vec3(float32 v) : x(v), y(v), z(v) {}
 	b2Vec3(float32 x, float32 y, float32 z) : x(x), y(y), z(z) {}
 	b2Vec3(float32 x, float32 y, float32 z) restrict(amp) : x(x), y(y), z(z) {}
 
@@ -351,7 +369,7 @@ struct b2Mat22
 
 	/// Solve A * x = b, where b is a column vector. This is more efficient
 	/// than computing the inverse in one-shot cases.
-	b2Vec2 Solve(const b2Vec2 & b) const
+	b2Vec2 Solve(const b2Vec2& b) const
 	{
 		float32 a11 = ex.x, a12 = ey.x, a21 = ex.y, a22 = ey.y;
 		float32 det = a11 * a22 - a12 * a21;
@@ -361,7 +379,7 @@ struct b2Mat22
 		x.y = det * (a11 * b.y - a21 * b.x);
 		return x;
 	}
-	b2Vec2 Solve(const b2Vec2 & b) const restrict(amp)
+	b2Vec2 Solve(const b2Vec2& b) const restrict(amp)
 	{
 		float32 a11 = ex.x, a12 = ey.x, a21 = ex.y, a22 = ey.y;
 		float32 det = a11 * a22 - a12 * a21;
@@ -526,121 +544,131 @@ extern const b2Vec3 b2Vec3_zero;
 extern const b2Vec3 b2Vec3_up;
 
 /// Perform the dot product on two vectors.
-inline float32 b2Dot(const b2Vec2 & a, const b2Vec2 & b) { return a.x* b.x + a.y * b.y; }
-inline float32 b2Dot(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return a.x* b.x + a.y * b.y; }
-inline float32 b2Dot(const float32 & ax, const float32 & ay, const float32 & bx, const float32 & by) { return ax * bx + ay * by; }
-inline float32 b2Dot(const float32 & ax, const float32 & ay, const float32 & bx, const float32 & by) restrict(amp) { return ax * bx + ay * by; }
-inline void Normalize(float32 & x, float32 & y) { float32 length = b2Sqrt(x * x + y * y); x /= length; y /= length; }
-inline void Normalize(float32 & x, float32 & y) restrict(amp) { float32 length = ampSqrt(x * x + y * y); x /= length; y /= length; }
-inline void Normalize(float32 & x, float32 & y, float32 & z) { float32 length = b2Sqrt(x * x + y * y + z * z); x /= length; y /= length; z /= length; }
-inline void Normalize(float32 & x, float32 & y, float32 & z) restrict(amp) { float32 length = ampSqrt(x * x + y * y + z * z); x /= length; y /= length; z /= length; }
+inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b) { return a.x * b.x + a.y * b.y; }
+inline float32 b2Dot(const b2Vec2& a, const b2Vec2& b) restrict(amp) { return a.x * b.x + a.y * b.y; }
+inline float32 b2Dot(const float32& ax, const float32& ay, const float32& bx, const float32& by) { return ax * bx + ay * by; }
+inline float32 b2Dot(const float32& ax, const float32& ay, const float32& bx, const float32& by) restrict(amp) { return ax * bx + ay * by; }
+inline void Normalize(float32& x, float32& y) { float32 length = b2Sqrt(x * x + y * y); x /= length; y /= length; }
+inline void Normalize(float32& x, float32& y) restrict(amp) { float32 length = ampSqrt(x * x + y * y); x /= length; y /= length; }
+inline void Normalize(float32& x, float32& y, float32& z) { float32 length = b2Sqrt(x * x + y * y + z * z); x /= length; y /= length; z /= length; }
+inline void Normalize(float32& x, float32& y, float32& z) restrict(amp) { float32 length = ampSqrt(x * x + y * y + z * z); x /= length; y /= length; z /= length; }
 
 /// Perform the cross product on two vectors. In 2D this produces a scalar.
-inline float32 b2Cross(const b2Vec2 & a, const b2Vec2 & b) { return a.x* b.y - a.y * b.x; }
-inline float32 b2Cross(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return a.x* b.y - a.y * b.x; }
+inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b) { return a.x* b.y - a.y * b.x; }
+inline float32 b2Cross(const b2Vec2& a, const b2Vec2& b) restrict(amp) { return a.x* b.y - a.y * b.x; }
 
-inline float32 b2Cross(const float32 & ax, const float32 & ay, const float32 & bx, const float32 & by) { return ax * by - ay * bx; }
-inline float32 b2Cross(const float32 & ax, const float32 & ay, const float32 & bx, const float32 & by) restrict(amp) { return ax * by - ay * bx; }
-inline float32 b2Cross2D(const b2Vec3 & a, const b2Vec3 & b) { return a.x* b.y - a.y * b.x; }
-inline float32 b2Cross2D(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return a.x* b.y - a.y * b.x; }
+inline float32 b2Cross(const float32& ax, const float32& ay, const float32& bx, const float32& by) { return ax * by - ay * bx; }
+inline float32 b2Cross(const float32& ax, const float32& ay, const float32& bx, const float32& by) restrict(amp) { return ax * by - ay * bx; }
+inline float32 b2Cross2D(const b2Vec3& a, const b2Vec3& b) { return a.x* b.y - a.y * b.x; }
+inline float32 b2Cross2D(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.x* b.y - a.y * b.x; }
 
 /// Perform the cross product on a vector and a scalar. In 2D this produces
 /// a vector.
-inline b2Vec2 b2Cross(const b2Vec2 & a, float32 s) { return b2Vec2(s * a.y, -s * a.x); }
-inline b2Vec2 b2Cross(const b2Vec2 & a, float32 s) restrict(amp) { return b2Vec2(s * a.y, -s * a.x); }
+inline b2Vec2 b2Cross(const b2Vec2& a, float32 s) { return b2Vec2(s * a.y, -s * a.x); }
+inline b2Vec2 b2Cross(const b2Vec2& a, float32 s) restrict(amp) { return b2Vec2(s * a.y, -s * a.x); }
 
 /// Perform the cross product on a scalar and a vector. In 2D this produces
 /// a vector.
-inline b2Vec2 b2Cross(float32 s, const b2Vec2 & a) { return b2Vec2(-s * a.y, s * a.x); }
-inline b2Vec2 b2Cross(float32 s, const b2Vec2 & a) restrict(amp) { return b2Vec2(-s * a.y, s * a.x); }
+inline b2Vec2 b2Cross(float32 s, const b2Vec2& a) { return b2Vec2(-s * a.y, s * a.x); }
+inline b2Vec2 b2Cross(float32 s, const b2Vec2& a) restrict(amp) { return b2Vec2(-s * a.y, s * a.x); }
 
 /// Multiply a matrix times a vector. If a rotation matrix is provided,
 /// then this transforms the vector from one frame to another.
-inline b2Vec2 b2Mul(const b2Mat22 & A, const b2Vec2 & v) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
-inline b2Vec2 b2Mul(const b2Mat22 & A, const b2Vec2 & v) restrict(amp) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
+inline b2Vec2 b2Mul(const b2Mat22& A, const b2Vec2& v) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
+inline b2Vec2 b2Mul(const b2Mat22& A, const b2Vec2& v) restrict(amp) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
 
 /// Multiply a matrix transpose times a vector. If a rotation matrix is provided,
 /// then this transforms the vector from one frame to another (inverse transform).
-inline b2Vec2 b2MulT(const b2Mat22 & A, const b2Vec2 & v) { return b2Vec2(b2Dot(v, A.ex), b2Dot(v, A.ey)); }
-inline b2Vec2 b2MulT(const b2Mat22 & A, const b2Vec2 & v) restrict(amp) { return b2Vec2(b2Dot(v, A.ex), b2Dot(v, A.ey)); }
+inline b2Vec2 b2MulT(const b2Mat22& A, const b2Vec2& v) { return b2Vec2(b2Dot(v, A.ex), b2Dot(v, A.ey)); }
+inline b2Vec2 b2MulT(const b2Mat22& A, const b2Vec2& v) restrict(amp) { return b2Vec2(b2Dot(v, A.ex), b2Dot(v, A.ey)); }
 
 /// Add two vectors component-wise.
-inline b2Vec2 operator + (const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(a.x + b.x, a.y + b.y); }
-inline b2Vec2 operator + (const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(a.x + b.x, a.y + b.y); }
+inline b2Vec2 operator + (const b2Vec2& a, const b2Vec2& b) { return b2Vec2(a.x + b.x, a.y + b.y); }
+inline b2Vec2 operator + (const b2Vec2& a, const b2Vec2& b) restrict(amp) { return b2Vec2(a.x + b.x, a.y + b.y); }
 
 /// Subtract two vectors component-wise.
-inline b2Vec2 operator - (const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(a.x - b.x, a.y - b.y); }
-inline b2Vec2 operator - (const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(a.x - b.x, a.y - b.y); }
+inline b2Vec2 operator - (const b2Vec2& a, const b2Vec2& b) { return b2Vec2(a.x - b.x, a.y - b.y); }
+inline b2Vec2 operator - (const b2Vec2& a, const b2Vec2& b) restrict(amp) { return b2Vec2(a.x - b.x, a.y - b.y); }
 
-inline b2Vec2 operator * (float32 s, const b2Vec2 & a) { return b2Vec2(s * a.x, s * a.y); }
-inline b2Vec2 operator * (float32 s, const b2Vec2 & a) restrict(amp) { return b2Vec2(s * a.x, s * a.y); }
+inline b2Vec2 operator * (float32 s, const b2Vec2& a) { return b2Vec2(s * a.x, s * a.y); }
+inline b2Vec2 operator * (float32 s, const b2Vec2& a) restrict(amp) { return b2Vec2(s * a.x, s * a.y); }
 
-inline bool operator == (const b2Vec2 & a, const b2Vec2 & b) { return a.x == b.x && a.y == b.y; }
-inline bool operator == (const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return a.x == b.x && a.y == b.y; }
+inline bool operator == (const b2Vec2& a, const b2Vec2& b) { return a.x == b.x && a.y == b.y; }
+inline bool operator == (const b2Vec2& a, const b2Vec2& b) restrict(amp) { return a.x == b.x && a.y == b.y; }
 
-inline bool operator != (const b2Vec2 & a, const b2Vec2 & b) { return !operator==(a, b); }
-inline bool operator != (const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return !operator==(a, b); }
+inline bool operator != (const b2Vec2& a, const b2Vec2& b) { return !operator==(a, b); }
+inline bool operator != (const b2Vec2& a, const b2Vec2& b) restrict(amp) { return !operator==(a, b); }
 
-inline float32 b2Distance(const b2Vec2 & a, const b2Vec2 & b) { b2Vec2 c = a - b; return c.Length(); }
-inline float32 b2Distance(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { b2Vec2 c = a - b; return c.Length(); }
+inline float32 b2Distance(const b2Vec2& a, const b2Vec2& b) { b2Vec2 c = a - b; return c.Length(); }
+inline float32 b2Distance(const b2Vec2& a, const b2Vec2& b) restrict(amp) { b2Vec2 c = a - b; return c.Length(); }
 
-inline float32 b2DistanceSquared(const b2Vec2 & a, const b2Vec2 & b) { b2Vec2 c = a - b; return b2Dot(c, c); }
-inline float32 b2DistanceSquared(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { b2Vec2 c = a - b; return b2Dot(c, c); }
+inline float32 b2DistanceSquared(const b2Vec2& a, const b2Vec2& b) { b2Vec2 c = a - b; return b2Dot(c, c); }
+inline float32 b2DistanceSquared(const b2Vec2& a, const b2Vec2& b) restrict(amp) { b2Vec2 c = a - b; return b2Dot(c, c); }
 
-inline b2Vec3 operator * (float32 s, const b2Vec3 & a) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
-inline b2Vec3 operator * (float32 s, const b2Vec3 & a) restrict(amp) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
-inline b2Vec3 operator * (const b2Vec3 & a, float32 s) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
-inline b2Vec3 operator * (const b2Vec3 & a, float32 s) restrict(amp) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
-inline float32 operator * (const b2Vec3 & a, const b2Vec3 & b) { return a.x* b.x + a.y * b.y + a.z * b.z; }
-inline float32 operator * (const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return a.x* b.x + a.y * b.y + a.z * b.z; }
-inline b2Vec3 operator / (const b2Vec3 & a, float32 s) { return b2Vec3(a.x / s, a.y / s, a.z / s); }
-inline b2Vec3 operator / (const b2Vec3 & a, float32 s) restrict(amp) { return b2Vec3(a.x / s, a.y / s, a.z / s); }
+inline b2Vec3 operator * (float32 s, const b2Vec3& a) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
+inline b2Vec3 operator * (float32 s, const b2Vec3& a) restrict(amp) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
+inline b2Vec3 operator * (const b2Vec3& a, float32 s) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
+inline b2Vec3 operator * (const b2Vec3& a, float32 s) restrict(amp) { return b2Vec3(s * a.x, s * a.y, s * a.z); }
+inline float32 operator * (const b2Vec3& a, const b2Vec3& b) { return a.x* b.x + a.y * b.y + a.z * b.z; }
+inline float32 operator * (const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.x* b.x + a.y * b.y + a.z * b.z; }
+inline b2Vec3 operator / (const b2Vec3& a, float32 s) { return b2Vec3(a.x / s, a.y / s, a.z / s); }
+inline b2Vec3 operator / (const b2Vec3& a, float32 s) restrict(amp) { return b2Vec3(a.x / s, a.y / s, a.z / s); }
 
 /// Add two vectors component-wise.
-inline b2Vec3 operator + (const b2Vec3 & a, const b2Vec3 & b) { return b2Vec3(a.x + b.x, a.y + b.y, a.z + b.z); }
-inline b2Vec3 operator + (const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return b2Vec3(a.x + b.x, a.y + b.y, a.z + b.z); }
-inline b2Vec3 operator + (const b2Vec3 & a, const b2Vec2 & b) { return b2Vec3(a.x + b.x, a.y + b.y, a.z); }
-inline b2Vec3 operator + (const b2Vec3 & a, const b2Vec2 & b) restrict(amp) { return b2Vec3(a.x + b.x, a.y + b.y, a.z); }
-inline b2Vec2 operator + (const b2Vec2 & a, const b2Vec3 & b) { return b2Vec2(a.x + b.x, a.y + b.y); }
-inline b2Vec2 operator + (const b2Vec2 & a, const b2Vec3 & b) restrict(amp) { return b2Vec2(a.x + b.x, a.y + b.y); }
+inline b2Vec3 operator + (const b2Vec3& a, const b2Vec3& b) { return b2Vec3(a.x + b.x, a.y + b.y, a.z + b.z); }
+inline b2Vec3 operator + (const b2Vec3& a, const b2Vec3& b) restrict(amp) { return b2Vec3(a.x + b.x, a.y + b.y, a.z + b.z); }
+inline b2Vec3 operator + (const b2Vec3& a, const b2Vec2& b) { return b2Vec3(a.x + b.x, a.y + b.y, a.z); }
+inline b2Vec3 operator + (const b2Vec3& a, const b2Vec2& b) restrict(amp) { return b2Vec3(a.x + b.x, a.y + b.y, a.z); }
+inline b2Vec2 operator + (const b2Vec2& a, const b2Vec3& b) { return b2Vec2(a.x + b.x, a.y + b.y); }
+inline b2Vec2 operator + (const b2Vec2& a, const b2Vec3& b) restrict(amp) { return b2Vec2(a.x + b.x, a.y + b.y); }
 
 /// Subtract two vectors component-wise.
-inline b2Vec3 operator - (const b2Vec3 & a, const b2Vec3 & b) { return b2Vec3(a.x - b.x, a.y - b.y, a.z - b.z); }
-inline b2Vec3 operator - (const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return b2Vec3(a.x - b.x, a.y - b.y, a.z - b.z); }
-inline b2Vec3 operator - (const b2Vec3 & a, const b2Vec2 & b) { return b2Vec3(a.x - b.x, a.y - b.y, a.z); }
-inline b2Vec3 operator - (const b2Vec3 & a, const b2Vec2 & b) restrict(amp) { return b2Vec3(a.x - b.x, a.y - b.y, a.z); }
-inline b2Vec2 operator - (const b2Vec2 & a, const b2Vec3 & b) { return b2Vec2(a.x - b.x, a.y - b.y); }
-inline b2Vec2 operator - (const b2Vec2 & a, const b2Vec3 & b) restrict(amp) { return b2Vec2(a.x - b.x, a.y - b.y); }
+inline b2Vec3 operator - (const b2Vec3& a, const b2Vec3& b) { return b2Vec3(a.x - b.x, a.y - b.y, a.z - b.z); }
+inline b2Vec3 operator - (const b2Vec3& a, const b2Vec3& b) restrict(amp) { return b2Vec3(a.x - b.x, a.y - b.y, a.z - b.z); }
+inline b2Vec3 operator - (const b2Vec3& a, const b2Vec2& b) { return b2Vec3(a.x - b.x, a.y - b.y, a.z); }
+inline b2Vec3 operator - (const b2Vec3& a, const b2Vec2& b) restrict(amp) { return b2Vec3(a.x - b.x, a.y - b.y, a.z); }
+inline b2Vec2 operator - (const b2Vec2& a, const b2Vec3& b) { return b2Vec2(a.x - b.x, a.y - b.y); }
+inline b2Vec2 operator - (const b2Vec2& a, const b2Vec3& b) restrict(amp) { return b2Vec2(a.x - b.x, a.y - b.y); }
 
-inline float32 b2Distance(const b2Vec3 & a, const b2Vec3 & b) { b2Vec3 c = a - b; return c.Length(); }
-inline float32 b2Distance(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { b2Vec3 c = a - b; return c.Length(); }
+inline bool operator < (const b2Vec3& a, const b2Vec3& b) { return a.x < b.x && a.y < b.y && a.z < b.z; }
+inline bool operator < (const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.x < b.x && a.y < b.y && a.z < b.z; }
+inline bool operator > (const b2Vec3& a, const b2Vec3& b) { return a.x > b.x && a.y > b.y && a.z > b.z; }
+inline bool operator > (const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.x > b.x && a.y > b.y && a.z > b.z; }
+
+inline bool operator < (const b2Vec3& a, const float32& b) { return a.x < b && a.y < b && a.z < b; }
+inline bool operator < (const b2Vec3& a, const float32& b) restrict(amp) { return a.x < b && a.y < b && a.z < b; }
+inline bool operator > (const b2Vec3& a, const float32& b) { return a.x > b && a.y > b && a.z > b; }
+inline bool operator > (const b2Vec3& a, const float32& b) restrict(amp) { return a.x > b && a.y > b && a.z > b; }
+
+inline float32 b2Distance(const b2Vec3& a, const b2Vec3& b) { b2Vec3 c = a - b; return c.Length(); }
+inline float32 b2Distance(const b2Vec3& a, const b2Vec3& b) restrict(amp) { b2Vec3 c = a - b; return c.Length(); }
 
 /// Perform the dot product on two vectors.
-inline float32 b2Dot(const b2Vec3 & a, const b2Vec3 & b) { return a.x* b.x + a.y * b.y + a.z * b.z; }
-inline float32 b2Dot(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return a.x* b.x + a.y * b.y + a.z * b.z; }
+inline float32 b2Dot(const b2Vec3& a, const b2Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+inline float32 b2Dot(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 /// Perform the cross product on two vectors.
-inline b2Vec3 b2Cross(const b2Vec3 & a, const b2Vec3 & b) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
-inline b2Vec3 b2Cross(const b2Vec3 & a, const b2Vec3 & b) restrict(amp) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+inline b2Vec3 b2Cross(const b2Vec3& a, const b2Vec3& b) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+inline b2Vec3 b2Cross(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return b2Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
 
-inline b2Mat22 operator + (const b2Mat22 & A, const b2Mat22 & B) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
-inline b2Mat22 operator + (const b2Mat22 & A, const b2Mat22 & B) restrict(amp) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
+inline b2Mat22 operator + (const b2Mat22& A, const b2Mat22& B) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
+inline b2Mat22 operator + (const b2Mat22& A, const b2Mat22& B) restrict(amp) { return b2Mat22(A.ex + B.ex, A.ey + B.ey); }
 
 // A * B
-inline b2Mat22 b2Mul(const b2Mat22 & A, const b2Mat22 & B) { return b2Mat22(b2Mul(A, B.ex), b2Mul(A, B.ey)); }
-inline b2Mat22 b2Mul(const b2Mat22 & A, const b2Mat22 & B) restrict(amp) { return b2Mat22(b2Mul(A, B.ex), b2Mul(A, B.ey)); }
+inline b2Mat22 b2Mul(const b2Mat22& A, const b2Mat22& B) { return b2Mat22(b2Mul(A, B.ex), b2Mul(A, B.ey)); }
+inline b2Mat22 b2Mul(const b2Mat22& A, const b2Mat22& B) restrict(amp) { return b2Mat22(b2Mul(A, B.ex), b2Mul(A, B.ey)); }
 
 // A^T * B
-inline b2Mat22 b2MulT(const b2Mat22 & A, const b2Mat22 & B) { b2Vec2 c1(b2Dot(A.ex, B.ex), b2Dot(A.ey, B.ex)); b2Vec2 c2(b2Dot(A.ex, B.ey), b2Dot(A.ey, B.ey)); return b2Mat22(c1, c2); }
-inline b2Mat22 b2MulT(const b2Mat22 & A, const b2Mat22 & B) restrict(amp) { b2Vec2 c1(b2Dot(A.ex, B.ex), b2Dot(A.ey, B.ex)); b2Vec2 c2(b2Dot(A.ex, B.ey), b2Dot(A.ey, B.ey)); return b2Mat22(c1, c2); }
+inline b2Mat22 b2MulT(const b2Mat22& A, const b2Mat22& B) { b2Vec2 c1(b2Dot(A.ex, B.ex), b2Dot(A.ey, B.ex)); b2Vec2 c2(b2Dot(A.ex, B.ey), b2Dot(A.ey, B.ey)); return b2Mat22(c1, c2); }
+inline b2Mat22 b2MulT(const b2Mat22& A, const b2Mat22& B) restrict(amp) { b2Vec2 c1(b2Dot(A.ex, B.ex), b2Dot(A.ey, B.ex)); b2Vec2 c2(b2Dot(A.ex, B.ey), b2Dot(A.ey, B.ey)); return b2Mat22(c1, c2); }
 
 /// Multiply a matrix times a vector.
-inline b2Vec3 b2Mul(const b2Mat33 & A, const b2Vec3 & v) { return v.x* A.ex + v.y * A.ey + v.z * A.ez; }
-inline b2Vec3 b2Mul(const b2Mat33 & A, const b2Vec3 & v) restrict(amp) { return v.x* A.ex + v.y * A.ey + v.z * A.ez; }
+inline b2Vec3 b2Mul(const b2Mat33 & A, const b2Vec3& v) { return v.x* A.ex + v.y * A.ey + v.z * A.ez; }
+inline b2Vec3 b2Mul(const b2Mat33 & A, const b2Vec3& v) restrict(amp) { return v.x* A.ex + v.y * A.ey + v.z * A.ez; }
 
 /// Multiply a matrix times a vector.
-inline b2Vec2 b2Mul22(const b2Mat33 & A, const b2Vec2 & v) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
-inline b2Vec2 b2Mul22(const b2Mat33 & A, const b2Vec2 & v) restrict(amp) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
+inline b2Vec2 b2Mul22(const b2Mat33 & A, const b2Vec2& v) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
+inline b2Vec2 b2Mul22(const b2Mat33 & A, const b2Vec2& v) restrict(amp) { return b2Vec2(A.ex.x * v.x + A.ey.x * v.y, A.ex.y * v.x + A.ey.y * v.y); }
 
 /// Multiply two rotations: q * r
 inline b2Rot b2Mul(const b2Rot & q, const b2Rot & r) { b2Rot qr; qr.s = q.s * r.c + q.c * r.s; qr.c = q.c * r.c - q.s * r.s; return qr; }
@@ -661,22 +689,22 @@ inline float32 b2MulY(const b2Rot & q, float32 x, float32 y) { return q.s* x + q
 inline float32 b2MulY(const b2Rot & q, float32 x, float32 y) restrict(amp) { return q.s* x + q.c * y; }
 
 /// Inverse rotate a vector
-inline b2Vec2 b2MulT(const b2Rot & q, const b2Vec2 & v) { return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y); }
-inline b2Vec2 b2MulT(const b2Rot & q, const b2Vec2 & v) restrict(amp) { return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y); }
+inline b2Vec2 b2MulT(const b2Rot & q, const b2Vec2& v) { return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y); }
+inline b2Vec2 b2MulT(const b2Rot & q, const b2Vec2& v) restrict(amp) { return b2Vec2(q.c * v.x + q.s * v.y, -q.s * v.x + q.c * v.y); }
 
-inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2 & v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
-inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2 & v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
-inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec3 & v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
+inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2& v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
+inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec2& v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
+inline b2Vec2 b2Mul(const b2Transform & T, const b2Vec3& v) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
 inline b2Vec2 b2Mul(const b2Transform& T, const b2Vec3& v) restrict(amp) { float32 x = (T.q.c * v.x - T.q.s * v.y) + T.p.x; float32 y = (T.q.s * v.x + T.q.c * v.y) + T.p.y; return b2Vec2(x, y); }
 inline b2Vec3 b2Mul3D(const b2Transform& T, const b2Vec3& v) { return b2Vec3((T.q.c * v.x - T.q.s * v.y) + T.p.x, (T.q.s * v.x + T.q.c * v.y) + T.p.y, v.z + T.z); }
-inline b2Vec3 b2Mul3D(const b2Transform & T, const b2Vec3 & v) restrict(amp) { return b2Vec3((T.q.c * v.x - T.q.s * v.y) + T.p.x, (T.q.s * v.x + T.q.c * v.y) + T.p.y, v.z + T.z); }
+inline b2Vec3 b2Mul3D(const b2Transform & T, const b2Vec3& v) restrict(amp) { return b2Vec3((T.q.c * v.x - T.q.s * v.y) + T.p.x, (T.q.s * v.x + T.q.c * v.y) + T.p.y, v.z + T.z); }
 inline float32 b2MulX(const b2Transform & T, float32 x, float32 y) { return (T.q.c * x - T.q.s * y) + T.p.x; }
 inline float32 b2MulX(const b2Transform & T, float32 x, float32 y) restrict(amp) { return (T.q.c * x - T.q.s * y) + T.p.x; }
 inline float32 b2MulY(const b2Transform & T, float32 x, float32 y) { return (T.q.s * x + T.q.c * y) + T.p.y; }
 inline float32 b2MulY(const b2Transform & T, float32 x, float32 y) restrict(amp) { return (T.q.s * x + T.q.c * y) + T.p.y; }
 
-inline b2Vec2 b2MulT(const b2Transform & T, const b2Vec2 & v) { float32 px = v.x - T.p.x; float32 py = v.y - T.p.y; float32 x = (T.q.c * px + T.q.s * py); float32 y = (-T.q.s * px + T.q.c * py); return b2Vec2(x, y); }
-inline b2Vec2 b2MulT(const b2Transform & T, const b2Vec2 & v) restrict(amp) { float32 px = v.x - T.p.x; float32 py = v.y - T.p.y; float32 x = (T.q.c * px + T.q.s * py); float32 y = (-T.q.s * px + T.q.c * py); return b2Vec2(x, y); }
+inline b2Vec2 b2MulT(const b2Transform & T, const b2Vec2& v) { float32 px = v.x - T.p.x; float32 py = v.y - T.p.y; float32 x = (T.q.c * px + T.q.s * py); float32 y = (-T.q.s * px + T.q.c * py); return b2Vec2(x, y); }
+inline b2Vec2 b2MulT(const b2Transform & T, const b2Vec2& v) restrict(amp) { float32 px = v.x - T.p.x; float32 py = v.y - T.p.y; float32 x = (T.q.c * px + T.q.s * py); float32 y = (-T.q.s * px + T.q.c * py); return b2Vec2(x, y); }
 
 // v2 = A.q.Rot(B.q.Rot(v1) + B.p) + A.p
 //    = (A.q * B.q).Rot(v1) + A.q.Rot(B.p) + A.p
@@ -690,20 +718,21 @@ inline b2Transform b2MulT(const b2Transform & A, const b2Transform & B) restrict
 
 template <typename T> inline T b2Abs(T a) { return a > T(0) ? a : -a; }
 template <typename T> inline T b2Abs(T a) restrict(amp) { return a > T(0) ? a : -a; }
+inline b2Vec3 b2Abs(b2Vec3 a) restrict(amp) { return b2Vec3(b2Abs(a.x), b2Abs(a.y), b2Abs(a.z)); }
 
-inline b2Vec2 b2Abs(const b2Vec2 & a) { return b2Vec2(b2Abs(a.x), b2Abs(a.y)); }
-inline b2Vec2 b2Abs(const b2Vec2 & a) restrict(amp) { return b2Vec2(b2Abs(a.x), b2Abs(a.y)); }
+inline b2Vec2 b2Abs(const b2Vec2& a) { return b2Vec2(b2Abs(a.x), b2Abs(a.y)); }
+inline b2Vec2 b2Abs(const b2Vec2& a) restrict(amp) { return b2Vec2(b2Abs(a.x), b2Abs(a.y)); }
 
-inline b2Mat22 b2Abs(const b2Mat22 & A) { return b2Mat22(b2Abs(A.ex), b2Abs(A.ey)); }
-inline b2Mat22 b2Abs(const b2Mat22 & A) restrict(amp) { return b2Mat22(b2Abs(A.ex), b2Abs(A.ey)); }
+inline b2Mat22 b2Abs(const b2Mat22& A) { return b2Mat22(b2Abs(A.ex), b2Abs(A.ey)); }
+inline b2Mat22 b2Abs(const b2Mat22& A) restrict(amp) { return b2Mat22(b2Abs(A.ex), b2Abs(A.ey)); }
 
 template <typename T> inline T b2Min(T a, T b) { return a < b ? a : b; }
 template <typename T> inline T b2Min(T a, T b) restrict(amp) { return a < b ? a : b; }
 template <typename T> inline T b2AbsMin(T a, T b) { return b2Abs(a) < b2Abs(b) ? a : b; }
 template <typename T> inline T b2AbsMin(T a, T b) restrict(amp) { return b2Abs(a) < b2Abs(b) ? a : b; }
 
-inline b2Vec2 b2Min(const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
-inline b2Vec2 b2Min(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
+inline b2Vec2 b2Min(const b2Vec2& a, const b2Vec2& b) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
+inline b2Vec2 b2Min(const b2Vec2& a, const b2Vec2& b) restrict(amp) { return b2Vec2(b2Min(a.x, b.x), b2Min(a.y, b.y)); }
 
 inline b2Vec3 b2Min(const b2Vec3& a, const b2Vec3& b) { return b2Vec3(b2Min(a.x, b.x), b2Min(a.y, b.y), b2Min(a.z, b.z)); }
 inline b2Vec3 b2Min(const b2Vec3& a, const b2Vec3& b) restrict(amp) { return b2Vec3(b2Min(a.x, b.x), b2Min(a.y, b.y), b2Min(a.z, b.z)); }
@@ -715,14 +744,14 @@ template <typename T> inline T b2Max(T a, T b) restrict(amp) { return a > b ? a 
 template <typename T> inline T b2AbsMax(T a, T b) { return b2Abs(a) > b2Abs(b) ? a : b; }
 template <typename T> inline T b2AbsMax(T a, T b) restrict(amp) { return b2Abs(a) > b2Abs(b) ? a : b; }
 
-inline b2Vec2 b2Max(const b2Vec2 & a, const b2Vec2 & b) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
-inline b2Vec2 b2Max(const b2Vec2 & a, const b2Vec2 & b) restrict(amp) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
+inline b2Vec2 b2Max(const b2Vec2& a, const b2Vec2& b) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
+inline b2Vec2 b2Max(const b2Vec2& a, const b2Vec2& b) restrict(amp) { return b2Vec2(b2Max(a.x, b.x), b2Max(a.y, b.y)); }
 
 template <typename T> inline T b2Clamp(T a, T low, T high) { return b2Max(low, b2Min(a, high)); }
 template <typename T> inline T b2Clamp(T a, T low, T high) restrict(amp) { return b2Max(low, b2Min(a, high)); }
 
-inline b2Vec2 b2Clamp(const b2Vec2 & a, const b2Vec2 & low, const b2Vec2 & high) { return b2Max(low, b2Min(a, high)); }
-inline b2Vec2 b2Clamp(const b2Vec2 & a, const b2Vec2 & low, const b2Vec2 & high) restrict(amp) { return b2Max(low, b2Min(a, high)); }
+inline b2Vec2 b2Clamp(const b2Vec2& a, const b2Vec2& low, const b2Vec2& high) { return b2Max(low, b2Min(a, high)); }
+inline b2Vec2 b2Clamp(const b2Vec2& a, const b2Vec2& low, const b2Vec2& high) restrict(amp) { return b2Max(low, b2Min(a, high)); }
 
 template<typename T> inline void b2Swap(T & a, T & b) { T tmp = a; a = b; b = tmp; }
 template<typename T> inline void b2Swap(T & a, T & b) restrict(amp) { T tmp = a; a = b; b = tmp; }
@@ -787,4 +816,15 @@ inline void b2Sweep::Normalize() restrict(amp)
 inline float32 Random(const float32 min = 0, const float32 max = 1)
 {
 	return min + (((float32)rand()) / (float32)RAND_MAX) * (max - min);
+}
+
+inline bool IsBetween(float32 x, float32 a, float32 b, float32 tol)
+{
+	return a < b ? x + tol >= a && a + x - tol <= b
+				 : x + tol >= b && b + x - tol <= a;
+}
+inline bool IsBetween(float32 x, float32 a, float32 b, float32 tol) restrict(amp)
+{
+	return a < b ? x + tol >= a && x - tol <= b
+		         : x + tol >= b && x - tol <= a;
 }

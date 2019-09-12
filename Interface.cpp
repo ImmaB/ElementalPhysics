@@ -96,9 +96,11 @@ EXPORT void SetStepParams(float32 timeStep, int32 velocityIterations, int32 posi
 	pWorld->SetStepParams(timeStep, velocityIterations, positionIterations, particleIterations);
 }
 EXPORT void SetDamping(float32 damping) { pWorld->m_dampingStrength = damping; }
+EXPORT void SetMassProperties(float32 surfThick, float32 mult) { pWorld->m_surfaceThickness = surfThick; pWorld->m_massMultiplicator = mult;  }
+EXPORT void SetSurfaceThickness(float32 thickness) { pWorld->m_surfaceThickness = thickness; }
 
 EXPORT void SetBorders(b2Vec3 lower, b2Vec3 upper, bool deleteOutside) { pWorld->SetBorders(lower, upper, deleteOutside); }
-EXPORT void SetGravity(b2Vec3 gravity) { pWorld->m_gravity = gravity; }
+EXPORT void SetGravity(b2Vec3 gravity, float32 riseFactor) { pWorld->m_gravity = gravity; pWorld->m_riseFactor = riseFactor; }
 EXPORT void SetRoomTemperature(float32 temperature) { pWorld->m_roomTemperature = temperature; }
 EXPORT void SetAtmosphericDensity(float32 density) { pWorld->m_atmosphericDensity = density; }
 EXPORT void SetWind(b2Vec3 wind) { pWorld->m_wind = wind; }
@@ -191,6 +193,14 @@ EXPORT void SetContactCallback(ContactCallback callback)
 	pWorld->SetContactListener(pContactListener);
 }
 
+EXPORT void SetDebugContacts(bool debug) { pPartSys->SetDebugContacts(debug); }
+
+EXPORT void GetPartContacts(int32* pCnt, b2ParticleContact** pContacts)
+{
+	*pCnt = pPartSys->GetContactCount();
+	*pContacts = pPartSys->GetContacts();
+}
+
 #pragma endregion
 
 #pragma region API Particle Systems
@@ -268,10 +278,11 @@ EXPORT void SolveChangeMat() { pPartSys->SolveChangeMat(); }
 
 EXPORT void SolveHealth() { pPartSys->SolveHealth(); }
 EXPORT void CopyHealths() { pPartSys->CopyHealths(); }
+EXPORT void SolvePosition() { pPartSys->SolvePosition(); }
+EXPORT void SolveOutOfBounds() { pPartSys->SolveOutOfBounds(); }
 EXPORT void CopyFlags() { pPartSys->CopyFlags(); }
 EXPORT void CopyBodies() { pPartSys->CopyBodies(); }
 
-EXPORT void SolvePosition() { pPartSys->SolvePosition(); }
 EXPORT void IncrementIteration() { pPartSys->IncrementIteration(); }
 
 EXPORT void SolveEnd() { pPartSys->SolveEnd(); }
@@ -299,11 +310,6 @@ EXPORT int32 DestroyParticlesInFixture(int32 fixtureIdx, b2Transform transform, 
     return pPartSys->DestroyParticlesInFixture(pWorld->GetFixture(fixtureIdx), transform, call);
 }
 
-
-EXPORT int32 GetParticleCount()
-{
-    return pPartSys->GetParticleCount();
-}
 EXPORT void SetAllParticleFlags(void* partSysPtr, int32 flags) {
     b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
     int32 numParts = partSys->GetParticleCount();
@@ -337,9 +343,9 @@ EXPORT void AddFlagsToPartsWithMatInFixture(Particle::Flag flag, int32 matIdx, i
 
 EXPORT void RemoveFlagFromAll(uint32 flags) { pPartSys->RemovePartFlagFromAll(flags); }
 
-EXPORT void PullPartsIntoCircle(b2Vec3 pos, float32 radius, float32 strength, int32 flag, bool ignoreMass)
+EXPORT void PullPartsIntoCircle(b2Vec3 pos, float32 radius, float32 strength, int32 flag, bool ignoreMass, float32 step)
 {
-	pPartSys->PullIntoCircle(pos, radius, strength, flag, ignoreMass);
+	pPartSys->PullIntoCircle(pos, radius, strength, flag, ignoreMass, step);
 }
 
 EXPORT void GetAmpPositions(void* partSysPtr, void** dstPtr)
@@ -349,9 +355,10 @@ EXPORT void GetAmpPositions(void* partSysPtr, void** dstPtr)
 	partSys->CopyAmpPositions(dst);
 };
 
-EXPORT void GetPartBufPtrs(int32** pMatIdxs, b2Vec3** pPoss, b2Vec3** pVels,
+EXPORT void GetParticles(int32* pCnt, int32** pMatIdxs, b2Vec3** pPoss, b2Vec3** pVels,
 	float32** pWeights, float32** pHealths, float32** pHeats, uint32** pFlags)
 {
+	*pCnt = pPartSys->GetParticleCount();
 	*pMatIdxs = pPartSys->GetPartMatIdxBuffer();
 	*pPoss = pPartSys->GetPositionBuffer();
 	*pVels = pPartSys->GetVelocityBuffer();
@@ -360,6 +367,7 @@ EXPORT void GetPartBufPtrs(int32** pMatIdxs, b2Vec3** pPoss, b2Vec3** pVels,
 	*pHeats = pPartSys->GetHeatBuffer();
 	*pFlags = pPartSys->GetFlagsBuffer();
 };
+
 
 
 #pragma endregion
@@ -499,7 +507,7 @@ EXPORT void SetCirclePosition(int32 shapeIdx, b2Vec3 pos)
 #pragma region Body
 
 EXPORT int32 CreateBody(Body::Type type, b2Transform transform, float32 linearDamping, float32 angularDamping,
-	int32 materialIdx, float32 heat, float32 health, uint32 flags, float32 gravityScale)
+	int32 materialIdx, float32 heat, float32 surfaceHeat, float32 health, uint32 flags, float32 gravityScale)
 {
     Body::Def bd;
     bd.type = type;
@@ -508,6 +516,7 @@ EXPORT int32 CreateBody(Body::Type type, b2Transform transform, float32 linearDa
     bd.angularDamping = angularDamping;
 	bd.materialIdx = materialIdx;
 	bd.heat = heat;
+	bd.surfaceHeat = surfaceHeat;
 	bd.health = health;
 	bd.flags = flags;
 	bd.gravityScale = gravityScale;

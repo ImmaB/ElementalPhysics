@@ -435,7 +435,7 @@ void b2PolygonShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 chil
 	aabb.upperBound = upper + r;
 }
 
-b2MassData b2PolygonShape::ComputeMass(float32 density) const
+b2MassData b2PolygonShape::ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const
 {
 	// Polygon mass, centroid, and inertia.
 	// Let rho be the polygon density in mass per unit area.
@@ -465,6 +465,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 
 	b2Vec2 center; center.Set(0.0f, 0.0f);
 	float32 area = 0.0f;
+	float32 circ = 0.0f;
 	float32 I = 0.0f;
 
 	// s is the reference point for forming triangles.
@@ -488,6 +489,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 
 		float32 triangleArea = 0.5f * D;
 		area += triangleArea;
+		circ += (e1 - e2).Length();
 
 		// Area weighted centroid
 		center += triangleArea * k_inv3 * (e1 + e2);
@@ -504,7 +506,8 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 	// Total mass
 	b2Assert(area > b2_epsilon);
 	center *= 1.0f / area;
-	float32 mMass = density * area * m_height;
+	float32 mMass = density * area * m_height * massMult;
+	float32 sMass = (circ * m_height + area * 2) * density * surfaceThickness * massMult;
 
 	// Center of mass
 	b2Vec2 mCenter = center + s;
@@ -515,7 +518,7 @@ b2MassData b2PolygonShape::ComputeMass(float32 density) const
 	// Shift to center of mass then to original body origin.
 	mI += mMass * (b2Dot(mCenter, mCenter) - b2Dot(center, center));
 
-	return b2MassData(mMass, mCenter, mI);
+	return b2MassData(mMass, sMass, mCenter, mI);
 }
 
 bool b2PolygonShape::Validate() const

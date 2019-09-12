@@ -87,7 +87,7 @@ struct b2ChainShape : public b2Shape
 
 	/// Chains have zero mass.
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density) const;
+	b2MassData ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const;
 };
 
 struct AmpChainShape

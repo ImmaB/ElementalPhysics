@@ -104,8 +104,8 @@ struct Particle
 			ElectricityConducting = 1u << 25,
 			KillIfNotMoving = 1u << 26, 
 
-			ChangeWhenCold = 1u << 29,
-			ChangeWhenHot = 1u << 30,
+			ChangeWhenCold = 1u << 30,
+			ChangeWhenHot = 1u << 31,
 		};
 		/// All particle types that require creating pairs
 		static const uint32 k_pairFlags = Flag::Spring | Flag::Barrier;
@@ -118,6 +118,7 @@ struct Particle
 		/// All particle types that apply extra damping force with bodies
 		static const uint32 k_wallOrSpringOrElasticFlags = Flag::Wall | Flag::Spring | Flag::Elastic;
 		static const uint32 k_barrierWallFlags = Flag::Wall | Flag::Barrier;
+		static const uint32 k_changeFlags = Flag::ChangeWhenCold | Flag::ChangeWhenHot | Particle::Flag::Burning;
 
 		/// For only getting mat flags from uint32
 		static const uint32 k_mask = 0xFFFFFF00;

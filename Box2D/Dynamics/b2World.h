@@ -328,6 +328,7 @@ public:
 	}
 
 	b2Vec3 m_gravity;
+	float32 m_riseFactor;
 	/// Damping is used to reduce the velocity of particles. The damping
 	/// parameter can be larger than 1.0f but the damping effect becomes
 	/// sensitive to the time step when the damping parameter is large.
@@ -340,6 +341,8 @@ public:
 	b2Vec3 m_upperBorder;
 	bool m_deleteOutside;
 
+	float32 m_surfaceThickness;
+	float32 m_massMultiplicator;
 
 private:
 

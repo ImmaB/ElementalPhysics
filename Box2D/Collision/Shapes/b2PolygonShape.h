@@ -88,7 +88,7 @@ struct b2PolygonShape : public b2Shape
 	void ComputeAABB(b2AABB& aabb, const b2Transform& transform, int32 childIndex) const;
 
 	/// @see b2Shape::ComputeMass
-	b2MassData ComputeMass(float32 density) const;
+	b2MassData ComputeMass(float32 density, float32 surfaceThickness, float32 massMult) const;
 
 	/// Get the vertex count.
 	int32 GetVertexCount() const { return m_count; }
