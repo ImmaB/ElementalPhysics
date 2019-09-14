@@ -135,32 +135,6 @@ EXPORT b2Vec3 GetWorldGravity()
 	return pWorld->m_gravity;
 }
 
-EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
-	float32 heatConductivity, float32 strength)
-{
-	Particle::Mat::Def md;
-	md.flags = flags;
-	md.density = density;
-	md.stability = stability;
-	md.heatConductivity = heatConductivity;
-	md.strength = strength;
-	return pPartSys->CreateParticleMaterial(md);
-}
-EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
-	float32 hotThreshold, int32 hotMat, float32 ignitionThreshold, int32 burnedMatIdx,
-	int32 fireMatIdx, int32 deadMatIdx)
-{
-	Particle::Mat::ChangeDef mcd;
-	mcd.coldThreshold = coldThreshold;
-	mcd.coldMatIdx = coldMatIdx;
-	mcd.hotThreshold = hotThreshold;
-	mcd.ignitionThreshold = ignitionThreshold;
-	mcd.burnedMatIdx = burnedMatIdx;
-	mcd.fireMatIdx = fireMatIdx;
-	mcd.deadMatIdx = deadMatIdx;
-	pPartSys->AddPartMatChange(matIdx, mcd);
-}
-
 
 EXPORT int32 CreateBodyMaterial(uint32 materialFlags, float32 density, float32 friction, float32 bounciness,
 	float32 stability, float32 heatConductivity)
@@ -200,6 +174,7 @@ EXPORT void GetPartContacts(int32* pCnt, b2ParticleContact** pContacts)
 	*pCnt = pPartSys->GetContactCount();
 	*pContacts = pPartSys->GetContacts();
 }
+EXPORT int32 GetPartContactCnt() { return pPartSys->GetContactCount(); }
 
 #pragma endregion
 
@@ -1143,3 +1118,40 @@ EXPORT int32 TestInt()
     return 114;
 }
 #pragma endregion
+
+
+
+#pragma region Material
+
+EXPORT void ClearParticleMaterials() { pPartSys->ClearParticleMaterials(); }
+
+EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
+	float32 heatConductivity, float32 strength)
+{
+	Particle::Mat::Def md;
+	md.flags = flags;
+	md.density = density;
+	md.stability = stability;
+	md.heatConductivity = heatConductivity;
+	md.strength = strength;
+	return pPartSys->CreateParticleMaterial(md);
+}
+EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
+	float32 hotThreshold, int32 hotMat, float32 ignitionThreshold, int32 burnedMatIdx,
+	int32 fireMatIdx, int32 deadMatIdx)
+{
+	Particle::Mat::ChangeDef mcd;
+	mcd.coldThreshold = coldThreshold;
+	mcd.coldMatIdx = coldMatIdx;
+	mcd.hotThreshold = hotThreshold;
+	mcd.ignitionThreshold = ignitionThreshold;
+	mcd.burnedMatIdx = burnedMatIdx;
+	mcd.fireMatIdx = fireMatIdx;
+	mcd.deadMatIdx = deadMatIdx;
+	pPartSys->AddPartMatChange(matIdx, mcd);
+}
+
+#pragma endregion
+
+
+

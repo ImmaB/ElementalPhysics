@@ -86,15 +86,15 @@ inline float32 b2InvCurt(float32 x) restrict(amp)
 	return y;
 }
 
-
-#define	b2Sqrt(x)	sqrtf(x)
-#define	ampSqrt(x)	concurrency::precise_math::sqrtf(x)
+#define ampMath concurrency::fast_math
+#define	b2Sqrt(x)		sqrtf(x)
+#define	ampSqrt(x)		ampMath::sqrtf(x)
 #define	b2Atan2(y, x)	atan2f(y, x)
-#define	ampAtan2(y, x)	concurrency::precise_math::atan2f(y, x)
-#define	ampSin(x)	concurrency::precise_math::sinf(x)
-#define	ampCos(x)	concurrency::precise_math::cosf(x)
-#define	ampFloor(x)	concurrency::precise_math::floorf(x)
-#define ampPow(x, p) concurrency::precise_math::powf(x, p)
+#define	ampAtan2(y, x)	ampMath::atan2f(y, x)
+#define	ampSin(x)		ampMath::sinf(x)
+#define	ampCos(x)		ampMath::cosf(x)
+#define	ampFloor(x)		ampMath::floorf(x)
+#define ampPow(x, p)	ampMath::powf(x, p)
 
 struct b2Int2
 {
@@ -440,7 +440,7 @@ struct b2Rot
 
 	/// Initialize from an angle in radians
 	explicit b2Rot(float32 angle) { s = sinf(angle); c = cosf(angle); }
-	explicit b2Rot(float32 angle) restrict(amp) { s = concurrency::fast_math::sinf(angle); c = concurrency::fast_math::cosf(angle); }
+	explicit b2Rot(float32 angle) restrict(amp) { s = ampMath::sinf(angle); c = ampMath::cosf(angle); }
 
 	/// Set using an angle in radians.
 	void Set(float32 angle) { s = sinf(angle); c = cosf(angle); }

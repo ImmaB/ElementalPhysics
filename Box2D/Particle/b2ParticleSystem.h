@@ -401,6 +401,7 @@ public:
 	int32 DestroyParticlesInFixture(const Fixture& fixture, const b2Transform& xf,
 	                              bool callDestructionListener = false);
 
+	void ClearParticleMaterials();
 	int32 CreateParticleMaterial(Particle::Mat::Def& def);
 	void AddPartMatChange(const int32 matIdx, const Particle::Mat::ChangeDef& changeDef);
 
