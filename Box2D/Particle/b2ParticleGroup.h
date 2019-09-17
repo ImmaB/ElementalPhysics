@@ -52,7 +52,7 @@ struct ParticleGroup
 			flags = 0;
 			groupFlags = 0;
 			transform = b2Transform();
-			linearVelocity = b2Vec3_zero;
+			linearVelocity = Vec3_zero;
 			angularVelocity = 0;
 			color = 0;
 			shapeType = b2Shape::e_typeCount;
@@ -75,7 +75,7 @@ struct ParticleGroup
 		/// The world position of the group.
 		/// Moves the group's shape a distance equal to the value of position.
 		b2Transform transform;
-		b2Vec3 linearVelocity;
+		Vec3 linearVelocity;
 		float32 angularVelocity;
 
 		int32 color;
@@ -91,8 +91,8 @@ struct ParticleGroup
 
 		/// The initial positions of the particleCount particles.
 		int32 particleCount;
-		std::vector<b2Vec3> positionData;
-		std::vector<int32> colorData;
+		std::vector<Vec3> positions;
+		std::vector<int32> colors;
 
 		/// An existing particle group to which the particles will be added.
 		int32 groupIdx;
@@ -129,7 +129,7 @@ struct ParticleGroup
 
 	/// Get position of the particle group as a whole.
 	/// Used only with groups of rigid particles.
-	const b2Vec2& GetPosition() const;
+	const Vec2& GetPosition() const;
 
 	/// Get the rotational angle of the particle group as a whole.
 	/// Used only with groups of rigid particles.
@@ -152,8 +152,8 @@ struct ParticleGroup
 		m_timestamp = INVALID_IDX;
 		m_mass = 0;
 		m_inertia = 0;
-		m_center = b2Vec2_zero;
-		m_linearVelocity = b2Vec2_zero;
+		m_center = Vec2_zero;
+		m_linearVelocity = Vec2_zero;
 		m_angularVelocity = 0;
 		m_transform.SetIdentity();
 
@@ -172,8 +172,8 @@ struct ParticleGroup
 	mutable int32 m_timestamp;
 	mutable float32 m_mass;
 	mutable float32 m_inertia;
-	mutable b2Vec2 m_center;
-	mutable b2Vec2 m_linearVelocity;
+	mutable Vec2 m_center;
+	mutable Vec2 m_linearVelocity;
 	mutable float32 m_angularVelocity;
 	mutable b2Transform m_transform;
 
@@ -239,7 +239,7 @@ inline const b2Transform& ParticleGroup::GetTransform() const
 	return m_transform;
 }
 
-inline const b2Vec2& ParticleGroup::GetPosition() const
+inline const Vec2& ParticleGroup::GetPosition() const
 {
 	return m_transform.p;
 }

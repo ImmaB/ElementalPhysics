@@ -31,10 +31,10 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 	manifold.pointCount = 0;
 	
 	// Compute circle in frame of edge
-	b2Vec2 Q = b2MulT(xfA, b2Mul(xfB, circleB.m_p));
+	Vec2 Q = b2MulT(xfA, b2Mul(xfB, circleB.m_p));
 	
-	b2Vec2 A = edgeA.m_vertex1, B = edgeA.m_vertex2;
-	b2Vec2 e = B - A;
+	Vec2 A = edgeA.m_vertex1, B = edgeA.m_vertex2;
+	Vec2 e = B - A;
 	
 	// Barycentric coordinates
 	float32 u = b2Dot(e, B - Q);
@@ -49,8 +49,8 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 	// Region A
 	if (v <= 0.0f)
 	{
-		b2Vec2 P = A;
-		b2Vec2 d = Q - P;
+		Vec2 P = A;
+		Vec2 d = Q - P;
 		float32 dd = b2Dot(d, d);
 		if (dd > radius * radius)
 		{
@@ -60,9 +60,9 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 		// Is there an edge connected to A?
 		if (edgeA.m_hasVertex0)
 		{
-			b2Vec2 A1 = edgeA.m_vertex0;
-			b2Vec2 B1 = A;
-			b2Vec2 e1 = B1 - A1;
+			Vec2 A1 = edgeA.m_vertex0;
+			Vec2 B1 = A;
+			Vec2 e1 = B1 - A1;
 			float32 u1 = b2Dot(e1, B1 - Q);
 			
 			// Is the circle in Region AB of the previous edge?
@@ -87,8 +87,8 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 	// Region B
 	if (u <= 0.0f)
 	{
-		b2Vec2 P = B;
-		b2Vec2 d = Q - P;
+		Vec2 P = B;
+		Vec2 d = Q - P;
 		float32 dd = b2Dot(d, d);
 		if (dd > radius * radius)
 		{
@@ -98,9 +98,9 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 		// Is there an edge connected to B?
 		if (edgeA.m_hasVertex3)
 		{
-			b2Vec2 B2 = edgeA.m_vertex3;
-			b2Vec2 A2 = B;
-			b2Vec2 e2 = B2 - A2;
+			Vec2 B2 = edgeA.m_vertex3;
+			Vec2 A2 = B;
+			Vec2 e2 = B2 - A2;
 			float32 v2 = b2Dot(e2, Q - A2);
 			
 			// Is the circle in Region AB of the next edge?
@@ -125,15 +125,15 @@ void b2CollideEdgeAndCircle(b2Manifold& manifold,
 	// Region AB
 	float32 den = b2Dot(e, e);
 	b2Assert(den > 0.0f);
-	b2Vec2 P = (1.0f / den) * (u * A + v * B);
-	b2Vec2 d = Q - P;
+	Vec2 P = (1.0f / den) * (u * A + v * B);
+	Vec2 d = Q - P;
 	float32 dd = b2Dot(d, d);
 	if (dd > radius * radius)
 	{
 		return;
 	}
 	
-	b2Vec2 n(-e.y, e.x);
+	Vec2 n(-e.y, e.x);
 	if (b2Dot(n, Q - A) < 0.0f)
 	{
 		n.Set(-n.x, -n.y);
@@ -169,8 +169,8 @@ struct b2EPAxis
 // This holds polygon B expressed in frame A.
 struct b2TempPolygon
 {
-	b2Vec2 vertices[b2_maxPolygonVertices];
-	b2Vec2 normals[b2_maxPolygonVertices];
+	Vec2 vertices[b2_maxPolygonVertices];
+	Vec2 normals[b2_maxPolygonVertices];
 	int32 count;
 };
 
@@ -179,14 +179,14 @@ struct b2ReferenceFace
 {
 	int32 i1, i2;
 	
-	b2Vec2 v1, v2;
+	Vec2 v1, v2;
 	
-	b2Vec2 normal;
+	Vec2 normal;
 	
-	b2Vec2 sideNormal1;
+	Vec2 sideNormal1;
 	float32 sideOffset1;
 	
-	b2Vec2 sideNormal2;
+	Vec2 sideNormal2;
 	float32 sideOffset2;
 };
 
@@ -208,12 +208,12 @@ struct b2EPCollider
 	b2TempPolygon m_polygonB;
 	
 	b2Transform m_xf;
-	b2Vec2 m_centroidB;
-	b2Vec2 m_v0, m_v1, m_v2, m_v3;
-	b2Vec2 m_normal0, m_normal1, m_normal2;
-	b2Vec2 m_normal;
+	Vec2 m_centroidB;
+	Vec2 m_v0, m_v1, m_v2, m_v3;
+	Vec2 m_normal0, m_normal1, m_normal2;
+	Vec2 m_normal;
 	VertexType m_type1, m_type2;
-	b2Vec2 m_lowerLimit, m_upperLimit;
+	Vec2 m_lowerLimit, m_upperLimit;
 	float32 m_radius;
 	bool m_front;
 };
@@ -242,7 +242,7 @@ void b2EPCollider::Collide(b2Manifold& manifold, const b2EdgeShape& edgeA, const
 	bool hasVertex0 = edgeA.m_hasVertex0;
 	bool hasVertex3 = edgeA.m_hasVertex3;
 	
-	b2Vec2 edge1 = m_v2 - m_v1;
+	Vec2 edge1 = m_v2 - m_v1;
 	edge1.Normalize();
 	m_normal1.Set(edge1.y, -edge1.x);
 	float32 offset1 = b2Dot(m_normal1, m_centroidB - m_v1);
@@ -252,7 +252,7 @@ void b2EPCollider::Collide(b2Manifold& manifold, const b2EdgeShape& edgeA, const
 	// Is there a preceding edge?
 	if (hasVertex0)
 	{
-		b2Vec2 edge0 = m_v1 - m_v0;
+		Vec2 edge0 = m_v1 - m_v0;
 		edge0.Normalize();
 		m_normal0.Set(edge0.y, -edge0.x);
 		convex1 = b2Cross(edge0, edge1) >= 0.0f;
@@ -262,7 +262,7 @@ void b2EPCollider::Collide(b2Manifold& manifold, const b2EdgeShape& edgeA, const
 	// Is there a following edge?
 	if (hasVertex3)
 	{
-		b2Vec2 edge2 = m_v3 - m_v2;
+		Vec2 edge2 = m_v3 - m_v2;
 		edge2.Normalize();
 		m_normal2.Set(edge2.y, -edge2.x);
 		convex2 = b2Cross(edge1, edge2) > 0.0f;
@@ -643,11 +643,11 @@ b2EPAxis b2EPCollider::ComputePolygonSeparation()
 	axis.index = -1;
 	axis.separation = -FLT_MAX;
 
-	b2Vec2 perp(-m_normal.y, m_normal.x);
+	Vec2 perp(-m_normal.y, m_normal.x);
 
 	for (int32 i = 0; i < m_polygonB.count; ++i)
 	{
-		b2Vec2 n = -m_polygonB.normals[i];
+		Vec2 n = -m_polygonB.normals[i];
 		
 		float32 s1 = b2Dot(n, m_polygonB.vertices[i] - m_v1);
 		float32 s2 = b2Dot(n, m_polygonB.vertices[i] - m_v2);

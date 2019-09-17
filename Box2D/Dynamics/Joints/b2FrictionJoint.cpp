@@ -32,7 +32,7 @@
 // J = [0 0 -1 0 0 1]
 // K = invI1 + invI2
 
-void b2FrictionJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor)
+void b2FrictionJointDef::Initialize(Body& bA, Body& bB, const Vec2& anchor)
 {
 	bodyAIdx = bA.m_idx;
 	bodyBIdx = bB.m_idx;
@@ -67,11 +67,11 @@ void b2FrictionJoint::InitVelocityConstraints(const b2SolverData& data)
 	m_invIB = bodyA.m_invI;
 
 	float32 aA = data.positions[m_indexA].a;
-	b2Vec2 vA = data.velocities[m_indexA].v;
+	Vec2 vA = data.velocities[m_indexA].v;
 	float32 wA = data.velocities[m_indexA].w;
 
 	float32 aB = data.positions[m_indexB].a;
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	b2Rot qA(aA), qB(aB);
@@ -112,7 +112,7 @@ void b2FrictionJoint::InitVelocityConstraints(const b2SolverData& data)
 		m_linearImpulse *= data.step.dtRatio;
 		m_angularImpulse *= data.step.dtRatio;
 
-		b2Vec2 P(m_linearImpulse.x, m_linearImpulse.y);
+		Vec2 P(m_linearImpulse.x, m_linearImpulse.y);
 		vA -= mA * P;
 		wA -= iA * (b2Cross(m_rA, P) + m_angularImpulse);
 		vB += mB * P;
@@ -132,9 +132,9 @@ void b2FrictionJoint::InitVelocityConstraints(const b2SolverData& data)
 
 void b2FrictionJoint::SolveVelocityConstraints(const b2SolverData& data)
 {
-	b2Vec2 vA = data.velocities[m_indexA].v;
+	Vec2 vA = data.velocities[m_indexA].v;
 	float32 wA = data.velocities[m_indexA].w;
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	float32 mA = m_invMassA, mB = m_invMassB;
@@ -158,10 +158,10 @@ void b2FrictionJoint::SolveVelocityConstraints(const b2SolverData& data)
 
 	// Solve linear friction
 	{
-		b2Vec2 Cdot = vB + b2Cross(wB, m_rB) - vA - b2Cross(wA, m_rA);
+		Vec2 Cdot = vB + b2Cross(wB, m_rB) - vA - b2Cross(wA, m_rA);
 
-		b2Vec2 impulse = -b2Mul(m_linearMass, Cdot);
-		b2Vec2 oldImpulse = m_linearImpulse;
+		Vec2 impulse = -b2Mul(m_linearMass, Cdot);
+		Vec2 oldImpulse = m_linearImpulse;
 		m_linearImpulse += impulse;
 
 		float32 maxImpulse = h * m_maxForce;
@@ -194,17 +194,17 @@ bool b2FrictionJoint::SolvePositionConstraints(const b2SolverData& data)
 	return true;
 }
 
-b2Vec2 b2FrictionJoint::GetAnchorA() const
+Vec2 b2FrictionJoint::GetAnchorA() const
 {
 	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
-b2Vec2 b2FrictionJoint::GetAnchorB() const
+Vec2 b2FrictionJoint::GetAnchorB() const
 {
 	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
-b2Vec2 b2FrictionJoint::GetReactionForce(float32 inv_dt) const
+Vec2 b2FrictionJoint::GetReactionForce(float32 inv_dt) const
 {
 	return inv_dt * m_linearImpulse;
 }

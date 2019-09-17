@@ -56,7 +56,7 @@ class b2ContactFilter;
 class b2ContactListener;
 class b2ParticlePairSet;
 class FixtureParticleSet;
-struct b2Vec2;
+struct Vec2;
 struct b2AABB;
 struct FindContactInput;
 struct FindContactCheck;
@@ -76,7 +76,7 @@ struct b2ParticleContact
 	float32 weight;
 	float32 mass;
 	/// The normalized direction from A to B.
-	b2Vec3 normal;
+	Vec3 normal;
 	/// The logical sum of the particle behaviors that have been set.
 	/// See the b2ParticleFlag enum.
 	uint32 flags;
@@ -101,7 +101,7 @@ struct b2PartBodyContact
 	/// Weight of the contact. A value between 0.0f and 1.0f.
 	float32 weight;
 	/// The normalized direction from the particle to the body.
-	b2Vec2 normal;
+	Vec2 normal;
 	/// The effective mass used in calculating force.
 	float32 mass;
 };
@@ -112,7 +112,7 @@ struct b2PartGroundContact
 	int32 groundChunkIdx;
 	int32 groundMatIdx;
 	float32 weight;
-	b2Vec3 normal;
+	Vec3 normal;
 	float32 mass;
 
 	void setInvalid() { groundTileIdx = INVALID_IDX; }
@@ -153,7 +153,7 @@ struct b2ParticleTriad
 	float32 strength;
 
 	/// Values used for calculation.
-	b2Vec2 pa, pb, pc;
+	Vec2 pa, pb, pc;
 	float32 ka, kb, kc, s;
 
 	inline bool HasFlag(const uint32 f) const { return flags & f; }
@@ -528,14 +528,14 @@ public:
 	/// Get the position of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle positions array.
-	b2Vec3* GetPositionBuffer();
-	const b2Vec3* GetPositionBuffer() const;
+	Vec3* GetPositionBuffer();
+	const Vec3* GetPositionBuffer() const;
 
 	/// Get the velocity of each particle
 	/// Array is length GetParticleCount()
 	/// @return the pointer to the head of the particle velocities array.
-	b2Vec3* GetVelocityBuffer();
-	const b2Vec3* GetVelocityBuffer() const;
+	Vec3* GetVelocityBuffer();
+	const Vec3* GetVelocityBuffer() const;
 
 	/// Get the color of each particle
 	/// Array is length GetParticleCount()
@@ -596,8 +596,8 @@ public:
 	/// @param buffer is a pointer to a block of memory.
 	/// @param size is the number of values in the block.
 	void SetFlagsBuffer(uint32* buffer, int32 capacity);
-	void SetPositionBuffer(b2Vec3* buffer, int32 capacity);
-	void SetVelocityBuffer(b2Vec3* buffer, int32 capacity);
+	void SetPositionBuffer(Vec3* buffer, int32 capacity);
+	void SetVelocityBuffer(Vec3* buffer, int32 capacity);
 	void SetColorBuffer(int32* buffer, int32 capacity);
 
 	/// Get contacts between particles
@@ -721,10 +721,10 @@ public:
 	/// @param index the particle that will be modified.
 	/// @param impulse the world impulse vector, usually in N-seconds or
     ///        kg-m/s.
-	void ParticleApplyLinearImpulse(int32 index, const b2Vec2& impulse);
+	void ParticleApplyLinearImpulse(int32 index, const Vec2& impulse);
 
 	void ApplyLinearImpulse(const ParticleGroup& group,
-		const b2Vec2& impulse);
+		const Vec2& impulse);
 
 	/// Apply an impulse to all particles between 'firstIndex' and 'lastIndex'.
 	/// This immediately modifies the velocity. Note that the impulse is
@@ -737,17 +737,17 @@ public:
 	/// @param impulse the world impulse vector, usually in N-seconds or
     ///        kg-m/s.
 	void ApplyLinearImpulse(int32 firstIndex, int32 lastIndex,
-							const b2Vec2& impulse);
+							const Vec2& impulse);
 
 	/// Distribute force between 2 Particles, using their mass
-	void DistributeForce(int32 a, int32 b, const b2Vec2& f);
-	void DistributeForce(int32 a, int32 b, const b2Vec3& f);
-	void DistributeForceDamp(int32 a, int32 b, const b2Vec2& f);
+	void DistributeForce(int32 a, int32 b, const Vec2& f);
+	void DistributeForce(int32 a, int32 b, const Vec3& f);
+	void DistributeForceDamp(int32 a, int32 b, const Vec2& f);
 	
 	/// Apply a force to the center of a particle.
 	/// @param index the particle that will be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ParticleApplyForce(int32 index, const b2Vec3& force);
+	void ParticleApplyForce(int32 index, const Vec3& force);
 	
 	/// Distribute a force across several particles. The particles must not be
 	/// wall particles. Note that the force is distributed across all the
@@ -756,9 +756,9 @@ public:
 	/// @param firstIndex the first particle to be modified.
 	/// @param lastIndex the last particle to be modified.
 	/// @param force the world force vector, usually in Newtons (N).
-	void ApplyForce(const ParticleGroup& group, const b2Vec3& force);
-	void ApplyForce(int32 firstIndex, int32 lastIndex, const b2Vec3& force);
-	void PullIntoCircle(const b2Vec3& pos, const float32 radius,
+	void ApplyForce(const ParticleGroup& group, const Vec3& force);
+	void ApplyForce(int32 firstIndex, int32 lastIndex, const Vec3& force);
+	void PullIntoCircle(const Vec3& pos, const float32 radius,
 		float32 strength, uint32 flag, bool ignoreMass, float32 step);
 
 	/// Get the next particle-system in the world's particle-system list.
@@ -788,8 +788,8 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param point1 the ray starting point
 	/// @param point2 the ray ending point
-	void RayCast(b2RayCastCallback& callback, const b2Vec2& point1,
-				 const b2Vec2& point2) const;
+	void RayCast(b2RayCastCallback& callback, const Vec2& point1,
+				 const Vec2& point2) const;
 
 	/// Compute the axis-aligned bounding box for all particles contained
 	/// within this particle system.
@@ -1043,7 +1043,7 @@ private:
 	void AmpUpdateGroundContacts();
 
 	//void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
-	//void AddBodyContactResults(ampArray<b2Vec3> dst, const ampArray<b2Vec3> bodyRes);
+	//void AddBodyContactResults(ampArray<Vec3> dst, const ampArray<Vec3> bodyRes);
 
 	void SolveSlowDown(const b2TimeStep& step);
 	void SolveColorMixing();
@@ -1093,16 +1093,16 @@ private:
 	/// Get the moment of inertia for the group.
 	float32 GetInertia(const ParticleGroup& group) const;
 	/// Get the center of gravity for the group.
-	b2Vec2 GetCenter(const ParticleGroup& group) const;
+	Vec2 GetCenter(const ParticleGroup& group) const;
 	/// Get the linear velocity of the group.
-	b2Vec2 GetLinearVelocity(const ParticleGroup& group) const;
+	Vec2 GetLinearVelocity(const ParticleGroup& group) const;
 	/// Get the angular velocity of the group.
 	float32 GetAngularVelocity(const ParticleGroup& group) const;
 	/// Get the world linear velocity of a world point, from the average linear
 	/// and angular velocities of the particle group.
 	/// @param a point in world coordinates.
 	/// @return the world velocity of a point.
-	b2Vec2 GetLinearVelocityFromWorldPoint(const ParticleGroup& group, const b2Vec2& worldPoint) const;
+	Vec2 GetLinearVelocityFromWorldPoint(const ParticleGroup& group, const Vec2& worldPoint) const;
 	
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
@@ -1121,17 +1121,17 @@ private:
 	void PrepareForceBuffer();
 
 	bool IsRigidGroup(const ParticleGroup& group) const;
-	b2Vec2 GetLinearVelocity(
+	Vec2 GetLinearVelocity(
 		const ParticleGroup& group, int32 particleIndex,
-		const b2Vec2 &point);
+		const Vec2 &point);
 	void InitDampingParameter(
 		float32& invMass, float32& invInertia, float32& tangentDistance,
-		float32 mass, float32 inertia, const b2Vec2& center,
-		const b2Vec2& point, const b2Vec2& normal) const;
+		float32 mass, float32 inertia, const Vec2& center,
+		const Vec2& point, const Vec2& normal) const;
 	void InitDampingParameterWithRigidGroupOrParticle(
 		float32& invMass, float32& invInertia, float32& tangentDistance,
 		bool isRigidGroup, const ParticleGroup& group, int32 particleIndex,
-		const b2Vec2& point, const b2Vec2& normal);
+		const Vec2& point, const Vec2& normal);
 	float32 ComputeDampingImpulse(
 		float32 invMassA, float32 invInertiaA, float32 tangentDistanceA,
 		float32 invMassB, float32 invInertiaB, float32 tangentDistanceB,
@@ -1139,7 +1139,7 @@ private:
 	void ApplyDamping(
 		float32 invMass, float32 invInertia, float32 tangentDistance,
 		bool isRigidGroup, ParticleGroup& group, int32 particleIndex,
-		float32 impulse, const b2Vec2& normal);
+		float32 impulse, const Vec2& normal);
 
 	ampAccelView m_cpuAccelView = amp::getCpuAccelView();
 	ampAccelView m_gpuAccelView = amp::getGpuAccelView();
@@ -1219,8 +1219,8 @@ private:
 	ampArray<float32> m_ampMasses, m_ampInvMasses;
 	amp::CopyFuture m_ampCopyFutFlags;
 
-	vector<b2Vec3>	m_positions, m_velocities, m_forces;
-	ampArray<b2Vec3> m_ampPositions, m_ampVelocities, m_ampForces;
+	vector<Vec3>	m_positions, m_velocities, m_forces;
+	ampArray<Vec3> m_ampPositions, m_ampVelocities, m_ampForces;
 	amp::CopyFuture m_ampCopyFutPositions, m_ampCopyFutVelocities;
 
 	vector<float32>		m_weightBuffer,
@@ -1274,8 +1274,8 @@ private:
 	/// as a temporary buffer for vector values.  It will be reallocated on
 	/// subsequent CreateParticle() calls.
 	bool hasAccumulation2Buf;
-	vector<b2Vec3> m_accumulation3Buf;
-	ampArray<b2Vec3> m_ampAccumulationVec3s;
+	vector<Vec3> m_accumulation3Buf;
+	ampArray<Vec3> m_ampAccumulationVec3s;
 	/// When any particle groups have the flag b2_solidParticleGroup,
 	/// m_depthBuffer is first allocated and populated in ComputeDepth() and
 	/// used in SolveSolid(). It will be reallocated on subsequent
@@ -1364,12 +1364,12 @@ inline float32 b2ParticleSystem::GetInertia(const ParticleGroup& group) const
 	UpdateStatistics(group);
 	return group.m_inertia;
 }
-inline b2Vec2 b2ParticleSystem::GetCenter(const ParticleGroup& group) const
+inline Vec2 b2ParticleSystem::GetCenter(const ParticleGroup& group) const
 {
 	UpdateStatistics(group);
 	return group.m_center;
 }
-inline b2Vec2 b2ParticleSystem::GetLinearVelocity(const ParticleGroup& group) const
+inline Vec2 b2ParticleSystem::GetLinearVelocity(const ParticleGroup& group) const
 {
 	UpdateStatistics(group);
 	return group.m_linearVelocity;
@@ -1379,8 +1379,8 @@ inline float32 b2ParticleSystem::GetAngularVelocity(const ParticleGroup& group) 
 	UpdateStatistics(group);
 	return group.m_angularVelocity;
 }
-inline b2Vec2 b2ParticleSystem::GetLinearVelocityFromWorldPoint(
-	const ParticleGroup& group, const b2Vec2& worldPoint) const
+inline Vec2 b2ParticleSystem::GetLinearVelocityFromWorldPoint(
+	const ParticleGroup& group, const Vec2& worldPoint) const
 {
 	UpdateStatistics(group);
 	return group.m_linearVelocity + b2Cross(group.m_angularVelocity, worldPoint - group.m_center);
@@ -1596,20 +1596,20 @@ inline float32 b2ParticleSystem::GetMassFromDensity(const float32 density) const
 	return density * m_particleVolume;
 }
 
-inline b2Vec3* b2ParticleSystem::GetPositionBuffer()
+inline Vec3* b2ParticleSystem::GetPositionBuffer()
 {
 	return m_positions.data();
 }
-inline const b2Vec3* b2ParticleSystem::GetPositionBuffer() const
+inline const Vec3* b2ParticleSystem::GetPositionBuffer() const
 {
 	return m_positions.data();
 }
 
-inline b2Vec3* b2ParticleSystem::GetVelocityBuffer()
+inline Vec3* b2ParticleSystem::GetVelocityBuffer()
 {
 	return m_velocities.data();
 }
-inline const b2Vec3* b2ParticleSystem::GetVelocityBuffer() const
+inline const Vec3* b2ParticleSystem::GetVelocityBuffer() const
 {
 	return m_velocities.data();
 }
@@ -1723,22 +1723,22 @@ inline bool b2ParticleSystem::GetDestructionByAge() const
 }
 
 inline void b2ParticleSystem::ParticleApplyLinearImpulse(int32 index,
-														 const b2Vec2& impulse)
+														 const Vec2& impulse)
 {
 	ApplyLinearImpulse(index, index + 1, impulse);
 }
 
-inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const b2Vec2& f) 
+inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const Vec2& f) 
 {
 	m_velocities[a] -= m_masses[b] * f;
 	m_velocities[b] += m_masses[a] * f;
 }
-inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const b2Vec3& f)
+inline void b2ParticleSystem::DistributeForce(int32 a, int32 b, const Vec3& f)
 {
 	m_velocities[a] -= m_masses[b] * f;
 	m_velocities[b] += m_masses[a] * f;
 }
-inline void b2ParticleSystem::DistributeForceDamp(int32 a, int32 b, const b2Vec2& f)
+inline void b2ParticleSystem::DistributeForceDamp(int32 a, int32 b, const Vec2& f)
 {
 	m_velocities[a] += m_masses[b] * f;
 	m_velocities[b] -= m_masses[a] * f;
@@ -1753,7 +1753,7 @@ inline void b2ParticleSystem::SetParticleVelocity(int32 index,
 												  float32 vx,
 												  float32 vy)
 {
-	b2Vec2& v = GetVelocityBuffer()[index];
+	Vec2& v = GetVelocityBuffer()[index];
 	v.x = vx;
 	v.y = vy;
 }
@@ -1773,7 +1773,7 @@ inline int b2ParticleSystem::CopyPositionBuffer(int startIndex,
 												void* outBuf,
 												int size) const
 {
-	int copySize = numParticles * sizeof(b2Vec2);
+	int copySize = numParticles * sizeof(Vec2);
 	void* inBufWithOffset = (void*) (GetPositionBuffer() + startIndex);
 	return CopyBuffer(startIndex, numParticles, inBufWithOffset, outBuf, size,
 					  copySize);

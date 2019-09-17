@@ -21,7 +21,7 @@
 
 #include <Box2D/Common/b2Settings.h>
 
-struct b2Vec2;
+struct Vec2;
 struct b2Transform;
 struct Fixture;
 struct Body;
@@ -254,8 +254,8 @@ public:
 	/// @param normal the normal vector at the point of intersection
 	/// @return -1 to filter, 0 to terminate, fraction to clip the ray for
 	/// closest hit, 1 to continue
-	virtual float32 ReportFixture(const Fixture& fixture, const b2Vec2& point,
-								  const b2Vec2& normal, float32 fraction) = 0;
+	virtual float32 ReportFixture(const Fixture& fixture, const Vec2& point,
+								  const Vec2& normal, float32 fraction) = 0;
 
 	/// Called for each particle found in the query. You control how the ray
 	/// cast proceeds by returning a float:
@@ -273,8 +273,8 @@ public:
 	/// @return <=0 to ignore rest of particle system, fraction to ignore
 	/// particles that are farther away.
 	virtual float32 ReportParticle(const b2ParticleSystem* particleSystem,
-								   int32 index, const b2Vec2& point,
-								   const b2Vec2& normal, float32 fraction)
+								   int32 index, const Vec2& point,
+								   const Vec2& normal, float32 fraction)
 	{
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(index);

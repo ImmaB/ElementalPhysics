@@ -47,9 +47,9 @@ void b2Rope::Initialize(const b2RopeDef* def)
 {
 	b2Assert(def->count >= 3);
 	m_count = def->count;
-	m_ps = (b2Vec2*)b2Alloc(m_count * sizeof(b2Vec2));
-	m_p0s = (b2Vec2*)b2Alloc(m_count * sizeof(b2Vec2));
-	m_vs = (b2Vec2*)b2Alloc(m_count * sizeof(b2Vec2));
+	m_ps = (Vec2*)b2Alloc(m_count * sizeof(Vec2));
+	m_p0s = (Vec2*)b2Alloc(m_count * sizeof(Vec2));
+	m_vs = (Vec2*)b2Alloc(m_count * sizeof(Vec2));
 	m_ims = (float32*)b2Alloc(m_count * sizeof(float32));
 
 	for (int32 i = 0; i < m_count; ++i)
@@ -76,19 +76,19 @@ void b2Rope::Initialize(const b2RopeDef* def)
 
 	for (int32 i = 0; i < count2; ++i)
 	{
-		b2Vec2 p1 = m_ps[i];
-		b2Vec2 p2 = m_ps[i+1];
+		Vec2 p1 = m_ps[i];
+		Vec2 p2 = m_ps[i+1];
 		m_Ls[i] = b2Distance(p1, p2);
 	}
 
 	for (int32 i = 0; i < count3; ++i)
 	{
-		b2Vec2 p1 = m_ps[i];
-		b2Vec2 p2 = m_ps[i + 1];
-		b2Vec2 p3 = m_ps[i + 2];
+		Vec2 p1 = m_ps[i];
+		Vec2 p2 = m_ps[i + 1];
+		Vec2 p3 = m_ps[i + 2];
 
-		b2Vec2 d1 = p2 - p1;
-		b2Vec2 d2 = p3 - p2;
+		Vec2 d1 = p2 - p1;
+		Vec2 d2 = p3 - p2;
 
 		float32 a = b2Cross(d1, d2);
 		float32 b = b2Dot(d1, d2);
@@ -143,10 +143,10 @@ void b2Rope::SolveC2()
 
 	for (int32 i = 0; i < count2; ++i)
 	{
-		b2Vec2 p1 = m_ps[i];
-		b2Vec2 p2 = m_ps[i + 1];
+		Vec2 p1 = m_ps[i];
+		Vec2 p2 = m_ps[i + 1];
 
-		b2Vec2 d = p2 - p1;
+		Vec2 d = p2 - p1;
 		float32 L = d.Normalize();
 
 		float32 im1 = m_ims[i];
@@ -183,16 +183,16 @@ void b2Rope::SolveC3()
 
 	for (int32 i = 0; i < count3; ++i)
 	{
-		b2Vec2 p1 = m_ps[i];
-		b2Vec2 p2 = m_ps[i + 1];
-		b2Vec2 p3 = m_ps[i + 2];
+		Vec2 p1 = m_ps[i];
+		Vec2 p2 = m_ps[i + 1];
+		Vec2 p3 = m_ps[i + 2];
 
 		float32 m1 = m_ims[i];
 		float32 m2 = m_ims[i + 1];
 		float32 m3 = m_ims[i + 2];
 
-		b2Vec2 d1 = p2 - p1;
-		b2Vec2 d2 = p3 - p2;
+		Vec2 d1 = p2 - p1;
+		Vec2 d2 = p3 - p2;
 
 		float32 L1sqr = d1.LengthSquared();
 		float32 L2sqr = d2.LengthSquared();
@@ -207,12 +207,12 @@ void b2Rope::SolveC3()
 
 		float32 angle = b2Atan2(a, b);
 
-		b2Vec2 Jd1 = (-1.0f / L1sqr) * d1.Skew();
-		b2Vec2 Jd2 = (1.0f / L2sqr) * d2.Skew();
+		Vec2 Jd1 = (-1.0f / L1sqr) * d1.Skew();
+		Vec2 Jd2 = (1.0f / L2sqr) * d2.Skew();
 
-		b2Vec2 J1 = -Jd1;
-		b2Vec2 J2 = Jd1 - Jd2;
-		b2Vec2 J3 = Jd2;
+		Vec2 J1 = -Jd1;
+		Vec2 J2 = Jd1 - Jd2;
+		Vec2 J3 = Jd2;
 
 		float32 mass = m1 * b2Dot(J1, J1) + m2 * b2Dot(J2, J2) + m3 * b2Dot(J3, J3);
 		if (mass == 0.0f)

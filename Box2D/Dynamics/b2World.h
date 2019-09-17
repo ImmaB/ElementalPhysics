@@ -86,7 +86,8 @@ public:
 	/// This function is locked during callbacks.
 	/// @warning This automatically deletes all associated shapes and joints.
 	/// @warning This function is locked during callbacks.
-	void DestroyBody(int32 idx);
+	void DestroyBody(const int32 idx);
+	void ClearAll();
 
 	Ground* CreateGround(const Ground::def& gd);
 
@@ -177,7 +178,7 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param point1 the ray starting point
 	/// @param point2 the ray ending point
-	void RayCast(b2RayCastCallback& callback, const b2Vec2& point1, const b2Vec2& point2) const;
+	void RayCast(b2RayCastCallback& callback, const Vec2& point1, const Vec2& point2) const;
 
 	Body& GetBody(const int32 idx);
 	const Body GetBody(const int32 idx) const;
@@ -247,10 +248,12 @@ public:
 	/// The minimum is 1.
 	float32 GetTreeQuality() const;
 
-	void SetBorders(const b2Vec3& lower, const b2Vec3& upper, bool deleteOutside);
+	void SetBorders(const Vec3& lower, const Vec3& upper, bool deleteOutside);
 
 	/// Is the world locked (in the middle of a time step).
 	bool IsLocked() const { return (m_flags & e_locked) == e_locked; };
+	void Lock() { m_flags |= e_locked; };
+	void UnLock() { m_flags &= ~e_locked; };
 
 	/// Set flag to control automatic clearing of forces after each time step.
 	void SetAutoClearForces(bool flag);
@@ -261,7 +264,7 @@ public:
 	/// Shift the world origin. Useful for large worlds.
 	/// The body shift formula is: position -= newOrigin
 	/// @param newOrigin the new origin with respect to the old origin
-	void ShiftOrigin(const b2Vec2& newOrigin);
+	void ShiftOrigin(const Vec2& newOrigin);
 
 	/// Get the contact manager for testing.
 	const b2ContactManager& GetContactManager() const;
@@ -327,7 +330,7 @@ public:
 		return m_polygonShapeBuffer[idx];
 	}
 
-	b2Vec3 m_gravity;
+	Vec3 m_gravity;
 	float32 m_riseFactor;
 	/// Damping is used to reduce the velocity of particles. The damping
 	/// parameter can be larger than 1.0f but the damping effect becomes
@@ -335,10 +338,10 @@ public:
 	float32 m_dampingStrength;
 	float32 m_roomTemperature;
 	float32 m_atmosphericDensity;
-	b2Vec3 m_wind;
+	Vec3 m_wind;
 
-	b2Vec3 m_lowerBorder;
-	b2Vec3 m_upperBorder;
+	Vec3 m_lowerBorder;
+	Vec3 m_upperBorder;
 	bool m_deleteOutside;
 
 	float32 m_surfaceThickness;
@@ -362,6 +365,7 @@ private:
 
 	void Solve(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
+	void SolveHeatConduct(const b2TimeStep& step);
 	void SolveTOI(const b2TimeStep& step);
 
 	void DrawJoint(b2Joint* joint);
@@ -416,7 +420,6 @@ private:
 	void ResetMassData(Body& b);
 
 	b2Shape& InsertSubShapeIntoBuffer(b2Shape::Type shapeType, int32& outIdx);
-	void RemoveSubShapeFromBuffer(b2Shape::Type shapeType, int32 idx);
 
 
 public:
@@ -433,8 +436,8 @@ public:
 	vector<b2CircleShape>	m_circleShapeBuffer;
 	vector<b2EdgeShape>		m_edgeShapeBuffer;
 	vector<b2PolygonShape>	m_polygonShapeBuffer;
-	vector<b2Vec2>			m_shapePositionBuffer;
-	vector<b2Vec2>			m_shapeNormalBuffer;
+	vector<Vec2>			m_shapePositionBuffer;
+	vector<Vec2>			m_shapeNormalBuffer;
 
 	set<int32> m_freeBodyIdxs;
 	set<int32> m_freeFixtureIdxs;
@@ -464,8 +467,8 @@ public:
 	/// All fixtures attached to a body are implicitly destroyed when the body is destroyed.
 	/// @param fixture the fixture to be removed.
 	/// @warning This function is locked during callbacks.
-	void DestroyFixture(int32 bodyIdx, int32 idx);
-	void DestroyFixture(Body& b, int32 idx);
+	void DestroyFixture(int32 idx);
+	void DestroyFixture(Body& b, Fixture& f);
 
 	/// Set the position of the body's origin and rotation.
 	/// Manipulating a body's transform may cause non-physical behavior.
@@ -503,11 +506,11 @@ public:
 
 	/// Test a point for containment in this fixture.
 	/// @param p a point in world coordinates.
-	bool TestPoint(const Fixture& f, const b2Vec2& p) const;
+	bool TestPoint(const Fixture& f, const Vec2& p) const;
 
 	/// Compute the distance from this fixture.
 	/// @param p a point in world coordinates.
-	void ComputeDistance(const Fixture& f, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const;
+	void ComputeDistance(const Fixture& f, const Vec2& p, float32& distance, Vec2& normal, int32 childIndex) const;
 
 	/// Cast a ray against this shape.
 	/// @param output the ray-cast results.
@@ -545,7 +548,11 @@ public:
 	int32 CreateShape(const b2Shape::Def& shapeDef);
 
 	void DestroyShape(Fixture& f);
+	void RemoveSubShapeFromBuffer(b2Shape::Type shapeType, int32 idx);
 
+
+	template<typename F> void ForEachBody(F& function);
+	template<typename F> void ForEachFixtureOfBody(const Body& b, F& function);
 
 
 	// Contact
@@ -677,11 +684,11 @@ inline const b2Profile& b2World::GetProfile() const
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 inline b2World::b2World(float32 gravityX, float32 gravityY)
 {
-	Init(b2Vec2(gravityX, gravityY));
+	Init(Vec2(gravityX, gravityY));
 }
 
 inline void b2World::SetGravity(float32 gravityX, float32 gravityY)
 {
-	SetGravity(b2Vec2(gravityX, gravityY));
+	SetGravity(Vec2(gravityX, gravityY));
 }
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API

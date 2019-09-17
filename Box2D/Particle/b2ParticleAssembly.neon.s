@@ -25,7 +25,7 @@
 CalculateTags_Simd:
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         @
-        @ int CalculateTags_Simd(const b2Vec2* positions,
+        @ int CalculateTags_Simd(const Vec2* positions,
         @                        int count,
         @                        const float& inverseDiameter,
         @                        uint32* outTags)

@@ -43,7 +43,7 @@ b2VoronoiDiagram::~b2VoronoiDiagram()
 }
 
 void b2VoronoiDiagram::AddGenerator(
-	const b2Vec2& center, int32 tag, bool necessary)
+	const Vec2& center, int32 tag, bool necessary)
 {
 	b2Assert(m_generatorCount < m_generatorCapacity);
 	Generator& g = m_generatorBuffer[m_generatorCount++];
@@ -56,8 +56,8 @@ void b2VoronoiDiagram::Generate(float32 radius, float32 margin)
 {
 	b2Assert(m_diagram == NULL);
 	float32 inverseRadius = 1 / radius;
-	b2Vec2 lower(+b2_maxFloat, +b2_maxFloat);
-	b2Vec2 upper(-b2_maxFloat, -b2_maxFloat);
+	Vec2 lower(+b2_maxFloat, +b2_maxFloat);
+	Vec2 upper(-b2_maxFloat, -b2_maxFloat);
 	for (int32 k = 0; k < m_generatorCount; k++)
 	{
 		Generator& g = m_generatorBuffer[k];

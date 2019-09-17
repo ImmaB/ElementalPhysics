@@ -645,33 +645,33 @@ namespace amp
 		while (!Concurrency::atomic_compare_exchange((uint32*)& dest, (uint32*)& expected, reinterpret_cast<uint32&>(newValue)))
 			newValue = expected - sub;
 	}
-	inline void atomicAdd(b2Vec2& dest, const b2Vec2& add) restrict(amp)
+	inline void atomicAdd(Vec2& dest, const Vec2& add) restrict(amp)
 	{
 		atomicAdd(dest.x, add.x);
 		atomicAdd(dest.y, add.y);
 	}
-	inline void atomicSub(b2Vec2& dest, const b2Vec2& sub) restrict(amp)
+	inline void atomicSub(Vec2& dest, const Vec2& sub) restrict(amp)
 	{
 		atomicSub(dest.x, sub.x);
 		atomicSub(dest.y, sub.y);
 	}
-	inline void atomicAdd(b2Vec3& dest, const b2Vec2& add) restrict(amp)
+	inline void atomicAdd(Vec3& dest, const Vec2& add) restrict(amp)
 	{
 		atomicAdd(dest.x, add.x);
 		atomicAdd(dest.y, add.y);
 	}
-	inline void atomicSub(b2Vec3& dest, const b2Vec2& sub) restrict(amp)
+	inline void atomicSub(Vec3& dest, const Vec2& sub) restrict(amp)
 	{
 		atomicSub(dest.x, sub.x);
 		atomicSub(dest.y, sub.y);
 	}
-	inline void atomicAdd(b2Vec3& dest, const b2Vec3& add) restrict(amp)
+	inline void atomicAdd(Vec3& dest, const Vec3& add) restrict(amp)
 	{
 		atomicAdd(dest.x, add.x);
 		atomicAdd(dest.y, add.y);
 		atomicAdd(dest.z, add.z);
 	}
-	inline void atomicSub(b2Vec3& dest, const b2Vec3& sub) restrict(amp)
+	inline void atomicSub(Vec3& dest, const Vec3& sub) restrict(amp)
 	{
 		atomicSub(dest.x, sub.x);
 		atomicSub(dest.y, sub.y);

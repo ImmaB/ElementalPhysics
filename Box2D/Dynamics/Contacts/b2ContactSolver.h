@@ -31,8 +31,8 @@ struct b2ContactPositionConstraint;
 
 struct b2VelocityConstraintPoint
 {
-	b2Vec2 rA;
-	b2Vec2 rB;
+	Vec2 rA;
+	Vec2 rB;
 	float32 normalImpulse;
 	float32 tangentImpulse;
 	float32 normalMass;
@@ -43,7 +43,7 @@ struct b2VelocityConstraintPoint
 struct b2ContactVelocityConstraint
 {
 	b2VelocityConstraintPoint points[b2_maxManifoldPoints];
-	b2Vec2 normal;
+	Vec2 normal;
 	b2Mat22 normalMass;
 	b2Mat22 K;
 	int32 indexA;

@@ -27,16 +27,16 @@
 struct b2EdgeShape : public b2Shape
 {
 	/// These are the edge vertices
-	b2Vec2 m_vertex1, m_vertex2;
+	Vec2 m_vertex1, m_vertex2;
 
 	/// Optional adjacent vertices. These are used for smooth collision.
-	b2Vec2 m_vertex0, m_vertex3;
+	Vec2 m_vertex0, m_vertex3;
 	int32 m_hasVertex0, m_hasVertex3;
 
 	b2EdgeShape();
 
 	/// Set this as an isolated edge.
-	void Set(const b2Vec2& v1, const b2Vec2& v2);
+	void Set(const Vec2& v1, const Vec2& v2);
 
 	/// Implement b2Shape.
 	b2Shape* Clone(b2BlockAllocator* allocator) const;
@@ -45,10 +45,10 @@ struct b2EdgeShape : public b2Shape
 	int32 GetChildCount() const;
 
 	/// @see b2Shape::TestPoint
-	bool TestPoint(const b2Transform& transform, const b2Vec3& p) const;
+	bool TestPoint(const b2Transform& transform, const Vec3& p) const;
 
 	// @see b2Shape::ComputeDistance
-	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const;
+	void ComputeDistance(const b2Transform& xf, const Vec2& p, float32& distance, Vec2& normal, int32 childIndex) const;
 
 	/// Implement b2Shape.
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
@@ -71,22 +71,22 @@ struct AmpEdgeShape
 	float32 m_area;
 
 	/// These are the edge vertices
-	b2Vec2 m_vertex1, m_vertex2;
+	Vec2 m_vertex1, m_vertex2;
 
 	/// Optional adjacent vertices. These are used for smooth collision.
-	b2Vec2 m_vertex0, m_vertex3;
+	Vec2 m_vertex0, m_vertex3;
 	int32 m_hasVertex0, m_hasVertex3;
 
 	AmpEdgeShape() restrict(amp);
 
-	void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
-		float32& distance,b2Vec2& normal) const restrict(amp)
+	void ComputeDistance(const b2Transform& xf, const Vec2& p,
+		float32& distance,Vec2& normal) const restrict(amp)
 	{
-		b2Vec2 v1 = b2Mul(xf, m_vertex1);
-		b2Vec2 v2 = b2Mul(xf, m_vertex2);
+		Vec2 v1 = b2Mul(xf, m_vertex1);
+		Vec2 v2 = b2Mul(xf, m_vertex2);
 
-		b2Vec2 d = p - v1;
-		b2Vec2 s = v2 - v1;
+		Vec2 d = p - v1;
+		Vec2 s = v2 - v1;
 		float32 ds = b2Dot(d, s);
 		if (ds > 0)
 		{
@@ -99,21 +99,21 @@ struct AmpEdgeShape
 
 		float32 d1 = d.Length();
 		distance = d1;
-		normal = d1 > 0 ? 1 / d1 * d : b2Vec2(0, 0);
+		normal = d1 > 0 ? 1 / d1 * d : Vec2(0, 0);
 	}
 
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 		const b2Transform& xf) const restrict(amp)
 	{
 		// Put the ray into the edge's frame of reference.
-		b2Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
-		b2Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
-		b2Vec2 d = p2 - p1;
+		Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
+		Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
+		Vec2 d = p2 - p1;
 
-		b2Vec2 v1 = m_vertex1;
-		b2Vec2 v2 = m_vertex2;
-		b2Vec2 e = v2 - v1;
-		b2Vec2 normal(e.y, -e.x);
+		Vec2 v1 = m_vertex1;
+		Vec2 v2 = m_vertex2;
+		Vec2 e = v2 - v1;
+		Vec2 normal(e.y, -e.x);
 		normal.Normalize();
 
 		// q = p1 + t * d
@@ -129,11 +129,11 @@ struct AmpEdgeShape
 		if (t < 0.0f || input.maxFraction < t)
 			return false;
 
-		b2Vec2 q = p1 + t * d;
+		Vec2 q = p1 + t * d;
 
 		// q = v1 + s * r
 		// s = dot(q - v1, r) / dot(r, r)
-		b2Vec2 r = v2 - v1;
+		Vec2 r = v2 - v1;
 		float32 rr = b2Dot(r, r);
 		if (rr == 0.0f)
 			return false;
@@ -185,6 +185,6 @@ inline void b2EdgeShape::Set(float32 vx1,
 														 float32 vy1,
 														 float32 vx2,
 														 float32 vy2) {
-	Set(b2Vec2(vx1, vy1), b2Vec2(vx2, vy2));
+	Set(Vec2(vx1, vy1), Vec2(vx2, vy2));
 }
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API

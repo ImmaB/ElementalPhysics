@@ -36,7 +36,7 @@
 // Cdot = wB - wA
 // J = [0 0 -1 0 0 1]
 
-void b2WheelJointDef::Initialize(Body& bA, Body& bB, const b2Vec2& anchor, const b2Vec2& axis)
+void b2WheelJointDef::Initialize(Body& bA, Body& bB, const Vec2& anchor, const Vec2& axis)
 {
 	bodyAIdx = bA.m_idx;
 	bodyBIdx = bB.m_idx;
@@ -90,22 +90,22 @@ void b2WheelJoint::InitVelocityConstraints(const b2SolverData& data)
 	float32 mA = m_invMassA, mB = m_invMassB;
 	float32 iA = m_invIA, iB = m_invIB;
 
-	b2Vec2 cA = data.positions[m_indexA].c;
+	Vec2 cA = data.positions[m_indexA].c;
 	float32 aA = data.positions[m_indexA].a;
-	b2Vec2 vA = data.velocities[m_indexA].v;
+	Vec2 vA = data.velocities[m_indexA].v;
 	float32 wA = data.velocities[m_indexA].w;
 
-	b2Vec2 cB = data.positions[m_indexB].c;
+	Vec2 cB = data.positions[m_indexB].c;
 	float32 aB = data.positions[m_indexB].a;
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	b2Rot qA(aA), qB(aB);
 
 	// Compute the effective masses.
-	b2Vec2 rA = b2Mul(qA, m_localAnchorA - m_localCenterA);
-	b2Vec2 rB = b2Mul(qB, m_localAnchorB - m_localCenterB);
-	b2Vec2 d = cB + rB - cA - rA;
+	Vec2 rA = b2Mul(qA, m_localAnchorA - m_localCenterA);
+	Vec2 rB = b2Mul(qB, m_localAnchorB - m_localCenterB);
+	Vec2 d = cB + rB - cA - rA;
 
 	// Point to line constraint
 	{
@@ -192,7 +192,7 @@ void b2WheelJoint::InitVelocityConstraints(const b2SolverData& data)
 		m_springImpulse *= data.step.dtRatio;
 		m_motorImpulse *= data.step.dtRatio;
 
-		b2Vec2 P = m_impulse * m_ay + m_springImpulse * m_ax;
+		Vec2 P = m_impulse * m_ay + m_springImpulse * m_ax;
 		float32 LA = m_impulse * m_sAy + m_springImpulse * m_sAx + m_motorImpulse;
 		float32 LB = m_impulse * m_sBy + m_springImpulse * m_sBx + m_motorImpulse;
 
@@ -220,9 +220,9 @@ void b2WheelJoint::SolveVelocityConstraints(const b2SolverData& data)
 	float32 mA = m_invMassA, mB = m_invMassB;
 	float32 iA = m_invIA, iB = m_invIB;
 
-	b2Vec2 vA = data.velocities[m_indexA].v;
+	Vec2 vA = data.velocities[m_indexA].v;
 	float32 wA = data.velocities[m_indexA].w;
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	// Solve spring constraint
@@ -231,7 +231,7 @@ void b2WheelJoint::SolveVelocityConstraints(const b2SolverData& data)
 		float32 impulse = -m_springMass * (Cdot + m_bias + m_gamma * m_springImpulse);
 		m_springImpulse += impulse;
 
-		b2Vec2 P = impulse * m_ax;
+		Vec2 P = impulse * m_ax;
 		float32 LA = impulse * m_sAx;
 		float32 LB = impulse * m_sBx;
 
@@ -262,7 +262,7 @@ void b2WheelJoint::SolveVelocityConstraints(const b2SolverData& data)
 		float32 impulse = -m_mass * Cdot;
 		m_impulse += impulse;
 
-		b2Vec2 P = impulse * m_ay;
+		Vec2 P = impulse * m_ay;
 		float32 LA = impulse * m_sAy;
 		float32 LB = impulse * m_sBy;
 
@@ -281,18 +281,18 @@ void b2WheelJoint::SolveVelocityConstraints(const b2SolverData& data)
 
 bool b2WheelJoint::SolvePositionConstraints(const b2SolverData& data)
 {
-	b2Vec2 cA = data.positions[m_indexA].c;
+	Vec2 cA = data.positions[m_indexA].c;
 	float32 aA = data.positions[m_indexA].a;
-	b2Vec2 cB = data.positions[m_indexB].c;
+	Vec2 cB = data.positions[m_indexB].c;
 	float32 aB = data.positions[m_indexB].a;
 
 	b2Rot qA(aA), qB(aB);
 
-	b2Vec2 rA = b2Mul(qA, m_localAnchorA - m_localCenterA);
-	b2Vec2 rB = b2Mul(qB, m_localAnchorB - m_localCenterB);
-	b2Vec2 d = (cB - cA) + rB - rA;
+	Vec2 rA = b2Mul(qA, m_localAnchorA - m_localCenterA);
+	Vec2 rB = b2Mul(qB, m_localAnchorB - m_localCenterB);
+	Vec2 d = (cB - cA) + rB - rA;
 
-	b2Vec2 ay = b2Mul(qA, m_localYAxisA);
+	Vec2 ay = b2Mul(qA, m_localYAxisA);
 
 	float32 sAy = b2Cross(d + rA, ay);
 	float32 sBy = b2Cross(rB, ay);
@@ -311,7 +311,7 @@ bool b2WheelJoint::SolvePositionConstraints(const b2SolverData& data)
 		impulse = 0.0f;
 	}
 
-	b2Vec2 P = impulse * ay;
+	Vec2 P = impulse * ay;
 	float32 LA = impulse * sAy;
 	float32 LB = impulse * sBy;
 
@@ -328,17 +328,17 @@ bool b2WheelJoint::SolvePositionConstraints(const b2SolverData& data)
 	return b2Abs(C) <= b2_linearSlop;
 }
 
-b2Vec2 b2WheelJoint::GetAnchorA() const
+Vec2 b2WheelJoint::GetAnchorA() const
 {
 	return GetBodyA().GetWorldPoint(m_localAnchorA);
 }
 
-b2Vec2 b2WheelJoint::GetAnchorB() const
+Vec2 b2WheelJoint::GetAnchorB() const
 {
 	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
-b2Vec2 b2WheelJoint::GetReactionForce(float32 inv_dt) const
+Vec2 b2WheelJoint::GetReactionForce(float32 inv_dt) const
 {
 	return inv_dt * (m_impulse * m_ay + m_springImpulse * m_ax);
 }
@@ -353,10 +353,10 @@ float32 b2WheelJoint::GetJointTranslation() const
 	Body& bA = GetBodyA();
 	Body& bB = GetBodyB();
 
-	b2Vec2 pA = bA.GetWorldPoint(m_localAnchorA);
-	b2Vec2 pB = bB.GetWorldPoint(m_localAnchorB);
-	b2Vec2 d = pB - pA;
-	b2Vec2 axis = bA.GetWorldVector(m_localXAxisA);
+	Vec2 pA = bA.GetWorldPoint(m_localAnchorA);
+	Vec2 pB = bB.GetWorldPoint(m_localAnchorB);
+	Vec2 d = pB - pA;
+	Vec2 axis = bA.GetWorldVector(m_localXAxisA);
 
 	float32 translation = b2Dot(d, axis);
 	return translation;

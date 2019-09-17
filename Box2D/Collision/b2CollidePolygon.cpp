@@ -26,9 +26,9 @@ static float32 b2FindMaxSeparation(int32* edgeIndex,
 {
 	int32 count1 = poly1.m_count;
 	int32 count2 = poly2.m_count;
-	const b2Vec2* n1s = poly1.m_normals;
-	const b2Vec2* v1s = poly1.m_vertices;
-	const b2Vec2* v2s = poly2.m_vertices;
+	const Vec2* n1s = poly1.m_normals;
+	const Vec2* v1s = poly1.m_vertices;
+	const Vec2* v2s = poly2.m_vertices;
 	b2Transform xf = b2MulT(xf2, xf1);
 
 	int32 bestIndex = 0;
@@ -36,8 +36,8 @@ static float32 b2FindMaxSeparation(int32* edgeIndex,
 	for (int32 i = 0; i < count1; ++i)
 	{
 		// Get poly1 normal in frame2.
-		b2Vec2 n = b2Mul(xf.q, n1s[i]);
-		b2Vec2 v1 = b2Mul(xf, v1s[i]);
+		Vec2 n = b2Mul(xf.q, n1s[i]);
+		Vec2 v1 = b2Mul(xf, v1s[i]);
 
 		// Find deepest point for normal i.
 		float32 si = b2_maxFloat;
@@ -65,16 +65,16 @@ static void b2FindIncidentEdge(b2ClipVertex c[2],
 							 const b2PolygonShape& poly1, const b2Transform& xf1, int32 edge1,
 							 const b2PolygonShape& poly2, const b2Transform& xf2)
 {
-	const b2Vec2* normals1 = poly1.m_normals;
+	const Vec2* normals1 = poly1.m_normals;
 
 	int32 count2 = poly2.m_count;
-	const b2Vec2* vertices2 = poly2.m_vertices;
-	const b2Vec2* normals2 = poly2.m_normals;
+	const Vec2* vertices2 = poly2.m_vertices;
+	const Vec2* normals2 = poly2.m_normals;
 
 	b2Assert(0 <= edge1 && edge1 < poly1.m_count);
 
 	// Get the normal of the reference edge in poly2's frame.
-	b2Vec2 normal1 = b2MulT(xf2.q, b2Mul(xf1.q, normals1[edge1]));
+	Vec2 normal1 = b2MulT(xf2.q, b2Mul(xf1.q, normals1[edge1]));
 
 	// Find the incident edge on poly2.
 	int32 index = 0;
@@ -162,22 +162,22 @@ void b2CollidePolygons(b2Manifold& manifold,
 	b2FindIncidentEdge(incidentEdge, *poly1, xf1, edge1, *poly2, xf2);
 
 	int32 count1 = poly1->m_count;
-	const b2Vec2* vertices1 = poly1->m_vertices;
+	const Vec2* vertices1 = poly1->m_vertices;
 
 	int32 iv1 = edge1;
 	int32 iv2 = edge1 + 1 < count1 ? edge1 + 1 : 0;
 
-	b2Vec2 v11 = vertices1[iv1];
-	b2Vec2 v12 = vertices1[iv2];
+	Vec2 v11 = vertices1[iv1];
+	Vec2 v12 = vertices1[iv2];
 
-	b2Vec2 localTangent = v12 - v11;
+	Vec2 localTangent = v12 - v11;
 	localTangent.Normalize();
 	
-	b2Vec2 localNormal = b2Cross(localTangent, 1.0f);
-	b2Vec2 planePoint = 0.5f * (v11 + v12);
+	Vec2 localNormal = b2Cross(localTangent, 1.0f);
+	Vec2 planePoint = 0.5f * (v11 + v12);
 
-	b2Vec2 tangent = b2Mul(xf1.q, localTangent);
-	b2Vec2 normal = b2Cross(tangent, 1.0f);
+	Vec2 tangent = b2Mul(xf1.q, localTangent);
+	Vec2 normal = b2Cross(tangent, 1.0f);
 	
 	v11 = b2Mul(xf1, v11);
 	v12 = b2Mul(xf1, v12);

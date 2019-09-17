@@ -35,13 +35,13 @@ struct b2FrictionJointDef : public b2JointDef
 
 	/// Initialize the bodies, anchors, axis, and reference angle using the world
 	/// anchor and world axis.
-	void Initialize(Body& bodyA, Body& bodyB, const b2Vec2& anchor);
+	void Initialize(Body& bodyA, Body& bodyB, const Vec2& anchor);
 
 	/// The local anchor point relative to bodyA's origin.
-	b2Vec2 localAnchorA;
+	Vec2 localAnchorA;
 
 	/// The local anchor point relative to bodyB's origin.
-	b2Vec2 localAnchorB;
+	Vec2 localAnchorB;
 
 	/// The maximum friction force in N.
 	float32 maxForce;
@@ -55,17 +55,17 @@ struct b2FrictionJointDef : public b2JointDef
 class b2FrictionJoint : public b2Joint
 {
 public:
-	b2Vec2 GetAnchorA() const;
-	b2Vec2 GetAnchorB() const;
+	Vec2 GetAnchorA() const;
+	Vec2 GetAnchorB() const;
 
-	b2Vec2 GetReactionForce(float32 inv_dt) const;
+	Vec2 GetReactionForce(float32 inv_dt) const;
 	float32 GetReactionTorque(float32 inv_dt) const;
 
 	/// The local anchor point relative to bodyA's origin.
-	const b2Vec2& GetLocalAnchorA() const { return m_localAnchorA; }
+	const Vec2& GetLocalAnchorA() const { return m_localAnchorA; }
 
 	/// The local anchor point relative to bodyB's origin.
-	const b2Vec2& GetLocalAnchorB() const  { return m_localAnchorB; }
+	const Vec2& GetLocalAnchorB() const  { return m_localAnchorB; }
 
 	/// Set the maximum friction force in N.
 	void SetMaxForce(float32 force);
@@ -92,11 +92,11 @@ protected:
 	void SolveVelocityConstraints(const b2SolverData& data);
 	bool SolvePositionConstraints(const b2SolverData& data);
 
-	b2Vec2 m_localAnchorA;
-	b2Vec2 m_localAnchorB;
+	Vec2 m_localAnchorA;
+	Vec2 m_localAnchorB;
 
 	// Solver shared
-	b2Vec2 m_linearImpulse;
+	Vec2 m_linearImpulse;
 	float32 m_angularImpulse;
 	float32 m_maxForce;
 	float32 m_maxTorque;
@@ -104,10 +104,10 @@ protected:
 	// Solver temp
 	int32 m_indexA;
 	int32 m_indexB;
-	b2Vec2 m_rA;
-	b2Vec2 m_rB;
-	b2Vec2 m_localCenterA;
-	b2Vec2 m_localCenterB;
+	Vec2 m_rA;
+	Vec2 m_rB;
+	Vec2 m_localCenterA;
+	Vec2 m_localCenterB;
 	float32 m_invMassA;
 	float32 m_invMassB;
 	float32 m_invIA;

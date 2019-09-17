@@ -67,7 +67,7 @@ union b2ContactID
 /// provide reliable contact forces, especially for high speed collisions.
 struct b2ManifoldPoint
 {
-	b2Vec2 localPoint;		///< usage depends on manifold type
+	Vec2 localPoint;		///< usage depends on manifold type
 	float32 normalImpulse;	///< the non-penetration impulse
 	float32 tangentImpulse;	///< the friction impulse
 	b2ContactID id;			///< uniquely identifies a contact point between two shapes
@@ -99,8 +99,8 @@ struct b2Manifold
 	};
 
 	b2ManifoldPoint points[b2_maxManifoldPoints];	///< the points of contact
-	b2Vec2 localNormal;								///< not use for Type::e_points
-	b2Vec2 localPoint;								///< usage depends on manifold type
+	Vec2 localNormal;								///< not use for Type::e_points
+	Vec2 localPoint;								///< usage depends on manifold type
 	Type type;
 	int32 pointCount;								///< the number of manifold points
 };
@@ -116,8 +116,8 @@ struct b2WorldManifold
 					const b2Transform& xfA, float32 radiusA,
 					const b2Transform& xfB, float32 radiusB);
 
-	b2Vec2 normal;								///< world vector pointing from A to B
-	b2Vec2 points[b2_maxManifoldPoints];		///< world contact point (point of intersection)
+	Vec2 normal;								///< world vector pointing from A to B
+	Vec2 points[b2_maxManifoldPoints];		///< world contact point (point of intersection)
 	float32 separations[b2_maxManifoldPoints];	///< a negative value indicates overlap, in meters
 };
 
@@ -138,7 +138,7 @@ void b2GetPointStates(b2PointState state1[b2_maxManifoldPoints], b2PointState st
 /// Used for computing contact manifolds.
 struct b2ClipVertex
 {
-	b2Vec2 v;
+	Vec2 v;
 	b2ContactID id;
 };
 
@@ -147,7 +147,7 @@ struct b2RayCastInput
 {
 	b2RayCastInput() {};
 	b2RayCastInput() restrict(amp) {};
-	b2Vec2 p1, p2;
+	Vec2 p1, p2;
 	float32 maxFraction;
 };
 
@@ -157,7 +157,7 @@ struct b2RayCastOutput
 {
 	b2RayCastOutput() {};
 	b2RayCastOutput() restrict(amp) {};
-	b2Vec2 normal;
+	Vec2 normal;
 	float32 fraction;
 };
 
@@ -172,21 +172,21 @@ struct b2AABB
 	bool IsValid() const restrict(amp);
 
 	/// Get the center of the AABB.
-	b2Vec2 GetCenter() const
+	Vec2 GetCenter() const
 	{
 		return 0.5f * (lowerBound + upperBound);
 	}
-	b2Vec2 GetCenter() const restrict(amp)
+	Vec2 GetCenter() const restrict(amp)
 	{
 		return 0.5f* (lowerBound + upperBound);
 	}
 
 	/// Get the extents of the AABB (half-widths).
-	b2Vec2 GetExtents() const
+	Vec2 GetExtents() const
 	{
 		return 0.5f * (upperBound - lowerBound);
 	}
-	b2Vec2 GetExtents() const restrict(amp)
+	Vec2 GetExtents() const restrict(amp)
 	{
 		return 0.5f* (upperBound - lowerBound);
 	}
@@ -251,8 +251,8 @@ struct b2AABB
 
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input) const;
 
-	b2Vec2 lowerBound;	///< the lower vertex
-	b2Vec2 upperBound;	///< the upper vertex
+	Vec2 lowerBound;	///< the lower vertex
+	Vec2 upperBound;	///< the upper vertex
 };
 struct b2AABBFixtureProxy : b2AABB
 {
@@ -260,8 +260,8 @@ struct b2AABBFixtureProxy : b2AABB
 	b2AABBFixtureProxy(const b2AABB& aabb, int32 fixtureIdx, int32 childIdx)
 		: lowerBound(aabb.lowerBound), upperBound(aabb.upperBound), fixtureIdx(fixtureIdx), childIdx(childIdx) {}
 
-	b2Vec2 lowerBound;	///< the lower vertex
-	b2Vec2 upperBound;	///< the upper vertex
+	Vec2 lowerBound;	///< the lower vertex
+	Vec2 upperBound;	///< the upper vertex
 
 	int32 fixtureIdx;
 	int32 childIdx;
@@ -299,21 +299,21 @@ void b2CollideEdgeAndPolygon(b2Manifold& manifold,
 
 /// Clipping for contact manifolds.
 int32 b2ClipSegmentToLine(b2ClipVertex vOut[2], const b2ClipVertex vIn[2],
-							const b2Vec2& normal, float32 offset, int32 vertexIndexA);
+							const Vec2& normal, float32 offset, int32 vertexIndexA);
 
 
 // ---------------- Inline Functions ------------------------------------------
 
 inline bool b2AABB::IsValid() const
 {
-	b2Vec2 d = upperBound - lowerBound;
+	Vec2 d = upperBound - lowerBound;
 	bool valid = d.x >= 0.0f && d.y >= 0.0f;
 	valid = valid && lowerBound.IsValid() && upperBound.IsValid();
 	return valid;
 }
 inline bool b2AABB::IsValid() const restrict(amp)
 {
-	b2Vec2 d = upperBound - lowerBound;
+	Vec2 d = upperBound - lowerBound;
 	bool valid = d.x >= 0.0f && d.y >= 0.0f;
 	valid = valid && lowerBound.IsValid() && upperBound.IsValid();
 	return valid;
@@ -321,7 +321,7 @@ inline bool b2AABB::IsValid() const restrict(amp)
 
 inline bool b2TestOverlap(const b2AABB& a, const b2AABB& b)
 {
-	b2Vec2 d1, d2;
+	Vec2 d1, d2;
 	d1 = b.lowerBound - a.upperBound;
 	d2 = a.lowerBound - b.upperBound;
 

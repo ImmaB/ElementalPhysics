@@ -114,7 +114,7 @@ void Body::SetMassData(const b2MassData& massData)
 	}
 
 	// Move center of mass.
-	b2Vec2 oldCenter = m_sweep.c;
+	Vec2 oldCenter = m_sweep.c;
 	m_sweep.localCenter = massData.center;
 	m_sweep.c0 = m_sweep.c = b2Mul(m_xf, m_sweep.localCenter);
 

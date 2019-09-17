@@ -36,7 +36,7 @@ public:
 	/// @param the position of the generator.
 	/// @param a tag used to identify the generator in callback functions.
 	/// @param whether to callback for nodes associated with the generator.
-	void AddGenerator(const b2Vec2& center, int32 tag, bool necessary);
+	void AddGenerator(const Vec2& center, int32 tag, bool necessary);
 
 	/// Generate the Voronoi diagram. It is rasterized with a given interval
 	/// in the same range as the necessary generators exist.
@@ -61,7 +61,7 @@ private:
 
 	struct Generator
 	{
-		b2Vec2 center;
+		Vec2 center;
 		int32 tag;
 		bool necessary;
 	};

@@ -31,8 +31,8 @@ struct Particle
 		Def()
 		{
 			flags = 0;
-			position = b2Vec3_zero;
-			velocity = b2Vec3_zero;
+			position = Vec3_zero;
+			velocity = Vec3_zero;
 			color = 0;
 			groupIdx = INVALID_IDX;
 			matIdx = INVALID_IDX;
@@ -40,8 +40,8 @@ struct Particle
 			health = 1.0f;
 		}
 		uint32 flags;
-		b2Vec3 position;
-		b2Vec3 velocity;
+		Vec3 position;
+		Vec3 velocity;
 		int32 color;
 
 		float32 heat;

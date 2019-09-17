@@ -49,7 +49,7 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def, b2World& world)
 	m_gamma = 0.0f;
 }
 
-void b2MouseJoint::SetTarget(const b2Vec2& target)
+void b2MouseJoint::SetTarget(const Vec2& target)
 {
 	Body& bodyB = GetBodyB();
 	if (!bodyB.IsAwake())
@@ -57,7 +57,7 @@ void b2MouseJoint::SetTarget(const b2Vec2& target)
 	m_targetA = target;
 }
 
-const b2Vec2& b2MouseJoint::GetTarget() const
+const Vec2& b2MouseJoint::GetTarget() const
 {
 	return m_targetA;
 }
@@ -100,9 +100,9 @@ void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 	m_invMassB = bodyB.m_invMass;
 	m_invIB = bodyB.m_invI;
 
-	b2Vec2 cB = data.positions[m_indexB].c;
+	Vec2 cB = data.positions[m_indexB].c;
 	float32 aB = data.positions[m_indexB].a;
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	b2Rot qB(aB);
@@ -167,14 +167,14 @@ void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 
 void b2MouseJoint::SolveVelocityConstraints(const b2SolverData& data)
 {
-	b2Vec2 vB = data.velocities[m_indexB].v;
+	Vec2 vB = data.velocities[m_indexB].v;
 	float32 wB = data.velocities[m_indexB].w;
 
 	// Cdot = v + cross(w, r)
-	b2Vec2 Cdot = vB + b2Cross(wB, m_rB);
-	b2Vec2 impulse = b2Mul(m_mass, -(Cdot + m_C + m_gamma * m_impulse));
+	Vec2 Cdot = vB + b2Cross(wB, m_rB);
+	Vec2 impulse = b2Mul(m_mass, -(Cdot + m_C + m_gamma * m_impulse));
 
-	b2Vec2 oldImpulse = m_impulse;
+	Vec2 oldImpulse = m_impulse;
 	m_impulse += impulse;
 	float32 maxImpulse = data.step.dt * m_maxForce;
 	if (m_impulse.LengthSquared() > maxImpulse * maxImpulse)
@@ -196,17 +196,17 @@ bool b2MouseJoint::SolvePositionConstraints(const b2SolverData& data)
 	return true;
 }
 
-b2Vec2 b2MouseJoint::GetAnchorA() const
+Vec2 b2MouseJoint::GetAnchorA() const
 {
 	return m_targetA;
 }
 
-b2Vec2 b2MouseJoint::GetAnchorB() const
+Vec2 b2MouseJoint::GetAnchorB() const
 {
 	return GetBodyB().GetWorldPoint(m_localAnchorB);
 }
 
-b2Vec2 b2MouseJoint::GetReactionForce(float32 inv_dt) const
+Vec2 b2MouseJoint::GetReactionForce(float32 inv_dt) const
 {
 	return inv_dt * m_impulse;
 }
@@ -216,7 +216,7 @@ float32 b2MouseJoint::GetReactionTorque(float32 inv_dt) const
 	return inv_dt * 0.0f;
 }
 
-void b2MouseJoint::ShiftOrigin(const b2Vec2& newOrigin)
+void b2MouseJoint::ShiftOrigin(const Vec2& newOrigin)
 {
 	m_targetA -= newOrigin;
 }

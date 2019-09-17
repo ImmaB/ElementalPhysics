@@ -33,16 +33,16 @@ void b2WorldManifold::Initialize(const b2Manifold* manifold,
 	case b2Manifold::e_circles:
 		{
 			normal.Set(1.0f, 0.0f);
-			b2Vec2 pointA = b2Mul(xfA, manifold->localPoint);
-			b2Vec2 pointB = b2Mul(xfB, manifold->points[0].localPoint);
+			Vec2 pointA = b2Mul(xfA, manifold->localPoint);
+			Vec2 pointB = b2Mul(xfB, manifold->points[0].localPoint);
 			if (b2DistanceSquared(pointA, pointB) > b2_epsilon * b2_epsilon)
 			{
 				normal = pointB - pointA;
 				normal.Normalize();
 			}
 
-			b2Vec2 cA = pointA + radiusA * normal;
-			b2Vec2 cB = pointB - radiusB * normal;
+			Vec2 cA = pointA + radiusA * normal;
+			Vec2 cB = pointB - radiusB * normal;
 			points[0] = 0.5f * (cA + cB);
 			separations[0] = b2Dot(cB - cA, normal);
 		}
@@ -51,13 +51,13 @@ void b2WorldManifold::Initialize(const b2Manifold* manifold,
 	case b2Manifold::e_faceA:
 		{
 			normal = b2Mul(xfA.q, manifold->localNormal);
-			b2Vec2 planePoint = b2Mul(xfA, manifold->localPoint);
+			Vec2 planePoint = b2Mul(xfA, manifold->localPoint);
 			
 			for (int32 i = 0; i < manifold->pointCount; ++i)
 			{
-				b2Vec2 clipPoint = b2Mul(xfB, manifold->points[i].localPoint);
-				b2Vec2 cA = clipPoint + (radiusA - b2Dot(clipPoint - planePoint, normal)) * normal;
-				b2Vec2 cB = clipPoint - radiusB * normal;
+				Vec2 clipPoint = b2Mul(xfB, manifold->points[i].localPoint);
+				Vec2 cA = clipPoint + (radiusA - b2Dot(clipPoint - planePoint, normal)) * normal;
+				Vec2 cB = clipPoint - radiusB * normal;
 				points[i] = 0.5f * (cA + cB);
 				separations[i] = b2Dot(cB - cA, normal);
 			}
@@ -67,13 +67,13 @@ void b2WorldManifold::Initialize(const b2Manifold* manifold,
 	case b2Manifold::e_faceB:
 		{
 			normal = b2Mul(xfB.q, manifold->localNormal);
-			b2Vec2 planePoint = b2Mul(xfB, manifold->localPoint);
+			Vec2 planePoint = b2Mul(xfB, manifold->localPoint);
 
 			for (int32 i = 0; i < manifold->pointCount; ++i)
 			{
-				b2Vec2 clipPoint = b2Mul(xfA, manifold->points[i].localPoint);
-				b2Vec2 cB = clipPoint + (radiusB - b2Dot(clipPoint - planePoint, normal)) * normal;
-				b2Vec2 cA = clipPoint - radiusA * normal;
+				Vec2 clipPoint = b2Mul(xfA, manifold->points[i].localPoint);
+				Vec2 cB = clipPoint + (radiusB - b2Dot(clipPoint - planePoint, normal)) * normal;
+				Vec2 cA = clipPoint - radiusA * normal;
 				points[i] = 0.5f * (cA + cB);
 				separations[i] = b2Dot(cA - cB, normal);
 			}
@@ -135,11 +135,11 @@ bool b2AABB::RayCast(b2RayCastOutput& output, const b2RayCastInput& input) const
 	float32 tmin = -b2_maxFloat;
 	float32 tmax = b2_maxFloat;
 
-	b2Vec2 p = input.p1;
-	b2Vec2 d = input.p2 - input.p1;
-	b2Vec2 absD = b2Abs(d);
+	Vec2 p = input.p1;
+	Vec2 d = input.p2 - input.p1;
+	Vec2 absD = b2Abs(d);
 
-	b2Vec2 normal;
+	Vec2 normal;
 
 	for (int32 i = 0; i < 2; ++i)
 	{
@@ -199,7 +199,7 @@ bool b2AABB::RayCast(b2RayCastOutput& output, const b2RayCastInput& input) const
 
 // Sutherland-Hodgman clipping.
 int32 b2ClipSegmentToLine(b2ClipVertex vOut[2], const b2ClipVertex vIn[2],
-						const b2Vec2& normal, float32 offset, int32 vertexIndexA)
+						const Vec2& normal, float32 offset, int32 vertexIndexA)
 {
 	// Start with no output points
 	int32 numOut = 0;

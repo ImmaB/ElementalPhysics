@@ -113,7 +113,7 @@ public:
 	float32 m_invStride;
 	float32 m_halfStride;
 	int32 m_tileCntY, m_tileCntX, m_tileCnt;
-	b2Vec2 m_size;
+	Vec2 m_size;
 	int32 m_chunkCntY;
 	int32 m_chunkCntX;
 	int32 m_chunkCnt;
@@ -134,7 +134,7 @@ public:
 
 	void CopyChangedTiles();
 
-	Tile GetTileAt(const b2Vec2& p) const;
+	Tile GetTileAt(const Vec2& p) const;
 	Ground::Mat GetMat(const Ground::Tile& tile);
 
 	void ExtractParticles(const b2Shape& shape, const b2Transform& transform,
@@ -142,17 +142,17 @@ public:
 
 private:
 
-	inline bool IsPositionInGrid(const b2Vec2& p) const { return p.x > 0 && p.y > 0 && p.x < m_size.x && p.y < m_size.y; }
-	inline int32 GetIdx(const b2Vec2& p) const { return p.y * m_invStride * m_tileCntX + p.x * m_invStride; }
+	inline bool IsPositionInGrid(const Vec2& p) const { return p.x > 0 && p.y > 0 && p.x < m_size.x && p.y < m_size.y; }
+	inline int32 GetIdx(const Vec2& p) const { return p.y * m_invStride * m_tileCntX + p.x * m_invStride; }
 	inline int32 GetIdx(const float32 f) const { return f * m_invStride; }
 	inline int32 GetIdx(const int32 x, const int32 y) const { return y * m_tileCntX + x; }
 
-	b2Vec2 GetTileCenter(const int32 x, const int32 y) const { return b2Vec2(x * m_stride + m_halfStride, y * m_stride + m_halfStride); }
+	Vec2 GetTileCenter(const int32 x, const int32 y) const { return Vec2(x * m_stride + m_halfStride, y * m_stride + m_halfStride); }
 
 	template<typename F>
 	pair<int32, int32> ForEachTileInsideShape(const b2Shape& shape, const b2Transform& transform, F& function);
 
-	inline b2Vec2 GetRandomTilePosition(const b2Vec2& center) const { return center + b2Vec2(0.5 - Random(), 0.5 - Random()) * m_stride; };
+	inline Vec2 GetRandomTilePosition(const Vec2& center) const { return center + Vec2(0.5 - Random(), 0.5 - Random()) * m_stride; };
 };
 
 

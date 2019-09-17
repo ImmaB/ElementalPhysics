@@ -46,16 +46,16 @@ struct b2PrismaticJointDef : public b2JointDef
 
 	/// Initialize the bodies, anchors, axis, and reference angle using the world
 	/// anchor and unit world axis.
-	void Initialize(Body& bodyA, Body& bodyB, const b2Vec2& anchor, const b2Vec2& axis);
+	void Initialize(Body& bodyA, Body& bodyB, const Vec2& anchor, const Vec2& axis);
 
 	/// The local anchor point relative to bodyA's origin.
-	b2Vec2 localAnchorA;
+	Vec2 localAnchorA;
 
 	/// The local anchor point relative to bodyB's origin.
-	b2Vec2 localAnchorB;
+	Vec2 localAnchorB;
 
 	/// The local translation unit axis in bodyA.
-	b2Vec2 localAxisA;
+	Vec2 localAxisA;
 
 	/// The constrained angle between the bodies: bodyB_angle - bodyA_angle.
 	float32 referenceAngle;
@@ -86,20 +86,20 @@ struct b2PrismaticJointDef : public b2JointDef
 class b2PrismaticJoint : public b2Joint
 {
 public:
-	b2Vec2 GetAnchorA() const;
-	b2Vec2 GetAnchorB() const;
+	Vec2 GetAnchorA() const;
+	Vec2 GetAnchorB() const;
 
-	b2Vec2 GetReactionForce(float32 inv_dt) const;
+	Vec2 GetReactionForce(float32 inv_dt) const;
 	float32 GetReactionTorque(float32 inv_dt) const;
 
 	/// The local anchor point relative to bodyA's origin.
-	const b2Vec2& GetLocalAnchorA() const { return m_localAnchorA; }
+	const Vec2& GetLocalAnchorA() const { return m_localAnchorA; }
 
 	/// The local anchor point relative to bodyB's origin.
-	const b2Vec2& GetLocalAnchorB() const  { return m_localAnchorB; }
+	const Vec2& GetLocalAnchorB() const  { return m_localAnchorB; }
 
 	/// The local joint axis relative to bodyA.
-	const b2Vec2& GetLocalAxisA() const { return m_localXAxisA; }
+	const Vec2& GetLocalAxisA() const { return m_localXAxisA; }
 
 	/// Get the reference angle.
 	float32 GetReferenceAngle() const { return m_referenceAngle; }
@@ -157,12 +157,12 @@ protected:
 	bool SolvePositionConstraints(const b2SolverData& data);
 
 	// Solver shared
-	b2Vec2 m_localAnchorA;
-	b2Vec2 m_localAnchorB;
-	b2Vec2 m_localXAxisA;
-	b2Vec2 m_localYAxisA;
+	Vec2 m_localAnchorA;
+	Vec2 m_localAnchorB;
+	Vec2 m_localXAxisA;
+	Vec2 m_localYAxisA;
 	float32 m_referenceAngle;
-	b2Vec3 m_impulse;
+	Vec3 m_impulse;
 	float32 m_motorImpulse;
 	float32 m_lowerTranslation;
 	float32 m_upperTranslation;
@@ -175,13 +175,13 @@ protected:
 	// Solver temp
 	int32 m_indexA;
 	int32 m_indexB;
-	b2Vec2 m_localCenterA;
-	b2Vec2 m_localCenterB;
+	Vec2 m_localCenterA;
+	Vec2 m_localCenterB;
 	float32 m_invMassA;
 	float32 m_invMassB;
 	float32 m_invIA;
 	float32 m_invIB;
-	b2Vec2 m_axis, m_perp;
+	Vec2 m_axis, m_perp;
 	float32 m_s1, m_s2;
 	float32 m_a1, m_a2;
 	b2Mat33 m_K;

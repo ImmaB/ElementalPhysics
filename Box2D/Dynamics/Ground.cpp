@@ -18,7 +18,7 @@ Ground::Ground(b2World& world, const def& gd) :
 	m_tileCntY = gd.ySize;
 	m_tileCntX = gd.xSize;
 	m_tileCnt = m_tileCntY * m_tileCntX;
-	m_size = b2Vec2(m_tileCntX, m_tileCntY) * m_stride;
+	m_size = Vec2(m_tileCntX, m_tileCntY) * m_stride;
 	m_chunkCntY = m_tileCntY / TILE_SIZE_SQRT + 1;
 	m_chunkCntX = m_tileCntX / TILE_SIZE_SQRT + 1;
 	m_chunkCnt = m_chunkCntY * m_chunkCntX;
@@ -105,7 +105,7 @@ void Ground::CopyChangedTiles()
 }
 
 
-Ground::Tile Ground::GetTileAt(const b2Vec2& p) const
+Ground::Tile Ground::GetTileAt(const Vec2& p) const
 {
 	if (!IsPositionInGrid(p)) return Tile();
 	return m_tiles[GetIdx(p)];
@@ -119,9 +119,9 @@ Ground::Mat Ground::GetMat(const Ground::Tile& tile)
 void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform,
 							  int32 partMatIdx, uint32 partFlags, float32 probability)
 {
-	vector<b2Vec3> positions;
+	vector<Vec3> positions;
 	const float32 heightOffset = m_world.GetParticleSystem()->GetRadius() + b2_linearSlop;
-	auto range = ForEachTileInsideShape(shape, transform, [=, &positions](Tile& tile, const b2Vec2& tileCenter)
+	auto range = ForEachTileInsideShape(shape, transform, [=, &positions](Tile& tile, const Vec2& tileCenter)
 	{
 		if (!tile.particleCnt) return;
 		for (int32 i = tile.particleCnt - 1; i >= 0; i--)
@@ -129,14 +129,15 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 			if (tile.particleMatIdxs[i] != partMatIdx) continue;
 			if (Random() > probability) return;
 			tile.removeParticle(i);
-			positions.push_back(b2Vec3(GetRandomTilePosition(tileCenter), tile.height + heightOffset));
+			const Vec3 p(GetRandomTilePosition(tileCenter), tile.height + heightOffset);
+			positions.push_back(p);
 			return;
 		}
 	});
 	if (positions.empty()) return;
 	ParticleGroup::Def pgd;
 	pgd.particleCount = positions.size();
-	pgd.positionData = positions;
+	pgd.positions = positions;
 	pgd.matIdx = partMatIdx;
 	pgd.flags = partFlags;
 	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles, range.first, range.second - range.first);
@@ -156,8 +157,8 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape, const b2
 		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
 	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
 	{
-		const b2Vec2 p = GetTileCenter(x, y);
-		if (IsPositionInGrid(p) && shape.TestPoint(transform, b2Vec3(p, 0)))
+		const Vec2 p = GetTileCenter(x, y);
+		if (IsPositionInGrid(p) && shape.TestPoint(transform, Vec3(p, 0)))
 			function(m_tiles[GetIdx(x, y)], p);
 	}
 	return pair<int32, int32>(GetIdx(lowerXIdx, lowerYIdx), GetIdx(upperXIdx, upperYIdx));

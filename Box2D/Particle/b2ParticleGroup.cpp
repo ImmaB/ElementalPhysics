@@ -50,7 +50,7 @@ void ParticleGroup::Def::SetCircleShapesFromVertexList(void* inBuf,
 	b2Shape** pShapes = new b2Shape*[numShapes];
 	for (int i = 0; i < numShapes; ++i) {
 		pCircleShapes[i].m_radius = radius;
-		pCircleShapes[i].m_p = b2Vec2(points[i * 2], points[i * 2 + 1]);
+		pCircleShapes[i].m_p = Vec2(points[i * 2], points[i * 2 + 1]);
 		pShapes[i] = &pCircleShapes[i];
 	}
 

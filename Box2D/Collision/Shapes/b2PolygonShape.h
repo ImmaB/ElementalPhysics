@@ -23,16 +23,16 @@
 #include <Box2D/Collision/Shapes/b2Shape.h>
 #include <array>
 
-//using polyVec2s = std::array<b2Vec2, b2_maxPolygonVertices>;
+//using polyVec2s = std::array<Vec2, b2_maxPolygonVertices>;
 
 struct b2PolygonShapeDef : public b2Shape::Def
 {
-	b2Vec2 centroid;
-	b2Vec2 vertices[b2_maxPolygonVertices];
-	b2Vec2 normals[b2_maxPolygonVertices];
+	Vec2 centroid;
+	Vec2 vertices[b2_maxPolygonVertices];
+	Vec2 normals[b2_maxPolygonVertices];
 	int32 count;
 
-	void SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle);
+	void SetAsBox(const Vec2& size, const Vec2& center, float32 angle);
 };
 
 /// A convex polygon. It is assumed that the interior of the polygon is to
@@ -41,9 +41,9 @@ struct b2PolygonShapeDef : public b2Shape::Def
 /// In most cases you should not need many vertices for a convex polygon.
 struct b2PolygonShape : public b2Shape
 {
-	b2Vec2 m_centroid;
-	b2Vec2 m_vertices[b2_maxPolygonVertices];
-	b2Vec2 m_normals[b2_maxPolygonVertices];
+	Vec2 m_centroid;
+	Vec2 m_vertices[b2_maxPolygonVertices];
+	Vec2 m_normals[b2_maxPolygonVertices];
 	int32 m_count;
 
 	/// Create a convex hull from the given array of local points.
@@ -65,20 +65,20 @@ struct b2PolygonShape : public b2Shape
 	/// Build vertices to represent an axis-aligned box centered on the local origin.
 	/// @param hx the half-width.
 	/// @param hy the half-height.
-	void SetAsBox(const b2Vec2& size);
+	void SetAsBox(const Vec2& size);
 
 	/// Build vertices to represent an oriented box.
 	/// @param hx the half-width.
 	/// @param hy the half-height.
 	/// @param center the center of the box in local coordinates.
 	/// @param angle the rotation of the box in local coordinates.
-	void SetAsBox(const b2Vec2& size, const b2Vec2& center, float32 angle);
+	void SetAsBox(const Vec2& size, const Vec2& center, float32 angle);
 
 	/// @see b2Shape::TestPoint
-	bool TestPoint(const b2Transform& transform, const b2Vec3& p) const;
+	bool TestPoint(const b2Transform& transform, const Vec3& p) const;
 	
 	// @see b2Shape::ComputeDistance
-	void ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const;
+	void ComputeDistance(const b2Transform& xf, const Vec2& p, float32& distance, Vec2& normal, int32 childIndex) const;
 
 	/// Implement b2Shape.
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
@@ -94,7 +94,7 @@ struct b2PolygonShape : public b2Shape
 	int32 GetVertexCount() const { return m_count; }
 
 	/// Get a vertex by index.
-	const b2Vec2& GetVertex(int32 index) const;
+	const Vec2& GetVertex(int32 index) const;
 
 	/// Validate convexity. This is a very time consuming operation.
 	/// @returns true if valid
@@ -111,18 +111,18 @@ struct AmpPolygonShape
 	float32 m_area;
 	int32 _placeholder;
 
-	b2Vec2 m_centroid;
-	b2Vec2 m_vertices[b2_maxPolygonVertices];
-	b2Vec2 m_normals[b2_maxPolygonVertices];
+	Vec2 m_centroid;
+	Vec2 m_vertices[b2_maxPolygonVertices];
+	Vec2 m_normals[b2_maxPolygonVertices];
 	int32 m_count;
 	int32 _placeholder2;
 
-	void ComputeDistance(const b2Transform& xf, const b2Vec2& p,
-		float32& distance, b2Vec2& normal) const restrict(amp)
+	void ComputeDistance(const b2Transform& xf, const Vec2& p,
+		float32& distance, Vec2& normal) const restrict(amp)
 	{
-		const b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+		const Vec2 pLocal = b2MulT(xf.q, p - xf.p);
 		float32 maxDistance = -FLT_MAX;
-		b2Vec2 normalForMaxDistance = pLocal;
+		Vec2 normalForMaxDistance = pLocal;
 
 		for (int32 i = 0; i < m_count; ++i)
 		{
@@ -136,11 +136,11 @@ struct AmpPolygonShape
 
 		if (maxDistance > 0)
 		{
-			b2Vec2 minDistance = normalForMaxDistance;
+			Vec2 minDistance = normalForMaxDistance;
 			float32 minDistance2 = maxDistance * maxDistance;
 			for (int32 i = 0; i < m_count; ++i)
 			{
-				const b2Vec2 distance = pLocal - m_vertices[i];
+				const Vec2 distance = pLocal - m_vertices[i];
 				const float32 distance2 = distance.LengthSquared();
 				if (minDistance2 > distance2)
 				{
@@ -164,9 +164,9 @@ struct AmpPolygonShape
 		const b2Transform& xf) const restrict(amp)
 	{
 		// Put the ray into the polygon's frame of reference.
-		b2Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
-		b2Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
-		b2Vec2 d = p2 - p1;
+		Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
+		Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
+		Vec2 d = p2 - p1;
 
 		float32 lower = 0.0f, upper = input.maxFraction;
 
@@ -223,9 +223,9 @@ struct AmpPolygonShape
 		return false;
 	}
 
-	bool TestPoint(const b2Transform& xf, const b2Vec3& p) const restrict(amp)
+	bool TestPoint(const b2Transform& xf, const Vec3& p) const restrict(amp)
 	{
-		b2Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+		Vec2 pLocal = b2MulT(xf.q, p - xf.p);
 
 		for (int32 i = 0; i < m_count; ++i)
 		{
@@ -250,7 +250,7 @@ inline b2PolygonShape::b2PolygonShape()
 	m_centroid.SetZero();
 }
 
-inline const b2Vec2& b2PolygonShape::GetVertex(int32 index) const
+inline const Vec2& b2PolygonShape::GetVertex(int32 index) const
 {
 	b2Assert(0 <= index && index < m_count);
 	return m_vertices[index];
@@ -267,7 +267,7 @@ inline void b2PolygonShape::SetAsBox(float32 hx,
 										 float32 centerX,
 										 float32 centerY,
 										 float32 angle) {
-	SetAsBox(hx, hy, b2Vec2(centerX, centerY), angle);
+	SetAsBox(hx, hy, Vec2(centerX, centerY), angle);
 }
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
 

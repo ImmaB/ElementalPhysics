@@ -36,7 +36,7 @@ struct b2MouseJointDef : public b2JointDef
 
 	/// The initial world target point. This is assumed
 	/// to coincide with the body anchor initially.
-	b2Vec2 target;
+	Vec2 target;
 
 	/// The maximum constraint force that can be exerted
 	/// to move the candidate body. Usually you will express
@@ -62,20 +62,20 @@ class b2MouseJoint : public b2Joint
 public:
 
 	/// Implements b2Joint.
-	b2Vec2 GetAnchorA() const;
+	Vec2 GetAnchorA() const;
 
 	/// Implements b2Joint.
-	b2Vec2 GetAnchorB() const;
+	Vec2 GetAnchorB() const;
 
 	/// Implements b2Joint.
-	b2Vec2 GetReactionForce(float32 inv_dt) const;
+	Vec2 GetReactionForce(float32 inv_dt) const;
 
 	/// Implements b2Joint.
 	float32 GetReactionTorque(float32 inv_dt) const;
 
 	/// Use this to update the target point.
-	void SetTarget(const b2Vec2& target);
-	const b2Vec2& GetTarget() const;
+	void SetTarget(const Vec2& target);
+	const Vec2& GetTarget() const;
 
 	/// Set/get the maximum force in Newtons.
 	void SetMaxForce(float32 force);
@@ -93,7 +93,7 @@ public:
 	void Dump() { b2Log("Mouse joint dumping is not supported.\n"); }
 
 	/// Implement b2Joint::ShiftOrigin
-	void ShiftOrigin(const b2Vec2& newOrigin);
+	void ShiftOrigin(const Vec2& newOrigin);
 
 protected:
 	friend class b2Joint;
@@ -104,26 +104,26 @@ protected:
 	void SolveVelocityConstraints(const b2SolverData& data);
 	bool SolvePositionConstraints(const b2SolverData& data);
 
-	b2Vec2 m_localAnchorB;
-	b2Vec2 m_targetA;
+	Vec2 m_localAnchorB;
+	Vec2 m_targetA;
 	float32 m_frequencyHz;
 	float32 m_dampingRatio;
 	float32 m_beta;
 	
 	// Solver shared
-	b2Vec2 m_impulse;
+	Vec2 m_impulse;
 	float32 m_maxForce;
 	float32 m_gamma;
 
 	// Solver temp
 	int32 m_indexA;
 	int32 m_indexB;
-	b2Vec2 m_rB;
-	b2Vec2 m_localCenterB;
+	Vec2 m_rB;
+	Vec2 m_localCenterB;
 	float32 m_invMassB;
 	float32 m_invIB;
 	b2Mat22 m_mass;
-	b2Vec2 m_C;
+	Vec2 m_C;
 };
 
 #endif

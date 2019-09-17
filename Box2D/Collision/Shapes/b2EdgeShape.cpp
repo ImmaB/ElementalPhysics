@@ -20,7 +20,7 @@
 #include <Box2D/Collision/Shapes/b2EdgeShape.h>
 #include <new>
 
-void b2EdgeShape::Set(const b2Vec2& v1, const b2Vec2& v2)
+void b2EdgeShape::Set(const Vec2& v1, const Vec2& v2)
 {
 	m_vertex1 = v1;
 	m_vertex2 = v2;
@@ -41,22 +41,22 @@ int32 b2EdgeShape::GetChildCount() const
 	return 1;
 }
 
-bool b2EdgeShape::TestPoint(const b2Transform& xf, const b2Vec3& p) const
+bool b2EdgeShape::TestPoint(const b2Transform& xf, const Vec3& p) const
 {
 	B2_NOT_USED(xf);
 	B2_NOT_USED(p);
 	return false;
 }
 
-void b2EdgeShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float32& distance, b2Vec2& normal, int32 childIndex) const
+void b2EdgeShape::ComputeDistance(const b2Transform& xf, const Vec2& p, float32& distance, Vec2& normal, int32 childIndex) const
 {
 	B2_NOT_USED(childIndex);
 
-	b2Vec2 v1 = b2Mul(xf, m_vertex1);
-	b2Vec2 v2 = b2Mul(xf, m_vertex2);
+	Vec2 v1 = b2Mul(xf, m_vertex1);
+	Vec2 v2 = b2Mul(xf, m_vertex2);
 
-	b2Vec2 d = p - v1;
-	b2Vec2 s = v2 - v1;
+	Vec2 d = p - v1;
+	Vec2 s = v2 - v1;
 	float32 ds = b2Dot(d, s);
 	if (ds > 0)
 	{
@@ -69,7 +69,7 @@ void b2EdgeShape::ComputeDistance(const b2Transform& xf, const b2Vec2& p, float3
 
 	float32 d1 = d.Length();
 	distance = d1;
-	normal = d1 > 0 ? 1 / d1 * d : b2Vec2_zero;
+	normal = d1 > 0 ? 1 / d1 * d : Vec2_zero;
 }
 
 // p = p1 + t * d
@@ -82,14 +82,14 @@ bool b2EdgeShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	B2_NOT_USED(childIndex);
 
 	// Put the ray into the edge's frame of reference.
-	b2Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
-	b2Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
-	b2Vec2 d = p2 - p1;
+	Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
+	Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
+	Vec2 d = p2 - p1;
 
-	b2Vec2 v1 = m_vertex1;
-	b2Vec2 v2 = m_vertex2;
-	b2Vec2 e = v2 - v1;
-	b2Vec2 normal(e.y, -e.x);
+	Vec2 v1 = m_vertex1;
+	Vec2 v2 = m_vertex2;
+	Vec2 e = v2 - v1;
+	Vec2 normal(e.y, -e.x);
 	normal.Normalize();
 
 	// q = p1 + t * d
@@ -105,11 +105,11 @@ bool b2EdgeShape::RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 	if (t < 0.0f || input.maxFraction < t)
 		return false;
 
-	b2Vec2 q = p1 + t * d;
+	Vec2 q = p1 + t * d;
 
 	// q = v1 + s * r
 	// s = dot(q - v1, r) / dot(r, r)
-	b2Vec2 r = v2 - v1;
+	Vec2 r = v2 - v1;
 	float32 rr = b2Dot(r, r);
 	if (rr == 0.0f)
 		return false;
@@ -130,13 +130,13 @@ void b2EdgeShape::ComputeAABB(b2AABB& aabb, const b2Transform& xf, int32 childIn
 {
 	B2_NOT_USED(childIndex);
 
-	b2Vec2 v1 = b2Mul(xf, m_vertex1);
-	b2Vec2 v2 = b2Mul(xf, m_vertex2);
+	Vec2 v1 = b2Mul(xf, m_vertex1);
+	Vec2 v2 = b2Mul(xf, m_vertex2);
 
-	b2Vec2 lower = b2Min(v1, v2);
-	b2Vec2 upper = b2Max(v1, v2);
+	Vec2 lower = b2Min(v1, v2);
+	Vec2 upper = b2Max(v1, v2);
 
-	b2Vec2 r(m_radius, m_radius);
+	Vec2 r(m_radius, m_radius);
 	aabb.lowerBound = lower - r;
 	aabb.upperBound = upper + r;
 }
