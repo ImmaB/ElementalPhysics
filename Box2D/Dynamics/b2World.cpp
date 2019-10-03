@@ -342,12 +342,12 @@ void b2World::DestroyJoint(b2Joint* j)
 	}
 }
 
-b2ParticleSystem* b2World::CreateParticleSystem()
+ParticleSystem* b2World::CreateParticleSystem()
 {
 	b2Assert(!IsLocked());
 	if (IsLocked()) return NULL;
 
-	m_particleSystem = new b2ParticleSystem(*this, m_step, m_bodyBuffer, m_fixtureBuffer);
+	m_particleSystem = new ParticleSystem(*this, m_step, m_bodyBuffer, m_fixtureBuffer);
 	return m_particleSystem;
 }
 
@@ -355,7 +355,7 @@ void b2World::DestroyParticleSystem()
 {
 	if (IsLocked() || m_particleSystem == NULL)
 		return;
-	m_particleSystem->~b2ParticleSystem();
+	m_particleSystem->~ParticleSystem();
 	free(m_particleSystem);
 	m_particleSystem = NULL;
 }
@@ -564,15 +564,22 @@ void b2World::SolveGravity(const b2TimeStep& step)
 	});
 }
 
+inline void DistributeHeat(float32& aHeat, float32& bHeat, const float32& factor,
+	const float32& aMass, const float32& bMass)
+{
+	const float32 d = (aHeat - bHeat) * factor / (aMass + bMass);
+	if (b2Abs(d) < b2_epsilon) return;
+	aHeat -= d * bMass;
+	bHeat += d * aMass;
+}
+
 void b2World::SolveHeatConduct(const b2TimeStep& step)
 {
-	const float32 factor = step.dt * 0.001;
+	const float32 factor = step.dt * m_innerHeatExchangeFactor;
 	ForEachBody([=](Body& b)
 	{
-		const float32 energy = (b.m_heat - b.m_surfaceHeat) * factor * m_bodyMaterials[b.m_matIdx].m_heatConductivity;
-		if (b2Abs(energy) < b2_epsilon) return;
-		b.m_surfaceHeat += energy * b.m_mass * b.m_surfaceInvMass;
-		b.m_heat        -= energy * b.m_surfaceMass * b.m_invMass;
+		DistributeHeat(b.m_heat, b.m_surfaceHeat, factor * m_bodyMaterials[b.m_matIdx].m_heatConductivity,
+			b.m_mass, b.m_surfaceMass);
 	});	
 }
 
@@ -1085,9 +1092,9 @@ void b2World::DrawJoint(b2Joint* joint)
 	}
 }
 
-void b2World::DrawParticleSystem(const b2ParticleSystem& system)
+void b2World::DrawParticleSystem(const ParticleSystem& system)
 {
-	int32 particleCount = system.GetParticleCount();
+	int32 particleCount = system.GetCount();
 	if (particleCount)
 	{
 		float32 radius = system.GetRadius();
@@ -1246,22 +1253,9 @@ void b2World::ShiftOrigin(const Vec2& newOrigin)
 	m_contactManager.m_broadPhase.ShiftOrigin(newOrigin);
 }
 
+void b2World::ClearBodyMaterials() { m_bodyMaterials.clear(); }
 int32 b2World::CreateBodyMaterial(const Body::Mat::Def& def)
 {
-	// Try finding duplicat first
-	for (int idx = 0; idx < m_bodyMaterials.size(); idx++)
-		if (const Body::Mat& bm = m_bodyMaterials[idx];
-			def.matFlags == bm.m_matFlags &&
-			def.density == bm.m_density &&
-			def.friction == bm.m_friction &&
-			def.bounciness == bm.m_bounciness &&
-			def.stability == bm.m_stability &&
-			def.extinguishingPoint == bm.m_extinguishingPoint &&
-			def.meltingPoint == bm.m_meltingPoint &&
-			def.ignitionPoint == bm.m_ignitionPoint &&
-			def.heatConductivity == bm.m_heatConductivity)
-			return idx;
-
 	const int32 idx = m_bodyMaterials.size();
 	Body::Mat newMat(def);
 	m_bodyMaterials.push_back(newMat);

@@ -22,7 +22,7 @@
 
 struct b2Shape;
 class b2World;
-class b2ParticleSystem;
+class ParticleSystem;
 struct ParticleGroup;
 class b2ParticleColor;
 

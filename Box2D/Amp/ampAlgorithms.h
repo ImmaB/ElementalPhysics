@@ -2,6 +2,7 @@
 
 #include <amp.h>
 #include <Box2D/Common/b2Math.h>
+#include <d3d11.h>
 
 
 template <int N>
@@ -17,7 +18,9 @@ inline int32 getTileCnt(const int32 value)
 
 namespace amp
 {
-	static void testCompatibilty()
+	static ampAccel* _pAmpDevice = nullptr;
+
+	static void CheckCompatibilty()
 	{
 		auto accelerators = Concurrency::accelerator::get_all();
 		if (accelerators.size() == 0)
@@ -42,6 +45,7 @@ namespace amp
 		}
 	};
 
+	static ampAccel getGpuAccel() { return ampAccel(ampAccel::default_accelerator); }
 	static ampAccelView getCpuAccelView()
 	{
 		return ampAccel(ampAccel::cpu_accelerator).default_view;
@@ -689,20 +693,132 @@ namespace amp
 	{
 		return Concurrency::atomic_fetch_inc(&dest);
 	}
-	inline bool atomicInc(int32& dest, const int32 max) restrict(amp)
+	inline int32 atomicInc(int32& dest, const int32 max) restrict(amp)
 	{
-		if (dest >= max) return false;
+		if (dest >= max) return 0;
 		int32 expected = dest;
 		int32 newValue = expected + 1;
 		while (!Concurrency::atomic_compare_exchange(&dest, &expected, newValue))
 		{
 			newValue = expected + 1;
-			if (newValue > max) return false;
+			if (newValue > max) return 0;
 		}
-		return true;
+		return newValue;
 	}
 };
 
+
+class D11Device
+{
+private:
+	ID3D11Device* pDevice = nullptr;
+	ID3D11DeviceContext* pImmediateContext = nullptr;
+
+	bool compareBuffers(ID3D11Buffer* pBuf1, ID3D11Buffer* pBuf2)
+	{
+		auto desc1 = getDescriptor(pBuf1);
+		auto desc2 = getDescriptor(pBuf2);
+		return desc1.ByteWidth == desc2.ByteWidth &&
+			   desc1.Usage == desc2.Usage &&
+			   desc1.BindFlags == desc2.BindFlags &&
+			   desc1.CPUAccessFlags == desc2.CPUAccessFlags &&
+			   desc1.MiscFlags == desc2.MiscFlags &&
+			   desc1.StructureByteStride == desc2.StructureByteStride;
+	}
+
+	template<typename T>
+	void copyRegion(ID3D11Buffer* pSrc, ID3D11Buffer* pDst, uint32 start, uint32 cnt)
+	{
+		if (!pSrc) return;
+		if (!compareBuffers(pSrc, pDst))
+			throw std::invalid_argument("pSrc and pDst are not of same structure");
+		D3D11_BOX box{};
+		box.left = start * sizeof(T);
+		box.right = box.left + cnt * sizeof(T);
+		box.top = box.front = 0;
+		box.bottom = box.back = 1;
+		pImmediateContext->CopySubresourceRegion(pDst, 0, box.left, 0, 0, pSrc, 0, &box);
+	}
+
+public:
+	D11Device()
+	{
+		pDevice = reinterpret_cast<ID3D11Device*>(Concurrency::direct3d::get_device(amp::getGpuAccelView()));
+		pDevice->GetImmediateContext(&pImmediateContext);
+	}
+	~D11Device()
+	{
+		pDevice->Release();
+	}
+
+	template <typename T>
+	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 cnt)
+	{
+		if (cnt <= 0 || !pDst) return;
+
+		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
+		if (pSrc) copyRegion<T>(pSrc, pDst, 0, cnt);
+		pImmediateContext->Flush();
+		if (pSrc) pSrc->Release();
+	}
+	template <typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
+	void copy(const ampArray<T1>& src1, ID3D11Buffer* pDst1,
+			  const ampArray<T2>& src2, ID3D11Buffer* pDst2,
+			  const ampArray<T3>& src3, ID3D11Buffer* pDst3,
+			  const ampArray<T4>& src4, ID3D11Buffer* pDst4,
+			  const ampArray<T5>& src5, ID3D11Buffer* pDst5,
+			  const ampArray<T6>& src6, ID3D11Buffer* pDst6,
+			  const ampArray<T7>& src7, ID3D11Buffer* pDst7,
+			  const ampArray<T8>& src8, ID3D11Buffer* pDst8,
+			  const int32 cnt)
+	{
+		if (cnt <= 0) return;
+
+		ID3D11Buffer* pSrc1 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src1));
+		if (pSrc1 && pDst1) copyRegion<T1>(pSrc1, pDst1, 0, cnt);
+		ID3D11Buffer* pSrc2 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src2));
+		if (pSrc2 && pDst2) copyRegion<T2>(pSrc2, pDst2, 0, cnt);
+		ID3D11Buffer* pSrc3 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src3));
+		if (pSrc3 && pDst3) copyRegion<T3>(pSrc3, pDst3, 0, cnt);
+		ID3D11Buffer* pSrc4 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src4));
+		if (pSrc4 && pDst4) copyRegion<T4>(pSrc4, pDst4, 0, cnt);
+		ID3D11Buffer* pSrc5 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src5));
+		if (pSrc5 && pDst5) copyRegion<T5>(pSrc5, pDst5, 0, cnt);
+		ID3D11Buffer* pSrc6 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src6));
+		if (pSrc6 && pDst6) copyRegion<T6>(pSrc6, pDst6, 0, cnt);
+		ID3D11Buffer* pSrc7 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src7));
+		if (pSrc7 && pDst7) copyRegion<T7>(pSrc7, pDst7, 0, cnt);
+		ID3D11Buffer* pSrc8 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src8));
+		if (pSrc8 && pDst8) copyRegion<T8>(pSrc8, pDst8, 0, cnt);
+
+		pImmediateContext->Flush();
+		if (pSrc1) pSrc1->Release();
+		if (pSrc2) pSrc2->Release();
+		if (pSrc3) pSrc3->Release();
+		if (pSrc4) pSrc4->Release();
+		if (pSrc5) pSrc5->Release();
+		if (pSrc6) pSrc6->Release();
+		if (pSrc7) pSrc7->Release();
+		if (pSrc8) pSrc8->Release();
+	}
+	template <typename T>
+	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 start, const int32 end)
+	{
+		if (end <= start || !pDst) return;
+
+		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
+		if (pSrc) copyRegion<T>(pSrc, pDst, start, end - start);
+		pImmediateContext->Flush();
+		if (pSrc) pSrc->Release();
+	}
+
+	inline D3D11_BUFFER_DESC getDescriptor(ID3D11Buffer* pBuffer)
+	{
+		D3D11_BUFFER_DESC desc;
+		pBuffer->GetDesc(&desc);
+		return desc;
+	}
+};
 
 /*
 namespace _radix_sort_details

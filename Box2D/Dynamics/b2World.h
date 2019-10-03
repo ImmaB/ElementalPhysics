@@ -103,7 +103,7 @@ public:
 	/// Create a particle system given a definition. No reference to the
 	/// definition is retained.
 	/// @warning This function is locked during callbacks.
-	b2ParticleSystem* CreateParticleSystem();
+	ParticleSystem* CreateParticleSystem();
 
 	/// Destroy a particle system.
 	/// @warning This function is locked during callbacks.
@@ -199,8 +199,8 @@ public:
 	/// b2ParticleSystem::GetNext to get the next particle-system in the world
 	/// list. A NULL particle-system indicates the end of the list.
 	/// @return the head of the world particle-system list.
-	b2ParticleSystem* GetParticleSystem();
-	const b2ParticleSystem* GetParticleSystem() const;
+	ParticleSystem* GetParticleSystem();
+	const ParticleSystem* GetParticleSystem() const;
 
 	/// Get the world contact list. With the returned contact, use b2Contact::GetNext to get
 	/// the next contact in the world list. A NULL contact indicates the end of the list.
@@ -278,6 +278,7 @@ public:
 
 	int32 m_allBodyMaterialFlags;
 
+	void ClearBodyMaterials();
 	int32 CreateBodyMaterial(const Body::Mat::Def& def);
 
 	bool m_stepComplete;
@@ -337,6 +338,7 @@ public:
 	/// sensitive to the time step when the damping parameter is large.
 	float32 m_dampingStrength;
 	float32 m_roomTemperature;
+	float32 m_innerHeatExchangeFactor;
 	float32 m_atmosphericDensity;
 	Vec3 m_wind;
 
@@ -346,6 +348,8 @@ public:
 
 	float32 m_surfaceThickness;
 	float32 m_massMultiplicator;
+
+	D11Device d11Device;
 
 private:
 
@@ -361,7 +365,7 @@ private:
 	friend struct Fixture;
 	friend class b2ContactManager;
 	friend class b2Controller;
-	friend class b2ParticleSystem;
+	friend class ParticleSystem;
 
 	void Solve(const b2TimeStep& step);
 	void SolveGravity(const b2TimeStep& step);
@@ -371,7 +375,7 @@ private:
 	void DrawJoint(b2Joint* joint);
 	void DrawShape(Fixture& shape, const b2Transform& xf, const b2Color& color);
 
-	void DrawParticleSystem(const b2ParticleSystem& system);
+	void DrawParticleSystem(const ParticleSystem& system);
 
 	b2TimeStep m_step;
 
@@ -383,7 +387,7 @@ private:
 	b2ContactManager m_contactManager;
 
 	b2Joint* m_jointList;
-	b2ParticleSystem* m_particleSystem;
+	ParticleSystem* m_particleSystem;
 	Ground* m_ground;
 
 	int32 m_jointCount;
@@ -618,12 +622,12 @@ inline const b2Joint* b2World::GetJointList() const
 	return m_jointList;
 }
 
-inline b2ParticleSystem* b2World::GetParticleSystem()
+inline ParticleSystem* b2World::GetParticleSystem()
 {
 	return m_particleSystem;
 }
 
-inline const b2ParticleSystem* b2World::GetParticleSystem() const
+inline const ParticleSystem* b2World::GetParticleSystem() const
 {
 	return m_particleSystem;
 }

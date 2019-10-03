@@ -2,9 +2,12 @@
 #include <utility>
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Common/b2GlobalVariables.h>
+#include <Box2D/Particle/b2ParticleSystem.h>
 #include <math.h>
 #include <vector>
 #include <string.h>
+#include <d3d11.h>
+#include <ppl.h>
 
 #define EXPORT extern "C" __declspec(dllexport)
 
@@ -39,11 +42,11 @@ public:
         fixturesArray.push_back(fraction);
         return mode;
     }
-    virtual float32 ReportParticle(const b2ParticleSystem* partSys,
+    virtual float32 ReportParticle(const ParticleSystem* partSys,
                                    int32 index, const Vec2& point,
                                    const Vec2& normal, float32 fraction) {
         ++numParticles;
-        particlesArray.push_back(partSys->MyIndex);
+        particlesArray.push_back(0);
         particlesArray.push_back(index);
         particlesArray.push_back(point.x);
         particlesArray.push_back(point.y);
@@ -52,7 +55,7 @@ public:
         particlesArray.push_back(fraction);
         return mode;
     }
-    virtual bool ShouldQueryParticleSystem(const b2ParticleSystem* partSys) {
+    virtual bool ShouldQueryParticleSystem(const ParticleSystem* partSys) {
         return shouldQuery;
     }
     float32* GetData() {
@@ -80,7 +83,7 @@ private:
 #pragma region GlobalVariables
 b2World* pWorld = nullptr;
 Ground* pGround = nullptr;
-b2ParticleSystem* pPartSys = nullptr;
+ParticleSystem* pPartSys = nullptr;
 b2NewRaycastCallback* newRC;
 InterfaceContactListener* pContactListener;
 #pragma endregion
@@ -88,7 +91,7 @@ InterfaceContactListener* pContactListener;
 #pragma region API World
 EXPORT void CreateWorld()
 {
-	amp::testCompatibilty();
+	amp::CheckCompatibilty();
 	if (!pWorld) pWorld = new b2World();
 	pWorld->UnLock();
 }
@@ -103,43 +106,26 @@ EXPORT void SetSurfaceThickness(float32 thickness) { pWorld->m_surfaceThickness 
 EXPORT void SetBorders(Vec3 lower, Vec3 upper, bool deleteOutside) { pWorld->SetBorders(lower, upper, deleteOutside); }
 EXPORT void SetGravity(Vec3 gravity, float32 riseFactor) { pWorld->m_gravity = gravity; pWorld->m_riseFactor = riseFactor; }
 EXPORT void SetRoomTemperature(float32 temperature) { pWorld->m_roomTemperature = temperature; }
+EXPORT void SetInnerHeatExchange(float32 factor) { pWorld->m_innerHeatExchangeFactor = factor; }
 EXPORT void SetAtmosphericDensity(float32 density) { pWorld->m_atmosphericDensity = density; }
 EXPORT void SetWind(Vec3 wind) { pWorld->m_wind = wind; }
 
-EXPORT void ClearWorld() { pWorld->ClearAll(); }
+EXPORT void ClearWorld() { if (pWorld) pWorld->ClearAll(); }
+EXPORT void DestroyWorld() { if (pWorld) delete pWorld; }
 
-EXPORT void DestroyWorld()
-{
-	if (pWorld)
-		delete pWorld;
-}
+EXPORT bool IsWorldCreated() { return pWorld != nullptr; }
 
-EXPORT void StepPreParticle()
-{
-	pWorld->StepPreParticle();
-}
-EXPORT void StepPostParticle()
-{
-	pWorld->StepPostParticle();
-}
+EXPORT void StepPreParticle() { pWorld->StepPreParticle(); }
+EXPORT void StepPostParticle() { pWorld->StepPostParticle(); }
 
-EXPORT bool GetAllowSleeping(b2World* pWorld)
-{
-	return pWorld->GetAllowSleeping();
-}
-EXPORT void SetAllowSleeping(b2World* pWorld, bool flag)
-{
-	pWorld->SetAllowSleeping(flag);
-}
+EXPORT bool GetAllowSleeping(b2World* pWorld) { return pWorld->GetAllowSleeping(); }
+EXPORT void SetAllowSleeping(b2World* pWorld, bool flag) { pWorld->SetAllowSleeping(flag); }
 
-EXPORT Vec3 GetWorldGravity()
-{
-	return pWorld->m_gravity;
-}
+EXPORT Vec3 GetWorldGravity() { return pWorld->m_gravity; }
 
-
+EXPORT void ClearBodyMaterials() { pWorld->ClearBodyMaterials(); }
 EXPORT int32 CreateBodyMaterial(uint32 materialFlags, float32 density, float32 friction, float32 bounciness,
-	float32 stability, float32 heatConductivity)
+	float32 stability, float32 heatConductivity, float32 hotThreshold, float32 coldThreshold, float32 ignitionThreshold)
 {
 	Body::Mat::Def md;
 	md.matFlags = materialFlags;
@@ -148,7 +134,14 @@ EXPORT int32 CreateBodyMaterial(uint32 materialFlags, float32 density, float32 f
 	md.bounciness = bounciness;
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
+	md.hotThreshold = hotThreshold;
+	md.coldThreshold = coldThreshold;
+	md.ignitionThreshold = ignitionThreshold;
 	return pWorld->CreateBodyMaterial(md);
+}
+EXPORT void AddBodyMatChange()
+{
+
 }
 EXPORT void DestroyBodyMaterial(int32 idx)
 {
@@ -169,7 +162,7 @@ EXPORT void SetContactCallback(ContactCallback callback)
 	pWorld->SetContactListener(pContactListener);
 }
 
-EXPORT void SetDebugContacts(bool debug) { pPartSys->SetDebugContacts(debug); }
+EXPORT void SetDebugContacts(bool debug) { pPartSys->m_debugContacts = debug; }
 
 EXPORT void GetPartContacts(int32* pCnt, b2ParticleContact** pContacts)
 {
@@ -183,29 +176,31 @@ EXPORT int32 GetPartContactCnt() { return pPartSys->GetContactCount(); }
 #pragma region API Particle Systems
 
 EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 damping,
-	float32 gravityScale, float32 airResFactor, float32 heatLossRatio)
+	float32 gravityScale, float32 airResFactor, float32 minAirSpeed, float32 heatLossRatio,
+	float32 flameHealthLossPerSec, float32 flameHeatGainPerSec)
 {
 	if (!pPartSys) pPartSys = pWorld->CreateParticleSystem();
-	pPartSys->SetAccelerate(accelerate);
+	pPartSys->m_accelerate = accelerate;
 	pPartSys->SetRadius(radius);
-	pPartSys->SetDamping(damping);
-	pPartSys->SetGravityScale(gravityScale);
-	pPartSys->SetAirResistanceFactor(airResFactor);
-	pPartSys->SetHeatLossRatio(heatLossRatio);
+	pPartSys->m_def.dampingStrength = damping;
+	pPartSys->m_def.gravityScale = gravityScale;
+	pPartSys->m_def.airResistanceFactor = airResFactor;
+	pPartSys->m_def.minAirSpeed = minAirSpeed;
+	pPartSys->m_def.heatLossRatio = heatLossRatio;
+	pPartSys->m_def.flameHealthLossPerSec = flameHealthLossPerSec;
+	pPartSys->m_def.flameHeatGainPerSec = flameHeatGainPerSec;
 }
-EXPORT void DestroyAllParticles() { pPartSys->DestroyAllParticles(); }
+EXPORT void DestroyAllParticles() { if (pPartSys) pPartSys->DestroyAllParticles(); }
 
 EXPORT void DestroyParticleSystem() { pWorld->DestroyParticleSystem(); }
 
-EXPORT void SetAccelerate(bool acc)
-{
-	pPartSys->SetAccelerate(acc);
-}
+EXPORT void SetAccelerate(bool acc) { pPartSys->m_accelerate = acc; }
+
 EXPORT int32 GetParticleIterations(float32 gravity, float32 particleRadius, float32 timeStep) {
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
 }
 
-EXPORT bool ShouldSolveParticleSystem() { return pPartSys->ShouldSolve(); }
+EXPORT bool ShouldSolveParticleSystem() { return pPartSys != nullptr && pPartSys->ShouldSolve(); }
 
 EXPORT void SolveInit()	{ pPartSys->SolveInit(); }
 
@@ -241,9 +236,7 @@ EXPORT void SolveRigid() { pPartSys->SolveRigid(); }
 EXPORT void SolveWall() { pPartSys->SolveWall(); }
 EXPORT void CopyVelocities() { pPartSys->CopyVelocities(); }
 EXPORT void SolveKillNotMoving() { pPartSys->SolveKillNotMoving(); }
-EXPORT void SolveWater() { pPartSys->SolveWater(); }
-
-EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
+EXPORT void SolveFluid() { pPartSys->SolveFluid(); }
 
 EXPORT void SolveFlame() { pPartSys->SolveFlame(); }
 EXPORT void SolveIgnite() { pPartSys->SolveIgnite(); }
@@ -265,12 +258,7 @@ EXPORT void IncrementIteration() { pPartSys->IncrementIteration(); }
 EXPORT void SolveEnd() { pPartSys->SolveEnd(); }
 
 
-EXPORT void SetStaticPressureIterations(void* systemPointer,int32 iterations)
-{
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-    parts->SetStaticPressureIterations(iterations);
-}
-EXPORT void SetDestructionByAge(bool toggle) { pPartSys->SetDestructionByAge(toggle); }
+EXPORT void SetStaticPressureIterations(int32 iterations) { pPartSys->m_def.staticPressureIterations = iterations; }
 
 EXPORT void SetDestroyStuck(bool toggle)
 {
@@ -278,37 +266,28 @@ EXPORT void SetDestroyStuck(bool toggle)
 	//parts->SetDestroyStuck(toggle);
 }
 
-EXPORT bool GetDestructionByAge(void* systemPointer) {
-    b2ParticleSystem* parts = static_cast<b2ParticleSystem*>(systemPointer);
-    return parts->GetDestructionByAge();
-}
 EXPORT int32 DestroyParticlesInFixture(int32 fixtureIdx, b2Transform transform, bool call)
 {
     return pPartSys->DestroyParticlesInFixture(pWorld->GetFixture(fixtureIdx), transform, call);
 }
 
 EXPORT void SetAllParticleFlags(void* partSysPtr, int32 flags) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-    int32 numParts = partSys->GetParticleCount();
+    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
+    int32 numParts = partSys->GetCount();
     for (int32 i = 0; i < numParts; ++i) {
         partSys->SetParticleFlags(i, flags);
     }
 }
 
 EXPORT int32 GetStuckCandidateCount(void* partSysPtr) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
     return partSys->GetStuckCandidateCount();
 }
 EXPORT void SetStuckThreshold(void* partSysPtr, int32 iterations) {
-    b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
+    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
     partSys->SetStuckThreshold(iterations);
 }
 EXPORT void SetMaxParticleCount(int32 count) { pPartSys->SetMaxParticleCount(count); }
-
-EXPORT int32 GetMaxParticleCount(void* partSysPtr) {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
-    return system->GetMaxParticleCount();
-}
 
 #pragma endregion
 
@@ -325,27 +304,25 @@ EXPORT void PullPartsIntoCircle(Vec3 pos, float32 radius, float32 strength, int3
 	pPartSys->PullIntoCircle(pos, radius, strength, flag, ignoreMass, step);
 }
 
-EXPORT void GetAmpPositions(void* partSysPtr, void** dstPtr)
-{
-	b2ParticleSystem* partSys = static_cast<b2ParticleSystem*>(partSysPtr);
-	ID3D11Buffer* dst = static_cast<ID3D11Buffer*>(*dstPtr);
-	partSys->CopyAmpPositions(dst);
-};
+EXPORT int32 GetParticleCapacity() { return pPartSys->GetCapacity(); }
+EXPORT int32 GetParticleCount() { return pPartSys->GetCount(); }
 
-EXPORT void GetParticles(int32* pCnt, int32** pMatIdxs, Vec3** pPoss, Vec3** pVels,
-	float32** pWeights, float32** pHealths, float32** pHeats, uint32** pFlags, int32** pColors)
+EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callback)
 {
-	*pCnt = pPartSys->GetParticleCount();
-	*pMatIdxs = pPartSys->GetPartMatIdxBuffer();
-	*pPoss = pPartSys->GetPositionBuffer();
-	*pVels = pPartSys->GetVelocityBuffer();
-	*pWeights = pPartSys->GetWeightBuffer();
-	*pHealths = pPartSys->GetHealthBuffer();
-	*pHeats = pPartSys->GetHeatBuffer();
-	*pFlags = pPartSys->GetFlagsBuffer();
-	*pColors = pPartSys->GetColorBuffer();
-};
-
+	pPartSys->m_resizeCallback = callback;
+	pPartSys->m_resizeCallback(pPartSys->GetCapacity());
+}
+EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs)
+{
+	pPartSys->m_d11Positions = bufPtrs[0];
+	pPartSys->m_d11Velocities = bufPtrs[1];
+	pPartSys->m_d11MatIdxs = bufPtrs[2];
+	pPartSys->m_d11Weights = bufPtrs[3];
+	pPartSys->m_d11Healths = bufPtrs[4];
+	pPartSys->m_d11Heats = bufPtrs[5];
+	pPartSys->m_d11Flags = bufPtrs[6];
+	pPartSys->m_d11Colors = bufPtrs[7];
+}
 
 
 #pragma endregion
@@ -394,7 +371,7 @@ EXPORT int32 CreateParticles(int32 partCount, Vec3* poss, int32* cols, b2Transfo
 }
 EXPORT void JoinParticleGroups(void* partSysPtr, int32 groupAIdx, int32 groupBIdx)
 {
-    b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
+    ParticleSystem* system = static_cast<ParticleSystem*>(partSysPtr);
     system->JoinParticleGroups(groupAIdx, groupBIdx);
 }
 EXPORT void ApplyForceToParticleGroup(ParticleGroup* pGroup, Vec3 force)
@@ -402,7 +379,7 @@ EXPORT void ApplyForceToParticleGroup(ParticleGroup* pGroup, Vec3 force)
 	pPartSys->ApplyForce(*pGroup, force);
 }
 EXPORT void ApplyLinearImpulseToParticleGroup(void* partSysPtr, void* groupPointer, float32 forceX, float32 forceY) {
-	b2ParticleSystem* system = static_cast<b2ParticleSystem*>(partSysPtr);
+	ParticleSystem* system = static_cast<ParticleSystem*>(partSysPtr);
 	ParticleGroup* group = static_cast<ParticleGroup*>(groupPointer);
     Vec2 impulse = Vec2(forceX, forceY);
 	system->ApplyLinearImpulse(*group, impulse);
@@ -554,13 +531,11 @@ EXPORT void SetBodyTransform(int32 bodyIdx, b2Transform transform)
 }
 EXPORT void ApplyDamageToBody(int32 bIdx, float32 damage) { pWorld->GetBody(bIdx).m_health -= damage; }
 EXPORT void ApplyHeatToBody(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_heat += heat; }
+EXPORT void ApplyHeatToBodySurface(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_surfaceHeat += heat; }
 
 EXPORT void DestroyBody(int32 idx) { pWorld->DestroyBody(idx); }
 
-EXPORT void SetBodyVelocity(int32 idx, Vec3 vel)
-{
-	pWorld->GetBody(idx).SetLinearVelocity(vel);
-}
+EXPORT void SetBodyVelocity(int32 idx, Vec3 vel) { pWorld->GetBody(idx).SetLinearVelocity(vel); }
 
 
 #pragma endregion
@@ -576,6 +551,7 @@ EXPORT void CreateGround(int32 xSize, int32 ySize, float32 stride)
 	gd.stride = stride;
 	pGround = pWorld->CreateGround(gd);
 }
+EXPORT void SetGroundBuffer(ID3D11Buffer* pD11Tiles) { pGround->m_d11Tiles = pD11Tiles; }
 EXPORT void SetGroundTiles(Ground::Tile* pTiles)
 {
 	pGround->SetTiles(pTiles);
@@ -597,6 +573,8 @@ EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 parti
 	gmd.flags = flags;
 	return pGround->CreateMaterial(gmd);
 }
+
+EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
 
 #pragma endregion
 
@@ -1125,7 +1103,7 @@ EXPORT int32 TestInt()
 
 #pragma region Material
 
-EXPORT void ClearParticleMaterials() { pPartSys->ClearParticleMaterials(); }
+EXPORT void ClearParticleMaterials() { pPartSys->ClearMaterials(); }
 
 EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
 	float32 heatConductivity, float32 strength)
@@ -1136,16 +1114,17 @@ EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stabi
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
 	md.strength = strength;
-	return pPartSys->CreateParticleMaterial(md);
+	return pPartSys->CreateMaterial(md);
 }
 EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
-	float32 hotThreshold, int32 hotMat, float32 ignitionThreshold, int32 burnedMatIdx,
+	float32 hotThreshold, int32 hotMatIdx, float32 ignitionThreshold, int32 burnedMatIdx,
 	int32 fireMatIdx, int32 deadMatIdx)
 {
 	Particle::Mat::ChangeDef mcd;
 	mcd.coldThreshold = coldThreshold;
 	mcd.coldMatIdx = coldMatIdx;
 	mcd.hotThreshold = hotThreshold;
+	mcd.hotMatIdx = hotMatIdx;
 	mcd.ignitionThreshold = ignitionThreshold;
 	mcd.burnedMatIdx = burnedMatIdx;
 	mcd.fireMatIdx = fireMatIdx;

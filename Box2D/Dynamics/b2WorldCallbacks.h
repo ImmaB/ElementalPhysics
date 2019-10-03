@@ -27,7 +27,7 @@ struct Fixture;
 struct Body;
 class b2Joint;
 class b2Contact;
-class b2ParticleSystem;
+class ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
 struct ParticleGroup;
@@ -62,7 +62,7 @@ public:
 	/// b2ParticleSystem::GetUserDataBuffer() or
 	/// b2ParticleSystem::GetParticleHandleFromIndex() to determine which
 	/// particle has been destroyed.
-	virtual void SayGoodbye(b2ParticleSystem* particleSystem, int32 index)
+	virtual void SayGoodbye(ParticleSystem* particleSystem, int32 index)
 	{
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(index);
@@ -84,7 +84,7 @@ public:
 	/// fixture and particle.  This is only called if the
 	/// b2_fixtureContactListenerParticle flag is set on the particle.
 	virtual bool ShouldCollide(Fixture& fixture,
-							   b2ParticleSystem* particleSystem,
+							   ParticleSystem* particleSystem,
 							   int32 particleIndex)
 	{
 		B2_NOT_USED(fixture);
@@ -96,7 +96,7 @@ public:
 	/// Return true if contact calculations should be performed between two
 	/// particles.  This is only called if the
 	/// b2_particleContactListenerParticle flag is set on the particle.
-	virtual bool ShouldCollide(b2ParticleSystem* particleSystem,
+	virtual bool ShouldCollide(ParticleSystem* particleSystem,
 							   int32 particleIndexA, int32 particleIndexB)
 	{
 		B2_NOT_USED(particleSystem);
@@ -138,7 +138,7 @@ public:
 
 	/// Called when a fixture and particle start touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
-	virtual void BeginContact(b2ParticleSystem* particleSystem,
+	virtual void BeginContact(ParticleSystem* particleSystem,
 							  b2PartBodyContact* particleBodyContact)
 	{
 		B2_NOT_USED(particleSystem);
@@ -148,7 +148,7 @@ public:
 	/// Called when a fixture and particle stop touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
 	virtual void EndContact(int32 fixtureIdx,
-							b2ParticleSystem* particleSystem, int32 index)
+							ParticleSystem* particleSystem, int32 index)
 	{
 		B2_NOT_USED(fixtureIdx);
 		B2_NOT_USED(particleSystem);
@@ -157,7 +157,7 @@ public:
 
 	/// Called when two particles start touching if
 	/// b2_particleContactFilterParticle flag is set on either particle.
-	virtual void BeginContact(b2ParticleSystem* particleSystem,
+	virtual void BeginContact(ParticleSystem* particleSystem,
 							  b2ParticleContact* particleContact)
 	{
 		B2_NOT_USED(particleSystem);
@@ -166,7 +166,7 @@ public:
 
 	/// Called when two particles start touching if
 	/// b2_particleContactFilterParticle flag is set on either particle.
-	virtual void EndContact(b2ParticleSystem* particleSystem,
+	virtual void EndContact(ParticleSystem* particleSystem,
 							int32 indexA, int32 indexB)
 	{
 		B2_NOT_USED(particleSystem);
@@ -216,7 +216,7 @@ public:
 
 	/// Called for each particle found in the query AABB.
 	/// @return false to terminate the query.
-	virtual bool ReportParticle(const b2ParticleSystem* particleSystem,
+	virtual bool ReportParticle(const ParticleSystem* particleSystem,
 								int32 index)
 	{
 		B2_NOT_USED(particleSystem);
@@ -229,7 +229,7 @@ public:
 	/// @return true if you want to include particleSystem in the AABB query,
 	/// or false to cull particleSystem from the AABB query.
 	virtual bool ShouldQueryParticleSystem(
-		const b2ParticleSystem* particleSystem)
+		const ParticleSystem* particleSystem)
 	{
 		B2_NOT_USED(particleSystem);
 		return true;
@@ -272,7 +272,7 @@ public:
 	///   b2World::RayCast.
 	/// @return <=0 to ignore rest of particle system, fraction to ignore
 	/// particles that are farther away.
-	virtual float32 ReportParticle(const b2ParticleSystem* particleSystem,
+	virtual float32 ReportParticle(const ParticleSystem* particleSystem,
 								   int32 index, const Vec2& point,
 								   const Vec2& normal, float32 fraction)
 	{
@@ -289,7 +289,7 @@ public:
 	/// @return true if you want to include particleSystem in the RayCast, or
 	/// false to cull particleSystem from the RayCast.
 	virtual bool ShouldQueryParticleSystem(
-		const b2ParticleSystem* particleSystem)
+		const ParticleSystem* particleSystem)
 	{
 		B2_NOT_USED(particleSystem);
 		return true;

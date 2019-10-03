@@ -119,6 +119,8 @@ public:
 	int32 m_chunkCnt;
 	vector<Tile> m_tiles;
 	ampArray<Tile> m_ampTiles;
+	ampCopyFuture m_tileCopyFuture;
+	ID3D11Buffer* m_d11Tiles;
 	ampArray<int32> m_ampChunkHasChange;
 	ampArray<int32> m_ampTilesChangedIdxs;
 
@@ -141,7 +143,8 @@ public:
 						  int32 partMatIdx, uint32 partFlags, float32 probability);
 
 private:
-
+	bool m_hasChange;
+	bool HasChange();
 	inline bool IsPositionInGrid(const Vec2& p) const { return p.x > 0 && p.y > 0 && p.x < m_size.x && p.y < m_size.y; }
 	inline int32 GetIdx(const Vec2& p) const { return p.y * m_invStride * m_tileCntX + p.x * m_invStride; }
 	inline int32 GetIdx(const float32 f) const { return f * m_invStride; }

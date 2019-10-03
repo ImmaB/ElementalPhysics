@@ -828,3 +828,14 @@ inline bool IsBetween(float32 x, float32 a, float32 b, float32 tol) restrict(amp
 	return a < b ? x + tol >= a && x - tol <= b
 		         : x + tol >= b && x - tol <= a;
 }
+
+struct Future
+{
+private:
+	std::future<void> m_future;
+
+public:
+	template<typename F>
+	void RunAsync(const F& func) { m_future = std::async(std::launch::async, func); }
+	void wait() { if (m_future.valid()) m_future.wait(); }
+};

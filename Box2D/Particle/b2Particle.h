@@ -107,6 +107,7 @@ struct Particle
 			ChangeWhenCold = 1u << 30,
 			ChangeWhenHot = 1u << 31,
 		};
+		static const uint32 k_nonSolidFlags = Flag::Fluid | Flag::Gas;
 		/// All particle types that require creating pairs
 		static const uint32 k_pairFlags = Flag::Spring | Flag::Barrier;
 		/// All particle types that require creating triads
@@ -194,7 +195,7 @@ class b2ParticleHandle : public b2TypedIntrusiveListNode<b2ParticleHandle>
 {
 	// Allow b2ParticleSystem to use SetIndex() to associate particle handles
 	// with particle indices.
-	friend class b2ParticleSystem;
+	friend class ParticleSystem;
 
 public:
 	/// Initialize the index associated with the handle to an invalid index.

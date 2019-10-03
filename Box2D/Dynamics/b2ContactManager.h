@@ -24,7 +24,7 @@ class b2Contact;
 class b2ContactFilter;
 class b2ContactListener;
 class b2BlockAllocator;
-class b2ParticleSystem;
+class ParticleSystem;
 class b2World;
 struct b2FixtureProxy;
 
@@ -32,7 +32,7 @@ struct b2FixtureProxy;
 class b2ContactManager
 {
 public:
-	friend class b2ParticleSystem;
+	friend class ParticleSystem;
 
 	b2ContactManager(b2World& world);
 

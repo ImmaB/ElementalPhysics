@@ -45,10 +45,10 @@ struct Body
 				friction = 0.1f;
 				bounciness = 0.2f;
 				stability = 1.0f;
-				extinguishingPoint = 0.0f;
-				meltingPoint = 1000.0f;
-				ignitionPoint = 300.0f;
 				heatConductivity = 0.0f;
+				hotThreshold = 1000.0f;
+				coldThreshold = 0.0f;
+				ignitionThreshold = 0.0f;
 			}
 
 			uint32 matFlags;
@@ -56,10 +56,10 @@ struct Body
 			float32 friction;
 			float32 bounciness;
 			float32 stability;
-			float32 extinguishingPoint;
-			float32 meltingPoint;
-			float32 ignitionPoint;
 			float32 heatConductivity;
+			float32 hotThreshold;
+			float32 coldThreshold;
+			float32 ignitionThreshold;
 		};
 
 		enum Flag
@@ -80,10 +80,10 @@ struct Body
 		float32 m_bounciness;	// same as restitution
 		float32 m_stability;
 		float32 m_invStability;
-		float32 m_extinguishingPoint;
-		float32 m_meltingPoint;
-		float32 m_ignitionPoint;
 		float32 m_heatConductivity;
+		float32 m_hotThreshold;
+		float32 m_coldThreshold;
+		float32 m_ignitionThreshold;
 
 		Mat(const Def& def)
 			: m_matFlags(def.matFlags),
@@ -91,10 +91,10 @@ struct Body
 			m_friction(def.friction),
 			m_bounciness(def.bounciness),
 			m_stability(def.stability), m_invStability(1 / def.stability),
-			m_extinguishingPoint(def.extinguishingPoint),
-			m_meltingPoint(def.meltingPoint),
-			m_ignitionPoint(def.ignitionPoint),
-			m_heatConductivity(def.heatConductivity)
+			m_heatConductivity(def.heatConductivity),
+			m_hotThreshold(def.hotThreshold),
+			m_coldThreshold(def.coldThreshold),
+			m_ignitionThreshold(def.ignitionThreshold)
 		{}
 		~Mat() {}
 

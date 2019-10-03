@@ -86,22 +86,12 @@ void Ground::CopyChangedTiles()
 			m_changeCallback(m_changedTileIdxs.data(), changedTiles.data(), changedCnt);
 
 	});*/
-
-	ampArrayView<int32> hasChange(1);
-	amp::fill(hasChange, 0);
-	auto& chunkHasChanged = m_ampChunkHasChange;
-	amp::forEach(m_chunkCnt, [=, &chunkHasChanged](int32 i) restrict(amp)
-	{
-		if (int32& chunkHasChange = chunkHasChanged[i]; chunkHasChange)
-		{
-			chunkHasChange = 0;
-			hasChange[0] = 1;
-		}
-	});
-	if (!hasChange[0]) return;
-	amp::copy(m_ampTiles, m_tiles);
+	if (!HasChange()) return;
+	m_world.d11Device.copy(m_ampTiles, m_d11Tiles, m_tileCnt);
+	m_tileCopyFuture = amp::copyAsync(m_ampTiles, m_tiles);
 	if (m_changeCallback)
 		m_changeCallback(nullptr, m_tiles.data(), m_tileCnt);
+	m_hasChange = false;
 }
 
 
@@ -134,17 +124,18 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 			return;
 		}
 	});
+	range.second = b2Max(range.second, m_tileCnt);
 	if (positions.empty()) return;
 	ParticleGroup::Def pgd;
 	pgd.particleCount = positions.size();
 	pgd.positions = positions;
 	pgd.matIdx = partMatIdx;
 	pgd.flags = partFlags;
+	pgd.heat = m_world.m_roomTemperature;
 	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles, range.first, range.second - range.first);
 	m_world.GetParticleSystem()->CreateGroup(pgd);
-	if (m_changeCallback)
-		m_changeCallback(nullptr, m_tiles.data(), m_tileCnt);	// TODO just use range
 	copyFuture.wait();
+	m_hasChange = true;
 }
 
 template<typename F>
@@ -155,6 +146,7 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape, const b2
 	shape.ComputeAABB(b, transform, 0);
 	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),
 		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
+	m_tileCopyFuture.wait();
 	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
 	{
 		const Vec2 p = GetTileCenter(x, y);
@@ -162,4 +154,22 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape, const b2
 			function(m_tiles[GetIdx(x, y)], p);
 	}
 	return pair<int32, int32>(GetIdx(lowerXIdx, lowerYIdx), GetIdx(upperXIdx, upperYIdx));
+}
+
+bool Ground::HasChange()
+{
+	if (m_hasChange) return true;
+
+	ampArrayView<int32> hasChange(1);
+	amp::fill(hasChange, 0);
+	auto& chunkHasChanged = m_ampChunkHasChange;
+	amp::forEach(m_chunkCnt, [=, &chunkHasChanged](int32 i) restrict(amp)
+	{
+		if (int32& chunkHasChange = chunkHasChanged[i]; chunkHasChange)
+		{
+			chunkHasChange = 0;
+			hasChange[0] = 1;
+		}
+	});
+	return hasChange[0];
 }
