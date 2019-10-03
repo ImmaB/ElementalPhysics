@@ -67,60 +67,6 @@ struct Body::Mat;
 
 using namespace std;
 
-struct b2ParticleContact
-{
-	int32 idxA, idxB;
-	/// Weight of the contact. A value between 0.0f and 1.0f.
-	/// 0.0f ==> particles are just barely touching
-	/// 1.0f ==> particles are perfectly on top of each other
-	float32 weight;
-	float32 mass;
-	/// The normalized direction from A to B.
-	Vec3 normal;
-	/// The logical sum of the particle behaviors that have been set.
-	/// See the b2ParticleFlag enum.
-	uint32 flags;
-
-	bool operator==(const b2ParticleContact& rhs) const;
-	bool operator!=(const b2ParticleContact& rhs) const { return !operator==(rhs); }
-	bool ApproximatelyEqual(const b2ParticleContact& rhs) const;
-
-	inline bool HasFlag(const uint32 f) const { return flags & f; }
-	inline bool HasFlag(const uint32 f) const restrict(amp) { return flags & f; }
-	inline bool HasFlags(const uint32 f) const { return (flags & f) == f; }
-	inline bool HasFlags(const uint32 f) const restrict(amp) { return (flags & f) == f; }
-};
-
-struct b2PartBodyContact
-{
-	int32 partIdx;
-	/// The body making contact.
-	int32 bodyIdx;
-	/// The specific fixture making contact
-	int32 fixtureIdx;
-	/// Weight of the contact. A value between 0.0f and 1.0f.
-	float32 weight;
-	/// The normalized direction from the particle to the body.
-	Vec2 normal;
-	/// The effective mass used in calculating force.
-	float32 mass;
-};
-
-struct b2PartGroundContact
-{
-	int32 groundTileIdx;
-	int32 groundChunkIdx;
-	int32 groundMatIdx;
-	float32 weight;
-	Vec3 normal;
-	float32 mass;
-
-	void setInvalid() { groundTileIdx = INVALID_IDX; }
-	void setInvalid() restrict(amp) { groundTileIdx = INVALID_IDX; }
-	bool getValid() const { return groundTileIdx != INVALID_IDX; }
-	bool getValid() const restrict(amp) { return groundTileIdx != INVALID_IDX; }
-};
-
 /// Connection between two particles
 struct b2ParticlePair
 {
@@ -340,15 +286,10 @@ public:
 	bool m_accelerate;
 	bool m_debugContacts;
 
+	Particle::Buffers m_buffers;
+	Particle::AmpArrays m_ampArrays;
+	Particle::D11Buffers m_d11Buffers;
 	ID3D11Buffer* m_d11Contacts;
-	ID3D11Buffer* m_d11MatIdxs;
-	ID3D11Buffer* m_d11Positions;
-	ID3D11Buffer* m_d11Velocities;
-	ID3D11Buffer* m_d11Weights;
-	ID3D11Buffer* m_d11Heats;
-	ID3D11Buffer* m_d11Healths;
-	ID3D11Buffer* m_d11Flags;
-	ID3D11Buffer* m_d11Colors;
 
 	bool ShouldSolve();
 	void SolveInit();
@@ -454,8 +395,6 @@ public:
 	int32 CreateGroup(ParticleGroup::Def& def);
 	void DestroyGroup(int32 groupIdx, int32 timestamp = INVALID_IDX, bool destroyParticles = false);
 
-	void CopyParticleRangeToGpu(const uint32 first, const uint32 last);
-
 	/// Join two particle groups.
 	/// @param the first group. Expands to encompass the second group.
 	/// @param the second group. It is destroyed.
@@ -528,71 +467,10 @@ public:
 	void CopyBox2DToGPUAsync();
 	void WaitForCopyBox2DToGPU();
 
-	/// Get the position of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle positions array.
-	Vec3* GetPositionBuffer();
-	const Vec3* GetPositionBuffer() const;
-	const ampArray<Vec3> GetPositions() const { return m_ampPositions; }	
-
-	/// Get the velocity of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle velocities array.
-	Vec3* GetVelocityBuffer();
-	const Vec3* GetVelocityBuffer() const;
-	const ampArray<Vec3> GetVelocities() const { return m_ampVelocities; }
-
-	/// Get the color of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle colors array.
-	int32* GetColorBuffer();
-	const int32* GetColorBuffer() const;
-	const ampArray<int32> GetColors() const { return m_ampColors; }
-	
-	/// Get the particle-group of each particle.
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle group array.
-	int32* GetGroupIdxBuffer();
-	const int32* GetGroupIdxBuffer() const;
-
-	int32* GetPartMatIdxBuffer();
-	const int32* GetPartMatIdxBuffer() const;
-	const ampArray<int32> GetMatIdxs() const { return m_ampMatIdxs; }
-
-	/// Get the weight of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle positions array.
-	float32* GetWeightBuffer();
-	const float32* GetWeightBuffer() const;
-	const ampArray<float32> GetWeights() const { return m_ampWeights; }
-
-	/// Get the temperature of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle temperature array.
-	float32* GetHeatBuffer();
-	const float32* GetHeatBuffer() const;
-	const ampArray<float32> GetHeats() const { return m_ampHeats; }
-
-	/// Get the health of each particle
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle health array.
-	float32* GetHealthBuffer();
-	const float32* GetHealthBuffer() const;
-	const ampArray<float32> GetHealths() const { return m_ampHealths; }
-
-	/// Get the flags for each particle. See the b2ParticleFlag enum.
-	/// Array is length GetParticleCount()
-	/// @return the pointer to the head of the particle-flags array.
-	uint32* GetFlagsBuffer();
-	const uint32* GetFlagsBuffer() const;
-	const ampArray<uint32> GetFlags() const { return m_ampFlags; }
-
 	/// Set flags for a particle. See the b2ParticleFlag enum.
 	void SetParticleFlags(int32 index, uint32 flags);
 	void AddParticleFlags(int32 index, uint32 flags);
 	void RemovePartFlagFromAll(const uint32 flags);
-	/// Get flags for a particle. See the b2ParticleFlag enum.
-	uint32 GetParticleFlags(const int32 index);
 
 	/// Set an external buffer for particle data.
 	/// Normally, the b2World's block allocator is used for particle data.
@@ -614,14 +492,14 @@ public:
 	/// Get contacts between particles
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const b2ParticleContact* GetContacts() const;
-	b2ParticleContact* GetContacts();
+	const Particle::Contact* GetContacts() const;
+	Particle::Contact* GetContacts();
 	const int32 GetContactCount() const;
 
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const b2PartBodyContact* GetBodyContacts() const;
+	const Particle::BodyContact* GetBodyContacts() const;
 
 	int32 GetBodyContactCount() const;
 
@@ -1197,33 +1075,14 @@ private:
 	bool hasHandleIndexBuffer;
 
 	vector<b2ParticleHandle*> m_handleIndexBuffer;
-	vector<uint32>	m_flags;
-	vector<float32> m_masses, m_invMasses;
-	ampArray<uint32> m_ampFlags;
-	ampArray<float32> m_ampMasses, m_ampInvMasses;
 
-	vector<Vec3>	m_positions, m_velocities, m_forces;
-	ampArray<Vec3> m_ampPositions, m_ampVelocities, m_ampForces;
 
-	vector<float32>		m_weightBuffer,
-						m_heats,
-						m_healthBuffer;
-	ampArray<float32>	m_ampWeights,
-						m_ampHeats,
-						m_ampHealths;
 
 	amp::CopyFuture m_ampCopyFutDepths;
 	amp::CopyFuture m_ampCopyFutPairs;
 	amp::CopyFuture m_ampCopyFutTriads;
 
 	bool m_hasColorBuf;
-	vector<int32>	m_colorBuffer;
-	ampArray<int32>	m_ampColors;
-
-	vector<int32>	m_matIdxs;
-	vector<int32>   m_groupIdxs;
-	ampArray<int32>	m_ampMatIdxs;
-	ampArray<int32> m_ampGroupIdxs;
 
 	list<pair<int32, int32>>	m_zombieRanges;
 	vector<int32>				m_freeGroupIdxs;
@@ -1240,25 +1099,17 @@ private:
 	/// SolveStaticPressure() and SolvePressure().  It will be reallocated on
 	/// subsequent CreateParticle() calls.
 	bool hasStaticPressureBuf;
-	vector<float32> m_staticPressureBuf;
-	ampArray<float32> m_ampStaticPressures;
 	/// m_accumulationBuffer is used in many functions as a temporary buffer
 	/// for scalar values.
-	vector<float32> m_accumulationBuf;
-	ampArray<float32> m_ampAccumulations;
 	/// When any particles have the flag b2_tensileParticle,
 	/// m_accumulation2Buffer is first allocated and used in SolveTensile()
 	/// as a temporary buffer for vector values.  It will be reallocated on
 	/// subsequent CreateParticle() calls.
 	bool hasAccumulation2Buf;
-	vector<Vec3> m_accumulation3Buf;
-	ampArray<Vec3> m_ampAccumulationVec3s;
 	/// When any particle groups have the flag b2_solidParticleGroup,
 	/// m_depthBuffer is first allocated and populated in ComputeDepth() and
 	/// used in SolveSolid(). It will be reallocated on subsequent
 	/// CreateParticle() calls.
-	vector<float32> m_depthBuffer;
-	ampArray<float32> m_ampDepths;
 
 	/// Stuck particle detection parameters and record keeping
 	int32 m_stuckThreshold;
@@ -1267,30 +1118,19 @@ private:
 	bool hasBodyContactCountBuffer;
 	bool hasConsecutiveContactStepsBuffer;
 	vector<int32>  m_lastBodyContactStepBuffer;
-	vector<int32>  m_bodyContactCountBuffer;
 	vector<int32>  m_consecutiveContactStepsBuffer;
 	vector<int32>  m_stuckParticleBuffer;
 
 	//vector<int32>  m_findContactCountBuf;
 	//vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxABuf;
 	//vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxBBuf;
-	vector<int32>  m_findContactRightTagBuf;
-	vector<int32>  m_findContactBottomLeftTagBuf;
-	vector<int32>  m_findContactBottomRightTagBuf;
 
-	vector<Proxy>  m_proxyBuffer;
-	ampArray<Proxy> m_ampProxies;
-	ampArray<int32> m_localContactCnts;
-	ampArray2D<b2ParticleContact> m_localContacts;
-	ampArray<int32> m_localBodyContactCnts;
-	ampArray2D<b2PartBodyContact> m_localBodyContacts;
 	int32 m_bodyContactFixtureCnt = 0;
 
-	vector<b2ParticleContact> m_contacts;
-	vector<b2PartBodyContact> m_bodyContacts;
-	ampArray<b2ParticleContact> m_ampContacts;
-	ampArray<b2PartBodyContact> m_ampBodyContacts;
-	ampArray<b2PartGroundContact> m_ampGroundContacts;
+	vector<Particle::Contact> m_contacts;
+	vector<Particle::BodyContact> m_bodyContacts;
+	ampArray<Particle::Contact> m_ampContacts;
+	ampArray<Particle::BodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
@@ -1311,12 +1151,6 @@ private:
 	//			    m_triadPCXBuf, m_triadPCYBuf;
 	//vector<float32> m_triadKABuf, m_triadKBBuf, m_triadKCBuf, m_triadSBuf;
 
-	/// Time each particle should be destroyed relative to the last time
-	/// m_timeElapsed was initialized.  Each unit of time corresponds to
-	/// b2ParticleSystemDef::lifetimeGranularity seconds.
-	vector<int32> m_expireTimeBuf;
-	/// List of particle indices sorted by expiration time.
-	vector<int32> m_idxByExpireTimeBuf;
 	/// Time elapsed in 32:32 fixed point.  Each non-fractional unit of time
 	/// corresponds to b2ParticleSystemDef::lifetimeGranularity seconds.
 	int64 m_timeElapsed;
@@ -1361,30 +1195,6 @@ inline Vec2 ParticleSystem::GetLinearVelocityFromWorldPoint(
 	return group.m_linearVelocity + b2Cross(group.m_angularVelocity, worldPoint - group.m_center);
 }
 
-inline bool b2ParticleContact::operator==(
-	const b2ParticleContact& rhs) const
-{
-	return idxA == rhs.idxA
-		&& idxB == rhs.idxB
-		&& flags == rhs.flags
-		&& weight == rhs.weight
-		&& normal == rhs.normal;
-}
-
-// The reciprocal sqrt function differs between SIMD and non-SIMD, but they
-// should create approximately equal results.
-inline bool b2ParticleContact::ApproximatelyEqual(
-	const b2ParticleContact& rhs) const
-{
-	static const float MAX_WEIGHT_DIFF = 0.01f; // Weight 0 ~ 1, so about 1%
-	static const float MAX_NORMAL_DIFF = 0.01f; // Normal length = 1, so 1%
-	return idxA == rhs.idxA
-		&& idxB == rhs.idxB
-		&& flags == rhs.flags
-		&& b2Abs(weight - rhs.weight) < MAX_WEIGHT_DIFF
-		&& (normal - rhs.normal).Length() < MAX_NORMAL_DIFF;
-}
-
 inline ParticleGroup* ParticleSystem::GetParticleGroups()
 {
 	return m_groupBuffer.data();
@@ -1409,11 +1219,11 @@ inline bool ParticleSystem::GetPaused() const
 	return m_paused;
 }
 
-inline const b2ParticleContact* ParticleSystem::GetContacts() const
+inline const Particle::Contact* ParticleSystem::GetContacts() const
 {
 	return m_contacts.data();
 }
-inline b2ParticleContact* ParticleSystem::GetContacts()
+inline Particle::Contact* ParticleSystem::GetContacts()
 {
 	return m_contacts.data();
 }
@@ -1423,7 +1233,7 @@ inline const int32 ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
-inline const b2PartBodyContact* ParticleSystem::GetBodyContacts() const
+inline const Particle::BodyContact* ParticleSystem::GetBodyContacts() const
 {
 	return m_bodyContacts.data();
 }
@@ -1502,49 +1312,6 @@ inline float32 ParticleSystem::GetMassFromDensity(const float32 density) const
 	return density * m_particleVolume;
 }
 
-inline Vec3* ParticleSystem::GetPositionBuffer()
-{
-	return m_positions.data();
-}
-inline const Vec3* ParticleSystem::GetPositionBuffer() const
-{
-	return m_positions.data();
-}
-
-inline Vec3* ParticleSystem::GetVelocityBuffer()
-{
-	return m_velocities.data();
-}
-inline const Vec3* ParticleSystem::GetVelocityBuffer() const
-{
-	return m_velocities.data();
-}
-
-inline float32* ParticleSystem::GetWeightBuffer()
-{
-	return m_weightBuffer.data();
-}
-
-inline const float32* ParticleSystem::GetHeatBuffer() const
-{
-	return m_heats.data();
-}
-
-inline float32* ParticleSystem::GetHeatBuffer()
-{
-	return m_heats.data();
-}
-
-inline const float32* ParticleSystem::GetHealthBuffer() const
-{
-	return m_healthBuffer.data();
-}
-
-inline float32* ParticleSystem::GetHealthBuffer()
-{
-	return m_healthBuffer.data();
-}
-
 inline void ParticleSystem::SetMaxParticleCount(uint32 count)
 {
 	b2Assert(m_count <= count);
@@ -1560,7 +1327,7 @@ inline uint32 ParticleSystem::GetAllParticleFlags(const ParticleGroup& group) co
 	uint32 flags = 0;
 	for (int32 i = group.m_firstIndex; i < group.m_lastIndex; i++)
 	{
-		flags |= m_flags[i];
+		flags |= m_buffers.flags[i];
 	}
 	return flags;
 }
@@ -1568,48 +1335,6 @@ inline uint32 ParticleSystem::GetAllParticleFlags(const ParticleGroup& group) co
 inline uint32 ParticleSystem::GetAllGroupFlags() const
 {
 	return m_allGroupFlags;
-}
-
-inline uint32* ParticleSystem::GetFlagsBuffer()
-{
-	return m_flags.data();
-}
-inline const uint32* ParticleSystem::GetFlagsBuffer() const
-{
-	return m_flags.data();
-}
-
-inline const int32* ParticleSystem::GetColorBuffer() const
-{
-	return m_colorBuffer.data();
-}
-
-inline const int32* ParticleSystem::GetGroupIdxBuffer() const
-{
-	return m_groupIdxs.data();
-}
-inline int32* ParticleSystem::GetGroupIdxBuffer()
-{
-	return m_groupIdxs.data();
-}
-
-inline const int32* ParticleSystem::GetPartMatIdxBuffer() const
-{
-	return m_matIdxs.data();
-}
-inline int32* ParticleSystem::GetPartMatIdxBuffer()
-{
-	return m_matIdxs.data();
-}
-
-inline const float32* ParticleSystem::GetWeightBuffer() const
-{
-	return m_weightBuffer.data();
-}
-
-inline uint32 ParticleSystem::GetParticleFlags(int32 index)
-{
-	return GetFlagsBuffer()[index];
 }
 
 inline bool ParticleSystem::ValidateParticleIndex(const int32 index) const
@@ -1626,18 +1351,18 @@ inline void ParticleSystem::ParticleApplyLinearImpulse(int32 index,
 
 inline void ParticleSystem::DistributeForce(int32 a, int32 b, const Vec2& f) 
 {
-	m_velocities[a] -= m_masses[b] * f;
-	m_velocities[b] += m_masses[a] * f;
+	m_buffers.velocity[a] -= m_buffers.mass[b] * f;
+	m_buffers.velocity[b] += m_buffers.mass[a] * f;
 }
 inline void ParticleSystem::DistributeForce(int32 a, int32 b, const Vec3& f)
 {
-	m_velocities[a] -= m_masses[b] * f;
-	m_velocities[b] += m_masses[a] * f;
+	m_buffers.velocity[a] -= m_buffers.mass[b] * f;
+	m_buffers.velocity[b] += m_buffers.mass[a] * f;
 }
 inline void ParticleSystem::DistributeForceDamp(int32 a, int32 b, const Vec2& f)
 {
-	m_velocities[a] += m_masses[b] * f;
-	m_velocities[b] -= m_masses[a] * f;
+	m_buffers.velocity[a] += m_buffers.mass[b] * f;
+	m_buffers.velocity[b] -= m_buffers.mass[a] * f;
 }
 
 

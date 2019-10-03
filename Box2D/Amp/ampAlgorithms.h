@@ -726,20 +726,6 @@ private:
 			   desc1.StructureByteStride == desc2.StructureByteStride;
 	}
 
-	template<typename T>
-	void copyRegion(ID3D11Buffer* pSrc, ID3D11Buffer* pDst, uint32 start, uint32 cnt)
-	{
-		if (!pSrc) return;
-		if (!compareBuffers(pSrc, pDst))
-			throw std::invalid_argument("pSrc and pDst are not of same structure");
-		D3D11_BOX box{};
-		box.left = start * sizeof(T);
-		box.right = box.left + cnt * sizeof(T);
-		box.top = box.front = 0;
-		box.bottom = box.back = 1;
-		pImmediateContext->CopySubresourceRegion(pDst, 0, box.left, 0, 0, pSrc, 0, &box);
-	}
-
 public:
 	D11Device()
 	{
@@ -749,6 +735,22 @@ public:
 	~D11Device()
 	{
 		pDevice->Release();
+	}
+
+	void Flush() { if (pImmediateContext) pImmediateContext->Flush(); }
+
+	template<typename T>
+	bool copyRegion(ID3D11Buffer* pSrc, ID3D11Buffer* pDst, uint32 start, uint32 cnt)
+	{
+		if (!pSrc || !pDst) return false;
+		if (!compareBuffers(pSrc, pDst))
+			return false; // throw std::invalid_argument("pSrc and pDst are not of same structure");
+		D3D11_BOX box{};
+		box.left = start * sizeof(T);
+		box.right = box.left + cnt * sizeof(T);
+		box.top = box.front = 0;
+		box.bottom = box.back = 1;
+		pImmediateContext->CopySubresourceRegion(pDst, 0, box.left, 0, 0, pSrc, 0, &box);
 	}
 
 	template <typename T>
@@ -801,6 +803,7 @@ public:
 		if (pSrc7) pSrc7->Release();
 		if (pSrc8) pSrc8->Release();
 	}
+
 	template <typename T>
 	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 start, const int32 end)
 	{

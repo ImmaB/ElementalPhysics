@@ -22,7 +22,7 @@ extern "C" {
 
 // Helper function, called from assembly routine.
 void GrowParticleContactBuffer(
-	b2GrowableBuffer<b2ParticleContact>& contacts)
+	b2GrowableBuffer<Particle::Contact>& contacts)
 {
 	// Set contacts.count = capacity instead of count because there are
 	// items past the end of the array waiting to be post-processed.

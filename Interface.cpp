@@ -164,7 +164,7 @@ EXPORT void SetContactCallback(ContactCallback callback)
 
 EXPORT void SetDebugContacts(bool debug) { pPartSys->m_debugContacts = debug; }
 
-EXPORT void GetPartContacts(int32* pCnt, b2ParticleContact** pContacts)
+EXPORT void GetPartContacts(int32* pCnt, Particle::Contact** pContacts)
 {
 	*pCnt = pPartSys->GetContactCount();
 	*pContacts = pPartSys->GetContacts();
@@ -312,17 +312,7 @@ EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callb
 	pPartSys->m_resizeCallback = callback;
 	pPartSys->m_resizeCallback(pPartSys->GetCapacity());
 }
-EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs)
-{
-	pPartSys->m_d11Positions = bufPtrs[0];
-	pPartSys->m_d11Velocities = bufPtrs[1];
-	pPartSys->m_d11MatIdxs = bufPtrs[2];
-	pPartSys->m_d11Weights = bufPtrs[3];
-	pPartSys->m_d11Healths = bufPtrs[4];
-	pPartSys->m_d11Heats = bufPtrs[5];
-	pPartSys->m_d11Flags = bufPtrs[6];
-	pPartSys->m_d11Colors = bufPtrs[7];
-}
+EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs) { pPartSys->m_d11Buffers.Set(bufPtrs); }
 
 
 #pragma endregion

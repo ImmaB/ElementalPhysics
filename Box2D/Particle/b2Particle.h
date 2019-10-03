@@ -15,12 +15,15 @@
 * misrepresented as being the original software.
 * 3. This notice may not be removed or altered from any source distribution.
 */
-#ifndef B2_PARTICLE
-#define B2_PARTICLE
+#pragma once
 
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Common/b2Settings.h>
 #include <Box2D/Common/b2IntrusiveList.h>
+#include <Box2D/Amp/ampAlgorithms.h>
+#include <vector>
+#include <d3d11.h>
+#include <amp.h>
 
 struct ParticleGroup;
 
@@ -58,6 +61,8 @@ struct Particle
 		Controlled = 1u << 2,		/// markes Particles that are currently controlled
 		Burning = 1u << 3,			/// Burning down to other mat
 	};
+	/// For only getting particle flags from uint32
+	static const uint32 k_mask = 0x000000FF;
 
 	struct Mat
 	{
@@ -178,8 +183,101 @@ struct Particle
 		inline bool IsWallSpringOrElastic() const restrict(amp) { return m_flags & k_wallOrSpringOrElasticFlags; }
 	};
 
-	/// For only getting particle flags from uint32
-	static const uint32 k_mask = 0x000000FF;
+
+	struct Contact
+	{
+		int32 idxA, idxB;
+		/// Weight of the contact. A value between 0.0f and 1.0f.
+		/// 0.0f ==> particles are just barely touching
+		/// 1.0f ==> particles are perfectly on top of each other
+		float32 weight;
+		float32 mass;
+		/// The normalized direction from A to B.
+		Vec3 normal;
+		/// The logical sum of the particle behaviors that have been set.
+		/// See the b2ParticleFlag enum.
+		uint32 flags;
+
+		bool operator==(const Contact& rhs) const;
+		bool operator!=(const Contact& rhs) const { return !operator==(rhs); }
+		bool ApproximatelyEqual(const Contact& rhs) const;
+
+		inline bool HasFlag(const uint32 f) const { return flags & f; }
+		inline bool HasFlag(const uint32 f) const restrict(amp) { return flags & f; }
+		inline bool HasFlags(const uint32 f) const { return (flags & f) == f; }
+		inline bool HasFlags(const uint32 f) const restrict(amp) { return (flags & f) == f; }
+		inline bool IsZombie() const restrict(amp) { return HasFlag(Particle::Flag::Zombie); }
+	};
+	struct BodyContact
+	{
+		int32 partIdx;
+		/// The body making contact.
+		int32 bodyIdx;
+		/// The specific fixture making contact
+		int32 fixtureIdx;
+		/// Weight of the contact. A value between 0.0f and 1.0f.
+		float32 weight;
+		/// The normalized direction from the particle to the body.
+		Vec2 normal;
+		/// The effective mass used in calculating force.
+		float32 mass;
+	};
+	struct GroundContact
+	{
+		int32 groundTileIdx;
+		int32 groundChunkIdx;
+		int32 groundMatIdx;
+		float32 weight;
+		Vec3 normal;
+		float32 mass;
+
+		void setInvalid() { groundTileIdx = INVALID_IDX; }
+		void setInvalid() restrict(amp) { groundTileIdx = INVALID_IDX; }
+		bool getValid() const { return groundTileIdx != INVALID_IDX; }
+		bool getValid() const restrict(amp) { return groundTileIdx != INVALID_IDX; }
+	};
+
+	struct D11Buffers
+	{
+		ID3D11Buffer* flags, * matIdx, * position, * velocity, * weight,
+			* heat, * health, * color;
+
+		void Set(ID3D11Buffer** bufPtrs);
+	};
+
+	struct Buffers
+	{
+		std::vector<uint32> flags;
+		std::vector<Vec3> position, velocity, force, accumulationVec3;
+		std::vector<float32> weight, heat, health, mass, invMass,
+			staticPressure, accumulation, depth;
+		std::vector<int32> matIdx, groupIdx, color, bodyContactCnt;
+		std::vector<Proxy> proxy;
+
+		Buffers(int32 cap);
+		void Resize(int32 capacity);
+	};
+
+	struct AmpArrays
+	{
+		ampArray<uint32> flags;
+		ampArray<Vec3> position, velocity, force, accumulationVec3;
+		ampArray<float32> weight, heat, health, mass, invMass,
+			staticPressure, accumulation, depth;
+		ampArray<int32>	matIdx, groupIdx, color, contactCnt, bodyContactCnt;
+		ampArray<Proxy> proxy;
+		ampArray2D<Contact> contact;
+		ampArray2D<BodyContact> bodyContact;
+		ampArray<GroundContact> groundContact;
+
+		AmpArrays(int32 cap, const ampAccelView& accelView);
+		void Resize(int32 capacity, int32 copyCnt);
+	};
+
+	static void CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs, int32 first, int32 last);
+	static void CopyAmpArraysToD11Buffers(D11Device& device, AmpArrays& arrs, D11Buffers& d11Bufs, int32 cnt);
+
+
 };
 
 /// A helper function to calculate the optimal number of iterations.
@@ -214,17 +312,3 @@ private:
 	// Index of the particle within the particle system.
 	int32 m_index;
 };
-
-#if LIQUIDFUN_EXTERNAL_LANGUAGE_API
-inline void b2ParticleDef::SetPosition(float32 x, float32 y)
-{
-	position.Set(x, y);
-}
-
-inline void b2ParticleDef::SetColor(int32 r, int32 g, int32 b, int32 a)
-{
-	color.Set((uint8)r, (uint8)g, (uint8)b, (uint8)a);
-}
-#endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-#endif

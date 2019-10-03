@@ -375,8 +375,6 @@ private:
 	void DrawJoint(b2Joint* joint);
 	void DrawShape(Fixture& shape, const b2Transform& xf, const b2Color& color);
 
-	void DrawParticleSystem(const ParticleSystem& system);
-
 	b2TimeStep m_step;
 
 	b2BlockAllocator m_blockAllocator;

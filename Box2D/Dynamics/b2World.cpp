@@ -1092,20 +1092,6 @@ void b2World::DrawJoint(b2Joint* joint)
 	}
 }
 
-void b2World::DrawParticleSystem(const ParticleSystem& system)
-{
-	int32 particleCount = system.GetCount();
-	if (particleCount)
-	{
-		float32 radius = system.GetRadius();
-		const Vec3* posBuf = system.GetPositionBuffer();
-		if (system.m_colorBuffer.data())
-			m_debugDraw->DrawParticles(posBuf, radius, system.GetColorBuffer(), particleCount);
-		else
-			m_debugDraw->DrawParticles(posBuf, radius, NULL, particleCount);
-	}
-}
-
 void b2World::DrawDebugData()
 {
 	if (m_debugDraw == NULL)
@@ -1134,8 +1120,8 @@ void b2World::DrawDebugData()
 		});
 	}
 
-	if (flags & b2Draw::e_particleBit)
-		DrawParticleSystem(*m_particleSystem);
+	//if (flags & b2Draw::e_particleBit)
+	//	DrawParticleSystem(*m_particleSystem);
 
 	if (flags & b2Draw::e_jointBit)
 		for (b2Joint* j = m_jointList; j; j = j->GetNext())

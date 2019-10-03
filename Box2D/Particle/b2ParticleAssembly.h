@@ -19,10 +19,9 @@
 #define B2_PARTICLE_ASSEMBLY_H
 
 #include <Box2D/Common/b2GrowableBuffer.h>
+#include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Common/b2Math.h>
 
-
-struct b2ParticleContact;
 
 struct FindContactCheck
 {
@@ -55,7 +54,7 @@ extern void FindContactsFromChecks_Simd(
   const float& particleDiameterSq,
   const float& particleDiameterInv,
   const uint32* flags,
-	b2GrowableBuffer<b2ParticleContact>& contacts);
+	b2GrowableBuffer<Particle::Contact>& contacts);
 
 #ifdef __cplusplus
 } // extern "C"

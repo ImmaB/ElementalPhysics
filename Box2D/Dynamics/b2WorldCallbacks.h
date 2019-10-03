@@ -20,6 +20,7 @@
 #pragma once
 
 #include <Box2D/Common/b2Settings.h>
+#include <Box2D/Particle/b2Particle.h>
 
 struct Vec2;
 struct b2Transform;
@@ -31,8 +32,6 @@ class ParticleSystem;
 struct b2ContactResult;
 struct b2Manifold;
 struct ParticleGroup;
-struct b2ParticleContact;
-struct b2PartBodyContact;
 
 /// Joints and fixtures are destroyed when their associated
 /// body is destroyed. Implement this listener so that you
@@ -139,7 +138,7 @@ public:
 	/// Called when a fixture and particle start touching if the
 	/// b2_fixtureContactFilterParticle flag is set on the particle.
 	virtual void BeginContact(ParticleSystem* particleSystem,
-							  b2PartBodyContact* particleBodyContact)
+							  Particle::BodyContact* particleBodyContact)
 	{
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(particleBodyContact);
@@ -158,7 +157,7 @@ public:
 	/// Called when two particles start touching if
 	/// b2_particleContactFilterParticle flag is set on either particle.
 	virtual void BeginContact(ParticleSystem* particleSystem,
-							  b2ParticleContact* particleContact)
+							  Particle::Contact* particleContact)
 	{
 		B2_NOT_USED(particleSystem);
 		B2_NOT_USED(particleContact);
