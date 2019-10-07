@@ -430,6 +430,7 @@ public:
 	vector<set<int32>>		m_bodyFreeFixtureIdxsBuffer;
 	vector<b2JointEdge*>	m_bodyJointListBuffer;
 	vector<b2ContactEdge*>	m_bodyContactListBuffer;
+	vector<int32>			m_bodyParticleBuffer;
 
 	vector<Fixture>			m_fixtureBuffer;
 	vector<b2FixtureProxy*> m_fixtureProxiesBuffer;
@@ -442,6 +443,7 @@ public:
 	vector<Vec2>			m_shapeNormalBuffer;
 
 	set<int32> m_freeBodyIdxs;
+	set<pair<int32, int32>> m_freeBodyParticleRanges;
 	set<int32> m_freeFixtureIdxs;
 	set<int32> m_freeChainShapeIdxs;
 	set<int32> m_freeCircleShapeIdxs;

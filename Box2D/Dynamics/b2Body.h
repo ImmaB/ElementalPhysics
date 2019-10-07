@@ -84,6 +84,7 @@ struct Body
 		float32 m_hotThreshold;
 		float32 m_coldThreshold;
 		float32 m_ignitionThreshold;
+		float32 m_particleCapacity;
 
 		Mat(const Def& def)
 			: m_matFlags(def.matFlags),
@@ -247,6 +248,10 @@ struct Body
 	float32 m_surfaceInvMass;
 	float32 m_surfaceHeat;
 
+	int32 partStartIdx;
+	int32 partCapacity;
+	int32 particleCnt;
+
 	void Set(const Body::Def& def);
 	
 	/// Set the sleep state of the body. A sleeping body has very
@@ -409,12 +414,6 @@ struct Body
 		if (amp::atomicAddFlag(m_flags, flag)) return true;
 		return false;
 	}
-};
-
-/// A rigid body. These are created via b2World::CreateBody.
-class b2Body
-{
-public:
 };
 
 inline const Vec2 Body::GetPosition() const

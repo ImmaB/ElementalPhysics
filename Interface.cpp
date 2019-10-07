@@ -23,7 +23,7 @@ public:
 		LFContact contact;
 		contact.bodyAIdx = c.GetBodyIdxA();
 		contact.bodyBIdx = c.GetBodyIdxB();
-		std::async(launch::async, m_beginCallback, &contact);
+		std::async(launch::deferred, m_beginCallback, &contact);
 	}
 
 	ContactCallback m_beginCallback;
@@ -468,10 +468,13 @@ EXPORT int32 CreateBody(Body::Type type, b2Transform transform, float32 linearDa
 
     return pWorld->CreateBody(bd);
 }
-EXPORT Body* GetBody(int32 idx)
+EXPORT Body* GetBody(int32 idx) { return &pWorld->m_bodyBuffer[idx]; }
+EXPORT Body* GetBodies(int32* outCnt)
 {
-	return &pWorld->m_bodyBuffer[idx];
+	*outCnt = pWorld->m_bodyBuffer.size();
+	return pWorld->m_bodyBuffer.data();
 }
+
 EXPORT void SetBodyAwake(Body* pBody, bool isAwake)
 {
 	pBody->SetAwake(isAwake);
@@ -541,7 +544,7 @@ EXPORT void CreateGround(int32 xSize, int32 ySize, float32 stride)
 	gd.stride = stride;
 	pGround = pWorld->CreateGround(gd);
 }
-EXPORT void SetGroundBuffer(ID3D11Buffer* pD11Tiles) { pGround->m_d11Tiles = pD11Tiles; }
+EXPORT void SetGroundBuffer(ID3D11Buffer* pD11Tiles) { if (pGround) pGround->m_d11Tiles = pD11Tiles; }
 EXPORT void SetGroundTiles(Ground::Tile* pTiles)
 {
 	pGround->SetTiles(pTiles);

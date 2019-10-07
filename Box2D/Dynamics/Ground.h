@@ -129,6 +129,7 @@ public:
 	int32 m_allMaterialFlags;
 
 	Ground(b2World& world, const def& gd);
+	~Ground();
 
 	void SetTiles(Tile* tiles);
 

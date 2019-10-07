@@ -27,6 +27,10 @@ Ground::Ground(b2World& world, const def& gd) :
 	amp::resize(m_ampChunkHasChange, m_chunkCnt);
 	amp::fill(m_ampChunkHasChange, 0);
 }
+Ground::~Ground()
+{
+	m_materials.clear();
+}
 
 void Ground::SetTiles(Tile* tiles)
 {

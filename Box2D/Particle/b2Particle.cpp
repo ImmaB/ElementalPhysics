@@ -205,14 +205,21 @@ void Particle::CopyAmpArraysToD11Buffers(D11Device& device, AmpArrays& arrs, D11
 
 void Particle::D11Buffers::Set(ID3D11Buffer** bufPtrs)
 {
-	flags = bufPtrs[0];
-	position = bufPtrs[1];
-	velocity = bufPtrs[2];
-	weight = bufPtrs[3];
-	heat = bufPtrs[4];
-	health = bufPtrs[5];
-	matIdx = bufPtrs[6];
-	color = bufPtrs[7];
+	if (bufPtrs && *bufPtrs)
+	{
+		flags = bufPtrs[0];
+		position = bufPtrs[1];
+		velocity = bufPtrs[2];
+		weight = bufPtrs[3];
+		heat = bufPtrs[4];
+		health = bufPtrs[5];
+		matIdx = bufPtrs[6];
+		color = bufPtrs[7];
+	}
+	else
+	{
+		flags = position = velocity = weight = heat = health = matIdx = color = nullptr;
+	}
 }
 
 

@@ -401,6 +401,7 @@ ParticleSystem::ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& b
 
 	// Box2D
 	m_ampBodies(TILE_SIZE, m_gpuAccelView),
+	m_ampBodyParticles(TILE_SIZE, m_gpuAccelView),
 	m_ampFixtures(TILE_SIZE, m_gpuAccelView),
 	m_ampChainShapes(TILE_SIZE, m_gpuAccelView),
 	m_ampCircleShapes(TILE_SIZE, m_gpuAccelView),
@@ -475,7 +476,6 @@ ParticleSystem::~ParticleSystem()
 {
 	for (int i = 0; i < m_groupCount; i++)
 		DestroyGroup(i, 0, true);
-
 	amp::uninitialize();
 }
 
@@ -855,6 +855,8 @@ void ParticleSystem::DestroyAllParticles()
 	m_count = 0;
 	m_allFlags = 0;
 	ResizeParticleBuffers(0);
+
+	m_d11Buffers.Set(nullptr);
 	
 	m_groupCount = 0;
 	m_freeGroupIdxs.clear();
@@ -1825,7 +1827,7 @@ void ParticleSystem::ComputeWeight()
 
 	if (m_accelerate)
 	{
-		m_futureComputeWeight = std::async(launch::async, [=]()
+		m_futureComputeWeight.RunDeferred([=]()
 		{
 			auto& weights = m_ampArrays.weight;
 			amp::fill(weights, 0.f, m_count);
@@ -2988,179 +2990,185 @@ void ParticleSystem::AmpUpdateBodyContacts()
 {
 	// If the particle contact listener is enabled, generate a set of
 	// fixture / particle contacts.
-
-	m_bodyContactCount = 0;
+	m_futureUpdateBodyContacts.RunDeferred([=]()
+	{
+		m_bodyContactCount = 0;
 	
-	vector<b2AABBFixtureProxy> fixtureBounds;
+		vector<b2AABBFixtureProxy> fixtureBounds;
 
-	b2AABB partsBounds;
-	AmpComputeAABB(partsBounds);
-	m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](int32 fixtureIdx)
-	{
-		const Fixture& f = m_world.m_fixtureBuffer[fixtureIdx];
-		if (f.m_isSensor) return;
-
-		const int32 childCount = m_world.GetShape(f).GetChildCount();
-		for (int32 childIdx = 0; childIdx < childCount; childIdx++)
-			fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(f, childIdx), fixtureIdx, childIdx));
-	});
-	if (fixtureBounds.empty()) return;
-
-	auto& groupIdxs = m_ampArrays.groupIdx;
-	auto& groups = m_ampGroups;
-	const auto shouldCollide = [=, &groupIdxs, &groups](int32 i, const Fixture& f) restrict(amp) -> bool
-	{
-		return ShouldCollisionGroupsCollide(f.m_filter.collisionGroup, groups[groupIdxs[i]].m_collisionGroup);
-	};
-
-	auto& contactCnts = m_ampArrays.bodyContactCnt;
-	amp::fill(contactCnts, 0, m_count);
-	auto& localContacts = m_ampArrays.bodyContact;
-	int32 newFixtureCnt = fixtureBounds.size();
-	if (m_bodyContactFixtureCnt < newFixtureCnt)
-	{
-		m_bodyContactFixtureCnt = newFixtureCnt;
-		amp::resize2ndDim(localContacts, newFixtureCnt);
-		amp::resize(m_ampBodyContacts, m_count * newFixtureCnt);
-	}
-
-	WaitForCopyBox2DToGPU();
-
-	auto& chainShapes = m_ampChainShapes;
-	auto& circleShapes = m_ampCircleShapes;
-	auto& edgeShapes = m_ampEdgeShapes;
-	auto& polygonShapes = m_ampPolygonShapes;
-	const auto computeDistance = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes]
-		(const Fixture& f, const b2Transform& xf, const Vec3& p, float32& d, Vec2& n, int32 childIndex) restrict(amp) -> bool
-	{
-		if (f.m_shapeType == b2Shape::e_chain)
+		b2AABB partsBounds;
+		AmpComputeAABB(partsBounds);
+		m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](int32 fixtureIdx)
 		{
-			const auto& s = chainShapes[f.m_shapeIdx];
-			if (!s.TestZ(xf, p.z)) return false;
-			s.ComputeDistance(xf, p, d, n, childIndex);
-		}
-		else if (f.m_shapeType == b2Shape::e_circle)
-		{
-			const auto& s = circleShapes[f.m_shapeIdx];
-			if (!s.TestZ(xf, p.z)) return false;
-			s.ComputeDistance(xf, p, d, n);
-		}
-		else if (f.m_shapeType == b2Shape::e_edge)
-		{
-			const auto& s = edgeShapes[f.m_shapeIdx];
-			if (!s.TestZ(xf, p.z)) return false;
-			s.ComputeDistance(xf, p, d, n);
+			const Fixture& f = m_world.m_fixtureBuffer[fixtureIdx];
+			if (f.m_isSensor) return;
 
-		}
-		else if (f.m_shapeType == b2Shape::e_polygon)
-		{
-			const auto& s = polygonShapes[f.m_shapeIdx];
-			if (!s.TestZ(xf, p.z)) return false;;
-			s.ComputeDistance(xf, p, d, n);
-		}
-		return true;
-	};
+			const int32 childCount = m_world.GetShape(f).GetChildCount();
+			for (int32 childIdx = 0; childIdx < childCount; childIdx++)
+				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(f, childIdx), fixtureIdx, childIdx));
+		});
+		if (fixtureBounds.empty()) return;
 
-	const float32 partDiameter = m_particleDiameter;
-	const float32 invDiameter = m_inverseDiameter;
-	auto& bodies = m_ampBodies;
-	auto& fixtures = m_ampFixtures;
-	auto& positions = m_ampArrays.position;
-	auto& flags = m_ampArrays.flags;
-	auto& invMasses = m_ampArrays.invMass;
-	AmpForEachInsideBounds(fixtureBounds, [=, &bodies, &fixtures, &positions, &flags, &invMasses,
-		&contactCnts, &localContacts](int32 i, int32 fixtureIdx, int32 childIdx) restrict(amp)
-	{
-		Fixture& fixture = fixtures[fixtureIdx];
-		if (!shouldCollide(i, fixture)) return;
+		auto& groupIdxs = m_ampArrays.groupIdx;
+		auto& groups = m_ampGroups;
+		const auto shouldCollide = [=, &groupIdxs, &groups](int32 i, const Fixture& f) restrict(amp) -> bool
+		{
+			return ShouldCollisionGroupsCollide(f.m_filter.collisionGroup, groups[groupIdxs[i]].m_collisionGroup);
+		};
+
+		auto& contactCnts = m_ampArrays.bodyContactCnt;
+		amp::fill(contactCnts, 0, m_count);
+		auto& localContacts = m_ampArrays.bodyContact;
+		int32 newFixtureCnt = fixtureBounds.size();
+		if (m_bodyContactFixtureCnt < newFixtureCnt)
+		{
+			m_bodyContactFixtureCnt = newFixtureCnt;
+			amp::resize2ndDim(localContacts, newFixtureCnt);
+			amp::resize(m_ampBodyContacts, m_count * newFixtureCnt);
+		}
+
+		WaitForCopyBox2DToGPU();
+
+		auto& chainShapes = m_ampChainShapes;
+		auto& circleShapes = m_ampCircleShapes;
+		auto& edgeShapes = m_ampEdgeShapes;
+		auto& polygonShapes = m_ampPolygonShapes;
+		const auto computeDistance = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes]
+			(const Fixture& f, const b2Transform& xf, const Vec3& p, float32& d, Vec2& n, int32 childIndex) restrict(amp) -> bool
+		{
+			if (f.m_shapeType == b2Shape::e_chain)
+			{
+				const auto& s = chainShapes[f.m_shapeIdx];
+				if (!s.TestZ(xf, p.z)) return false;
+				s.ComputeDistance(xf, p, d, n, childIndex);
+			}
+			else if (f.m_shapeType == b2Shape::e_circle)
+			{
+				const auto& s = circleShapes[f.m_shapeIdx];
+				if (!s.TestZ(xf, p.z)) return false;
+				s.ComputeDistance(xf, p, d, n);
+			}
+			else if (f.m_shapeType == b2Shape::e_edge)
+			{
+				const auto& s = edgeShapes[f.m_shapeIdx];
+				if (!s.TestZ(xf, p.z)) return false;
+				s.ComputeDistance(xf, p, d, n);
+
+			}
+			else if (f.m_shapeType == b2Shape::e_polygon)
+			{
+				const auto& s = polygonShapes[f.m_shapeIdx];
+				if (!s.TestZ(xf, p.z)) return false;;
+				s.ComputeDistance(xf, p, d, n);
+			}
+			return true;
+		};
+
+		const float32 partDiameter = m_particleDiameter;
+		const float32 invDiameter = m_inverseDiameter;
+		auto& bodies = m_ampBodies;
+		auto& fixtures = m_ampFixtures;
+		auto& positions = m_ampArrays.position;
+		auto& flags = m_ampArrays.flags;
+		auto& invMasses = m_ampArrays.invMass;
+		AmpForEachInsideBounds(fixtureBounds, [=, &bodies, &fixtures, &positions, &flags, &invMasses,
+			&contactCnts, &localContacts](int32 i, int32 fixtureIdx, int32 childIdx) restrict(amp)
+		{
+			Fixture& fixture = fixtures[fixtureIdx];
+			if (!shouldCollide(i, fixture)) return;
 		
-		float32 d;
-		Vec2 n;
-		const int32 bIdx = fixture.m_bodyIdx;
-		const Body& b = bodies[bIdx];
-		const Vec3& ap = positions[i];
-		if (!computeDistance(fixture, b.m_xf, ap, d, n, childIdx)) return;
-		if (d > partDiameter) return;
+			float32 d;
+			Vec2 n;
+			const int32 bIdx = fixture.m_bodyIdx;
+			const Body& b = bodies[bIdx];
+			const Vec3& ap = positions[i];
+			if (!computeDistance(fixture, b.m_xf, ap, d, n, childIdx)) return;
+			if (d > partDiameter) return;
 		
-		const Vec2 bp = b.GetWorldCenter();
-		const float32 bm = b.m_mass;
-		const float32 bI =
-			b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
-		const float32 invBm = b.m_invMass;
-		const float32 invBI = bI > 0 ? 1 / bI : 0;
-		const float32 invAm = flags[i] & Particle::Mat::Flag::Wall ? 0 : invMasses[i];
-		const Vec2 rp = ap - bp;
-		const float32 rpn = b2Cross(rp, n);
-		const float32 invM = invAm + invBm + invBI * rpn * rpn;
+			const Vec2 bp = b.GetWorldCenter();
+			const float32 bm = b.m_mass;
+			const float32 bI =
+				b.GetInertia() - bm * b.GetLocalCenter().LengthSquared();
+			const float32 invBm = b.m_invMass;
+			const float32 invBI = bI > 0 ? 1 / bI : 0;
+			const float32 invAm = flags[i] & Particle::Mat::Flag::Wall ? 0 : invMasses[i];
+			const Vec2 rp = ap - bp;
+			const float32 rpn = b2Cross(rp, n);
+			const float32 invM = invAm + invBm + invBI * rpn * rpn;
 		
-		Particle::BodyContact& contact = localContacts[i][contactCnts[i]++];
-		contact.partIdx = i;
-		contact.bodyIdx = bIdx;
-		contact.fixtureIdx = fixtureIdx;
-		contact.weight = 1 - d * invDiameter;
-		contact.normal = -n;
-		contact.mass = invM > 0 ? 1 / invM : 0;
-		//DetectStuckParticle(i); //TODO
-	});
+			Particle::BodyContact& contact = localContacts[i][contactCnts[i]++];
+			contact.partIdx = i;
+			contact.bodyIdx = bIdx;
+			contact.fixtureIdx = fixtureIdx;
+			contact.weight = 1 - d * invDiameter;
+			contact.normal = -n;
+			contact.mass = invM > 0 ? 1 / invM : 0;
+			//DetectStuckParticle(i); //TODO
+		});
 
-	//vector<int32> cpuContactCnts;
-	//cpuContactCnts.resize(m_count);
-	//amp::copy(contactCnts, cpuContactCnts, m_count);
+		//vector<int32> cpuContactCnts;
+		//cpuContactCnts.resize(m_count);
+		//amp::copy(contactCnts, cpuContactCnts, m_count);
 	
-	auto& bodyContacts = m_ampBodyContacts;
-	m_bodyContactCount = amp::reduce(contactCnts, m_count,
-		[=, &contactCnts , &bodyContacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
-	{
-		for (int32 j = 0; j < contactCnts[i]; j++)
-			bodyContacts[wi + j] = localContacts[i][j];
-	});
+		auto& bodyContacts = m_ampBodyContacts;
+		m_bodyContactCount = amp::reduce(contactCnts, m_count,
+			[=, &contactCnts , &bodyContacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
+		{
+			for (int32 j = 0; j < contactCnts[i]; j++)
+				bodyContacts[wi + j] = localContacts[i][j];
+		});
 	
-	if (m_def.strictContactCheck)
-		RemoveSpuriousBodyContacts();
+		if (m_def.strictContactCheck)
+			RemoveSpuriousBodyContacts();
+	});
 }
 
 void ParticleSystem::AmpUpdateGroundContacts()
 {
-	const float32 invStride = 1.0f / m_world.m_ground->m_stride;
-	const float32 partRadius = m_particleRadius;
-	const float32 invDiameter = m_inverseDiameter;
-	const Vec3& vec3Up = Vec3_up;
-	const int32 txMax = m_world.m_ground->m_tileCntX;
-	const int32 tyMax = m_world.m_ground->m_tileCntY;
-	const int32 cxMax = m_world.m_ground->m_chunkCntX;
-	auto& groundContacts = m_ampArrays.groundContact;
-	auto& positions = m_ampArrays.position;
-	auto& masses = m_ampArrays.mass;
-	auto& groundTiles = m_world.m_ground->m_ampTiles;
-	auto& groundMats = m_world.m_ground->m_ampMaterials;
-	AmpForEachParticle([=, &groundContacts, &positions, &masses,
-		&groundTiles, &groundMats](int32 i) restrict(amp)
+	m_futureUpdateGroundContacts.RunDeferred([=]()
 	{
-		const Vec3& p = positions[i];
-		int32 tx = p.x * invStride;
-		int32 ty = p.y * invStride;
+		const float32 invStride = 1.0f / m_world.m_ground->m_stride;
+		const float32 partRadius = m_particleRadius;
+		const float32 invDiameter = m_inverseDiameter;
+		const Vec3& vec3Up = Vec3_up;
+		const int32 txMax = m_world.m_ground->m_tileCntX;
+		const int32 tyMax = m_world.m_ground->m_tileCntY;
+		const int32 cxMax = m_world.m_ground->m_chunkCntX;
+		auto& groundContacts = m_ampArrays.groundContact;
+		auto& positions = m_ampArrays.position;
+		auto& masses = m_ampArrays.mass;
+		auto& groundTiles = m_world.m_ground->m_ampTiles;
+		auto& groundMats = m_world.m_ground->m_ampMaterials;
+		AmpForEachParticle([=, &groundContacts, &positions, &masses,
+			&groundTiles, &groundMats](int32 i) restrict(amp)
+		{
+			const Vec3& p = positions[i];
+			int32 tx = p.x * invStride;
+			int32 ty = p.y * invStride;
 
-		Particle::GroundContact& contact = groundContacts[i];
-		if (tx < 0 || tx >= txMax || ty < 0 || ty >= tyMax)
-		{
-			contact.setInvalid();
-			return;
-		}
-		const Ground::Tile& groundTile = groundTiles[ty * txMax + tx];
-		const float32 d = p.z - (groundTile.height + b2_linearSlop);
-		//if (r >= partRadius)
-		if (d >= partRadius)
-		{
-			contact.setInvalid();
-			return;
-		}
-		contact.groundTileIdx = ty * txMax + tx;
-		contact.groundChunkIdx = (ty / TILE_SIZE_SQRT) * cxMax + (tx / TILE_SIZE_SQRT);
-		contact.groundMatIdx = groundTile.matIdx;
-		contact.weight = 1 - d * invDiameter;
-		contact.normal = vec3Up;
-		contact.mass = masses[i];
+			Particle::GroundContact& contact = groundContacts[i];
+			if (tx < 0 || tx >= txMax || ty < 0 || ty >= tyMax)
+			{
+				contact.setInvalid();
+				return;
+			}
+			const Ground::Tile& groundTile = groundTiles[ty * txMax + tx];
+			const float32 d = p.z - (groundTile.height + b2_linearSlop);
+			//if (r >= partRadius)
+			if (d >= partRadius)
+			{
+				contact.setInvalid();
+				return;
+			}
+			contact.groundTileIdx = ty * txMax + tx;
+			contact.groundChunkIdx = (ty / TILE_SIZE_SQRT) * cxMax + (tx / TILE_SIZE_SQRT);
+			contact.groundMatIdx = groundTile.matIdx;
+			contact.weight = 1 - d * invDiameter;
+			contact.normal = vec3Up;
+			contact.mass = masses[i];
+		});
 	});
+	
 }
 
 void ParticleSystem::RemoveSpuriousBodyContacts()
@@ -3931,8 +3939,8 @@ void ParticleSystem::UpdateContacts(bool exceptZombie)
 {
 	if (m_accelerate)
 	{
-		m_futureUpdateBodyContacts = std::async(launch::async, &ParticleSystem::AmpUpdateBodyContacts, this);
-		m_futureUpdateGroundContacts = std::async(launch::async, &ParticleSystem::AmpUpdateGroundContacts, this);
+		AmpUpdateBodyContacts();
+		AmpUpdateGroundContacts();
 		AmpFindContacts(exceptZombie);
 	}
 	else

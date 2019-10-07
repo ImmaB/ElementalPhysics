@@ -837,5 +837,7 @@ private:
 public:
 	template<typename F>
 	void RunAsync(const F& func) { m_future = std::async(std::launch::async, func); }
+	template<typename F>
+	void RunDeferred(const F& func) { m_future = std::async(std::launch::deferred, func); }
 	void wait() { if (m_future.valid()) m_future.wait(); }
 };

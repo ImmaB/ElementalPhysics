@@ -37,10 +37,6 @@
 #include <Windows.h>
 #include <chrono>
 #include <amp.h>
-#include <d3d11.h>
-// #include <d3d11_1.h>
-// #include <d3d12.h>
-#include <wrl/client.h>
 
 typedef std::chrono::high_resolution_clock Clock;
 typedef std::chrono::time_point<std::chrono::steady_clock> Time;
@@ -1008,6 +1004,7 @@ private:
 
 	ampArray<Fixture>		  m_ampFixtures;
 	ampArray<Body>			  m_ampBodies;
+	ampArray<int32>			  m_ampBodyParticles;
 	ampArray<AmpChainShape>	  m_ampChainShapes;
 	ampArray<AmpCircleShape>  m_ampCircleShapes;
 	ampArray<AmpEdgeShape>	  m_ampEdgeShapes;
@@ -1023,9 +1020,9 @@ private:
 					m_ampCopyFutPolygonShapes;
 	
 
-	std::future<void> m_futureUpdateBodyContacts,
-					  m_futureUpdateGroundContacts,
-					  m_futureComputeWeight;
+	Future m_futureUpdateBodyContacts,
+		   m_futureUpdateGroundContacts,
+		   m_futureComputeWeight;
 
 
 	bool m_paused;

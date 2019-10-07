@@ -763,46 +763,6 @@ public:
 		pImmediateContext->Flush();
 		if (pSrc) pSrc->Release();
 	}
-	template <typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8>
-	void copy(const ampArray<T1>& src1, ID3D11Buffer* pDst1,
-			  const ampArray<T2>& src2, ID3D11Buffer* pDst2,
-			  const ampArray<T3>& src3, ID3D11Buffer* pDst3,
-			  const ampArray<T4>& src4, ID3D11Buffer* pDst4,
-			  const ampArray<T5>& src5, ID3D11Buffer* pDst5,
-			  const ampArray<T6>& src6, ID3D11Buffer* pDst6,
-			  const ampArray<T7>& src7, ID3D11Buffer* pDst7,
-			  const ampArray<T8>& src8, ID3D11Buffer* pDst8,
-			  const int32 cnt)
-	{
-		if (cnt <= 0) return;
-
-		ID3D11Buffer* pSrc1 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src1));
-		if (pSrc1 && pDst1) copyRegion<T1>(pSrc1, pDst1, 0, cnt);
-		ID3D11Buffer* pSrc2 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src2));
-		if (pSrc2 && pDst2) copyRegion<T2>(pSrc2, pDst2, 0, cnt);
-		ID3D11Buffer* pSrc3 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src3));
-		if (pSrc3 && pDst3) copyRegion<T3>(pSrc3, pDst3, 0, cnt);
-		ID3D11Buffer* pSrc4 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src4));
-		if (pSrc4 && pDst4) copyRegion<T4>(pSrc4, pDst4, 0, cnt);
-		ID3D11Buffer* pSrc5 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src5));
-		if (pSrc5 && pDst5) copyRegion<T5>(pSrc5, pDst5, 0, cnt);
-		ID3D11Buffer* pSrc6 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src6));
-		if (pSrc6 && pDst6) copyRegion<T6>(pSrc6, pDst6, 0, cnt);
-		ID3D11Buffer* pSrc7 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src7));
-		if (pSrc7 && pDst7) copyRegion<T7>(pSrc7, pDst7, 0, cnt);
-		ID3D11Buffer* pSrc8 = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src8));
-		if (pSrc8 && pDst8) copyRegion<T8>(pSrc8, pDst8, 0, cnt);
-
-		pImmediateContext->Flush();
-		if (pSrc1) pSrc1->Release();
-		if (pSrc2) pSrc2->Release();
-		if (pSrc3) pSrc3->Release();
-		if (pSrc4) pSrc4->Release();
-		if (pSrc5) pSrc5->Release();
-		if (pSrc6) pSrc6->Release();
-		if (pSrc7) pSrc7->Release();
-		if (pSrc8) pSrc8->Release();
-	}
 
 	template <typename T>
 	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 start, const int32 end)
