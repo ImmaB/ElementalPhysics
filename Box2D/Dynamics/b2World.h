@@ -186,7 +186,7 @@ public:
 	Body& GetFixtureBody(const int32 fixtureIdx);
 	const Body GetFixtureBody(const int32 fixtureIdx) const;
 
-	Fixture GetFixture(const int32 idx);
+	Fixture& GetFixture(const int32 idx);
 	const Fixture GetFixture(const int32 idx) const;
 	
 	/// Get the world joint list. With the returned joint, use b2Joint::GetNext to get
@@ -555,8 +555,8 @@ public:
 	void RemoveSubShapeFromBuffer(b2Shape::Type shapeType, int32 idx);
 
 
-	template<typename F> void ForEachBody(F& function);
-	template<typename F> void ForEachFixtureOfBody(const Body& b, F& function);
+	template<typename F> void ForEachBody(const F& function);
+	template<typename F> void ForEachFixtureOfBody(const Body& b, const F& function);
 
 
 	// Contact
@@ -603,7 +603,7 @@ inline Body& b2World::GetFixtureBody(int32 fixtureIdx)
 	return m_bodyBuffer[m_fixtureBuffer[fixtureIdx].m_bodyIdx];
 }
 
-inline Fixture b2World::GetFixture(const int32 idx)
+inline Fixture& b2World::GetFixture(const int32 idx)
 {
 	return m_fixtureBuffer[idx];
 }

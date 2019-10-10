@@ -57,8 +57,8 @@ b2WeldJoint::b2WeldJoint(const b2WeldJointDef* def, b2World& world)
 
 void b2WeldJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	m_indexA = bodyA.m_islandIndex;
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterA = bodyA.m_sweep.localCenter;

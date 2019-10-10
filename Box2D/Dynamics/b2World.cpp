@@ -1055,8 +1055,8 @@ void b2World::DrawShape(Fixture& fixture, const b2Transform& xf, const b2Color& 
 
 void b2World::DrawJoint(b2Joint* joint)
 {
-	Body& bodyA = joint->GetBodyA();
-	Body& bodyB = joint->GetBodyB();
+	const Body& bodyA = joint->GetBodyA();
+	const Body& bodyB = joint->GetBodyB();
 	Vec2 x1 = bodyA.m_xf.p;
 	Vec2 x2 = bodyB.m_xf.p;
 	Vec2 p1 = joint->GetAnchorA();
@@ -1841,13 +1841,13 @@ void b2World::RemoveSubShapeFromBuffer(b2Shape::Type shapeType, int32 idx)
 	}
 }
 
-template<typename F> void b2World::ForEachBody(F& function)
+template<typename F> void b2World::ForEachBody(const F& function)
 {
 	for (Body& b : m_bodyBuffer)
 		if (b.m_idx != INVALID_IDX)
 			function(b);
 }
-template<typename F> void b2World::ForEachFixtureOfBody(const Body& b, F& function)
+template<typename F> void b2World::ForEachFixtureOfBody(const Body& b, const F& function)
 {
 	for (const int32 fIdx : m_bodyFixtureIdxsBuffer[b.m_idx])
 		if (fIdx != INVALID_IDX)

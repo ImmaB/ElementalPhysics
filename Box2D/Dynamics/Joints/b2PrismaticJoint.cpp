@@ -125,8 +125,8 @@ b2PrismaticJoint::b2PrismaticJoint(const b2PrismaticJointDef* def, b2World& worl
 
 void b2PrismaticJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	m_indexA = bodyA.m_islandIndex;
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterA = bodyA.m_sweep.localCenter;
@@ -505,8 +505,8 @@ float32 b2PrismaticJoint::GetReactionTorque(float32 inv_dt) const
 
 float32 b2PrismaticJoint::GetJointTranslation() const
 {
-	Body& bA = GetBodyA();
-	Body& bB = GetBodyB();
+	const Body& bA = GetBodyA();
+	const Body& bB = GetBodyB();
 
 	Vec2 pA = bA.GetWorldPoint(m_localAnchorA);
 	Vec2 pB = bB.GetWorldPoint(m_localAnchorB);
@@ -519,8 +519,8 @@ float32 b2PrismaticJoint::GetJointTranslation() const
 
 float32 b2PrismaticJoint::GetJointSpeed() const
 {
-	Body& bA = GetBodyA();
-	Body& bB = GetBodyB();
+	const Body& bA = GetBodyA();
+	const Body& bB = GetBodyB();
 
 	Vec2 rA = b2Mul(bA.m_xf.q, m_localAnchorA - bA.m_sweep.localCenter);
 	Vec2 rB = b2Mul(bB.m_xf.q, m_localAnchorB - bB.m_sweep.localCenter);

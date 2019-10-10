@@ -143,9 +143,11 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 }
 
 template<typename F>
-pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape, const b2Transform& transform, F& function)
+pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape,
+	const b2Transform& transform, const F& function)
 {
-	if (shape.m_type == b2Shape::Type::e_chain || shape.m_type == b2Shape::Type::e_edge) return pair<int32, int32>(0, 0);
+	if (shape.m_type == b2Shape::Type::e_chain || shape.m_type == b2Shape::Type::e_edge)
+		return pair<int32, int32>(0, 0);
 	b2AABB b;
 	shape.ComputeAABB(b, transform, 0);
 	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),

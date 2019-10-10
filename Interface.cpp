@@ -148,9 +148,7 @@ EXPORT void DestroyBodyMaterial(int32 idx)
 	return;
 }
 
-EXPORT void* GetDebug() {
-	return static_cast<void*>(debugString);
-}
+EXPORT void* GetDebug() { return static_cast<void*>(debugString); }
 
 EXPORT int32 GetContactCount()
 {
@@ -207,6 +205,7 @@ EXPORT void SolveInit()	{ pPartSys->SolveInit(); }
 EXPORT void InitStep() { pPartSys->InitStep(); }
 EXPORT void SortProxies() { pPartSys->SortProxies(); }
 EXPORT void UpdateContacts() { pPartSys->UpdateContacts(true); }
+EXPORT void ReduceContacts() { pPartSys->ReduceContacts(); }
 EXPORT void ComputeDepth() { pPartSys->ComputeDepth(); }
 EXPORT void UpdatePairsAndTriadsWithReactiveParticles() { pPartSys->UpdatePairsAndTriadsWithReactiveParticles(); }
 
@@ -312,7 +311,11 @@ EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callb
 	pPartSys->m_resizeCallback = callback;
 	pPartSys->m_resizeCallback(pPartSys->GetCapacity());
 }
-EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs) { pPartSys->m_d11Buffers.Set(bufPtrs); }
+EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs)
+{
+	pPartSys->m_d11Buffers.Set(bufPtrs, pPartSys->m_debugContacts);
+}
+EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr) { pPartSys->m_d11Buffers.contactIdx = bufPtr; }
 
 
 #pragma endregion

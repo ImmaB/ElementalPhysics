@@ -409,7 +409,6 @@ ParticleSystem::ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& b
 	m_ampPolygonShapes(TILE_SIZE, m_gpuAccelView),
 
 	// Contacts
-	m_ampContacts(TILE_SIZE, m_gpuAccelView),
 	m_ampBodyContacts(TILE_SIZE, m_gpuAccelView),
 
 	// Particles
@@ -593,36 +592,34 @@ inline void ParticleSystem::AmpForEachParticle(const F& function) const
 	});
 }
 template<typename F>
-inline void ParticleSystem::AmpForEachParticle(const uint32 flag, const F& function) const
+inline void ParticleSystem::AmpForEachParticle(uint32 flag, const F& function) const
 {
 	if (!(m_allFlags & flag)) return;
 	auto& flags = m_ampArrays.flags;
-	amp::forEach(m_count, [=, &flags](const int32 i) restrict(amp)
+	AmpForEachParticle([=, &flags](const int32 i) restrict(amp)
 	{
-		if (flags[i] & Particle::Flag::Zombie) return;
-		if (flags[i] & flag)
-			function(i);
+		if (flags[i] & flag) function(i);
 	});
 }
 template<typename F>
 inline void ParticleSystem::AmpForEachContact(const F& function) const
 {
-	auto& contacts = m_ampContacts;
-	amp::forEach(m_contactCount, [=, &contacts](const int32 i) restrict(amp)
+	//auto& contacts = m_ampContacts;
+	auto& contactIdxs = m_ampArrays.contactIdx;
+	auto& localContacts = m_ampArrays.contact;
+	amp::forEach(m_contactCount, [=, &contactIdxs, &localContacts](const int32 i) restrict(amp)
 	{
-		function(contacts[i]);
+		Particle::ContactIdx cIdx = contactIdxs[i];
+		function(localContacts[cIdx.i].contacts[cIdx.j]);
 	});
 }
 template<typename F>
-inline void ParticleSystem::AmpForEachContact(const uint32 flags, const F & function) const
+inline void ParticleSystem::AmpForEachContact(const uint32 flags, const F& function) const
 {
 	if ((m_allFlags & flags) != flags) return;
-	auto& contacts = m_ampContacts;
-	amp::forEach(m_contactCount, [=, &contacts](const int32 i) restrict(amp)
+	AmpForEachContact([=](const Particle::Contact& contact) restrict(amp)
 	{
-		const Particle::Contact& contact = contacts[i];
-		if (contact.HasFlags(flags))
-			function(contacts[i]);
+		if (contact.HasFlags(flags)) function(contact);
 	});
 }
 template<typename F>
@@ -632,8 +629,11 @@ inline void ParticleSystem::AmpForEachContactShuffled(const F& function) const
 	const uint32 blockSize = amp::getTileCount(contactCnt);
 	const uint32 subBlockSize = MAX_CONTACTS_PER_PARTICLE;
 
-	auto& contacts = m_ampContacts;
-	amp::forEachTiledWithBarrier(m_contactCount, [=,&contacts](const ampTiledIdx<TILE_SIZE>& tIdx) restrict(amp)
+	//auto& contacts = m_ampContacts;
+	auto& contactIdxs = m_ampArrays.contactIdx;
+	auto& localContacts = m_ampArrays.contact;
+	amp::forEachTiledWithBarrier(m_contactCount,
+		[=, &contactIdxs, &localContacts](const ampTiledIdx<TILE_SIZE>& tIdx) restrict(amp)
 	{
 		const uint32 gi = tIdx.global[0];
 		const uint32 li = gi % blockSize;
@@ -646,7 +646,10 @@ inline void ParticleSystem::AmpForEachContactShuffled(const F& function) const
 		const uint32 shuffledIdx = shuffledbi * blockSize + li;
 
 		if (shuffledIdx < contactCnt)
-			function(contacts[shuffledIdx]);
+		{
+			Particle::ContactIdx cIdx = contactIdxs[shuffledIdx];
+			function(localContacts[cIdx.i].contacts[cIdx.j]);
+		}
 	});
 }
 template<typename F>
@@ -697,7 +700,7 @@ inline void ParticleSystem::AmpForEachGroundContact(const uint32 partFlag, const
 	});
 }
 template<typename F>
-inline void ParticleSystem::AmpForEachPair(F& function) const
+inline void ParticleSystem::AmpForEachPair(const F& function) const
 {
 	amp::forEach(m_pairCount, [=](const int32 i) restrict(amp)
 	{
@@ -705,7 +708,7 @@ inline void ParticleSystem::AmpForEachPair(F& function) const
 	});
 }
 template<typename F>
-inline void ParticleSystem::AmpForEachTriad(F& function) const
+inline void ParticleSystem::AmpForEachTriad(const F& function) const
 {
 	amp::forEach(m_triadCount, [=](const int32 i) restrict(amp)
 	{
@@ -775,7 +778,6 @@ void ParticleSystem::ResizeContactBuffers(int32 size)
 {
 	if (!AdjustCapacityToSize(m_contactCapacity, size, b2_minParticleBufferCapacity)) return;
 	m_contacts.resize(m_contactCapacity);
-	amp::resize(m_ampContacts, m_contactCapacity);
 	amp::resize(m_ampPairs, m_contactCapacity);
 }
 void ParticleSystem::ResizeBodyContactBuffers(int32 size)
@@ -856,7 +858,7 @@ void ParticleSystem::DestroyAllParticles()
 	m_allFlags = 0;
 	ResizeParticleBuffers(0);
 
-	m_d11Buffers.Set(nullptr);
+	m_d11Buffers.Set(nullptr, m_debugContacts);
 	
 	m_groupCount = 0;
 	m_freeGroupIdxs.clear();
@@ -1619,18 +1621,20 @@ void ParticleSystem::AmpUpdatePairsAndTriads(
 			return flags & Particle::Mat::k_wallOrSpringOrElasticFlags ||
 				(groupIdx != INVALID_IDX && group.HasFlag(ParticleGroup::Flag::Rigid));
 		};
-		auto& contacts = m_ampContacts;
 		auto& flags = m_ampArrays.flags;
 		auto& groupIdxs = m_ampArrays.groupIdx;
 		auto& groups = m_ampGroups;
 		auto& positions = m_ampArrays.position;
 		auto& oldPairs = m_ampPairs;
-		ampArray<int32> cnts(contacts.extent, m_gpuAccelView);
+		auto& contactIdxs = m_ampArrays.contactIdx;
+		auto& contacts = m_ampArrays.contact;
+		ampArray<int32> cnts(m_contactCount, m_gpuAccelView);
 		amp::fill(cnts, 0);
-		amp::forEach(m_contactCount, [=, &contacts, &oldPairs, &cnts, &flags,
+		amp::forEach(m_contactCount, [=, &contactIdxs, &contacts, &oldPairs, &cnts, &flags,
 			&groupIdxs, &groups, &positions](const int32 i) restrict(amp)
 		{
-			const Particle::Contact& contact = contacts[i];
+			const Particle::ContactIdx cIdx = contactIdxs[i];
+			const Particle::Contact& contact = contacts[cIdx.i].contacts[cIdx.j];
 			const int32 a = contact.idxA;
 			const int32 b = contact.idxB;
 			const uint32 f = contact.flags;
@@ -1900,16 +1904,18 @@ void ParticleSystem::ComputeDepth()
 		const float32 particleDiameter = m_particleDiameter;
 		ampArray<Particle::Contact> contactGroups(m_contactCount, m_gpuAccelView);
 		auto& groupIdxs = m_ampArrays.groupIdx;
-		auto& contacts = m_ampContacts;
+		auto& contactIdxs = m_ampArrays.contactIdx;
+		auto& contacts = m_ampArrays.contact;
 		auto& groups = m_ampGroups;
 		const int32 contactTileCnt = amp::getTileCount(m_contactCount);
 		ampArray<int32> contactCnts(contactTileCnt, m_gpuAccelView);
 		amp::fill(contactCnts, 0);
 		ampArray2D<Particle::Contact> localContacts(contactTileCnt, TILE_SIZE, m_gpuAccelView);
-		amp::forEachTiled(m_contactCount, [=, &contacts, &contactCnts, &localContacts,
+		amp::forEachTiled(m_contactCount, [=, &contactIdxs, &contacts, &contactCnts, &localContacts,
 			&groups, &groupIdxs](const int32 gi, const int32 ti, const int32 li) restrict(amp)
 		{
-			const Particle::Contact& contact = contacts[gi];
+			const Particle::ContactIdx cIdx = contactIdxs[gi];
+			const Particle::Contact& contact = contacts[cIdx.i].contacts[cIdx.j];
 			const int32 a = contact.idxA;
 			const int32 b = contact.idxB;
 			const int32 groupAIdx = groupIdxs[a];
@@ -2221,7 +2227,7 @@ void ParticleSystem::BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagB
 }
 
 template<typename F>
-void ParticleSystem::AmpForEachInsideBounds(const b2AABB& aabb, F& function)
+void ParticleSystem::AmpForEachInsideBounds(const b2AABB& aabb, const F& function)
 {
 	uint32 lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
 		m_inverseDiameter * aabb.lowerBound.y - 1);
@@ -2243,7 +2249,7 @@ void ParticleSystem::AmpForEachInsideBounds(const b2AABB& aabb, F& function)
 	});
 }
 template<typename F>
-void ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function)
+void ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, const F& function)
 {
 	if (aabbs.empty()) return;
 	int32 boundCnt = 0;
@@ -2269,7 +2275,8 @@ void ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aa
 	});
 }
 template<typename F>
-void ParticleSystem::AmpForEachInsideCircle(const b2CircleShape& circle, const b2Transform& transform, F& function)
+void ParticleSystem::AmpForEachInsideCircle(const b2CircleShape& circle,
+	const b2Transform& transform, const F& function)
 {
 	b2AABB aabb;
 	circle.ComputeAABB(aabb, transform, 0);
@@ -2294,36 +2301,38 @@ void ParticleSystem::AmpForEachInsideCircle(const b2CircleShape& circle, const b
 	});
 }
 
+
 void ParticleSystem::FindContacts()
 {
 	ResizeContactBuffers(m_count * MAX_CONTACTS_PER_PARTICLE);
 	m_contactCount = 0;
 
 	for (int a = 0, c = 0; a < m_count; a++)
+		FindParticleContacts(a, c);
+}
+inline void ParticleSystem::FindParticleContacts(int32 a, int32 c)
+{
+	int32 aContactCount = 0;
+	const int32 aIdx = m_buffers.proxy[a].idx;
+	const uint32& aTag = m_buffers.proxy[a].tag;
+	const uint32 rightTag = computeRelativeTag(aTag, 1, 0);
+	for (int b = a + 1; b < m_count; b++)
 	{
-		int32 aContactCount = 0;
-		const int32 aIdx = m_buffers.proxy[a].idx;
-		const uint32& aTag = m_buffers.proxy[a].tag;
-		const uint32 rightTag = computeRelativeTag(aTag, 1, 0);
-		for (int b = a + 1; b < m_count; b++)
-		{
-			if (rightTag < m_buffers.proxy[b].tag) break;
-			if (AddContact(aIdx, m_buffers.proxy[b].idx, m_contactCount)
-				&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) goto cnt;
-		}
+		if (rightTag < m_buffers.proxy[b].tag) break;
+		if (AddContact(aIdx, m_buffers.proxy[b].idx, m_contactCount)
+			&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) return;
+	}
 
-		const uint32 bottomLeftTag = computeRelativeTag(aTag, -1, 1);
-		for (; c < m_count; c++)
-			if (bottomLeftTag <= m_buffers.proxy[c].tag) break;
+	const uint32 bottomLeftTag = computeRelativeTag(aTag, -1, 1);
+	for (; c < m_count; c++)
+		if (bottomLeftTag <= m_buffers.proxy[c].tag) break;
 
-		const uint32 bottomRightTag = computeRelativeTag(aTag, 1, 1);
-		for (int b = c; b < m_count; b++)
-		{
-			if (bottomRightTag < m_buffers.proxy[b].tag) break;
-			if (AddContact(aIdx, m_buffers.proxy[b].idx, m_contactCount)
-				&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) goto cnt;
-		}
-		cnt:;
+	const uint32 bottomRightTag = computeRelativeTag(aTag, 1, 1);
+	for (int b = c; b < m_count; b++)
+	{
+		if (bottomRightTag < m_buffers.proxy[b].tag) break;
+		if (AddContact(aIdx, m_buffers.proxy[b].idx, m_contactCount)
+			&& ++aContactCount == MAX_CONTACTS_PER_PARTICLE) return;
 	}
 }
 inline bool ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount)
@@ -2425,9 +2434,6 @@ void ParticleSystem::AmpFindContacts(bool exceptZombie)
 	};
 
 	auto& proxies = m_ampArrays.proxy;
-	auto& localContacts = m_ampArrays.contact;
-	auto& localContactCnts = m_ampArrays.contactCnt;
-
 	const int32 cnt = m_count;
 	const auto TagLowerBound = [=, &proxies](int32 first, uint32 tag) restrict(amp) -> int32
 	{
@@ -2446,42 +2452,46 @@ void ParticleSystem::AmpFindContacts(bool exceptZombie)
 		}
 		return first;
 	};
-	auto& contacts = m_ampContacts;
-	amp::forEach(m_count, [=, &contacts, &localContacts, &localContactCnts, &proxies, &flags](const int32 i) restrict(amp)
+
+	auto& contacts = m_ampArrays.contact;
+	auto& contactCnts = m_ampArrays.contactCnt;
+	amp::forEach(m_count, [=, &contacts, &contactCnts, &proxies, &flags](const int32 i) restrict(amp)
 	{
-		int32& localContactCnt = localContactCnts[i];
-		localContactCnt = 0;
-		const Proxy& aProxy = proxies[i];
+		int32 contactCnt = contactCnts[i] = 0;
+		const Proxy aProxy = proxies[i];
 		const int32 aIdx = aProxy.idx;
 		if (exceptZombie && flags[aIdx] & Particle::Flag::Zombie) return;
 
-		auto& contacts = localContacts[i];
-
+		Particle::Contacts& partContacts = contacts[i];
 		const uint32 rightTag = computeRelativeTag(aProxy.tag, 1, 0);
 		for (int32 b = i + 1; b < cnt; b++)
 		{
 			if (rightTag < proxies[b].tag) break;
-			if (addContact(aIdx, proxies[b].idx, contacts[localContactCnt])
-				&& ++localContactCnt == MAX_CONTACTS_PER_PARTICLE) break;
+			if (addContact(aIdx, proxies[b].idx, partContacts.contacts[contactCnt])
+				&& ++contactCnt == MAX_CONTACTS_PER_PARTICLE) break;
 		}
-		// Optimisable ?
-		const uint32 bottomLeftTag = computeRelativeTag(proxies[i].tag, -1, 1);
+		const uint32 bottomLeftTag = computeRelativeTag(aProxy.tag, -1, 1);
 		const uint32 bottomRightTag = computeRelativeTag(aProxy.tag, 1, 1);
 		for (int32 b = TagLowerBound(i + 1, bottomLeftTag); b < cnt; b++)
 		{
 			if (bottomRightTag < proxies[b].tag) break;
-			if (addContact(aIdx, proxies[b].idx, contacts[localContactCnt])
-				&& ++localContactCnt == MAX_CONTACTS_PER_PARTICLE) break;
+			if (addContact(aIdx, proxies[b].idx, partContacts.contacts[contactCnt])
+				&& ++contactCnt == MAX_CONTACTS_PER_PARTICLE) break;
 		}
+		contactCnts[i] = contactCnt;
 	});
-	m_contactCount = amp::reduce(localContactCnts, m_count, [=, &localContactCnts,
-		&contacts, &localContacts](const int32 i, const int32 wi) restrict(amp)
+}
+void ParticleSystem::ReduceContacts()
+{
+	//auto& contacts = m_ampContacts;
+	auto& contactIdxs = m_ampArrays.contactIdx;
+	auto& contactCnts = m_ampArrays.contactCnt;
+	m_contactCount = amp::reduce(contactCnts, m_count,
+		[=, &contactCnts, &contactIdxs](const int32 i, const uint32 wi) restrict(amp)
 	{
-		for (int32 j = 0; j < localContactCnts[i]; j++)
-			contacts[wi + j] = localContacts[i][j];
+		for (uint32 j = 0; j < contactCnts[i]; j++)
+			contactIdxs[wi + j].Set(i, j);
 	});
-	if (m_debugContacts)
-		m_ampCopyFutContacts.set(amp::copyAsync(contacts, m_contacts, m_contactCount));
 }
 
 void ParticleSystem::SortProxies()
@@ -2500,9 +2510,9 @@ void ParticleSystem::SortProxies()
 		amp::forEach(m_count, [=, &proxies, &positions](const int32 i) restrict(amp)
 		{
 			const Vec3& pos = positions[i];
-			proxies[i] = Proxy(i, computeTag(invDiameter * pos.x, invDiameter * pos.y));
+			proxies[i].Set(i, computeTag(invDiameter * pos.x, invDiameter * pos.y));
 		});
-		amp::radixSort(m_ampArrays.proxy, m_count);
+		amp::radixSort(proxies, m_count);
 
 		//ampArrayView<int32> sortError(1);
 		//amp::fill(sortError, 0);
@@ -3692,7 +3702,7 @@ void ParticleSystem::SolveBarrier()
 			const Vec2 vb = GetLinearVelocity(bGroup, b, pb);
 			const Vec2 pba = pb - pa;
 			const Vec2 vba = vb - va;
-			AmpInsideBoundsEnumerator& enumerator = GetInsideBoundsEnumerator(aabb);
+			AmpInsideBoundsEnumerator enumerator = GetInsideBoundsEnumerator(aabb);
 			int32 c;
 			while ((c = GetNext(enumerator)) >= 0)
 			{
@@ -3959,18 +3969,9 @@ void ParticleSystem::SolveEnd()
 		m_ampCopyFutBodies.wait();
 		if (m_debugContacts) m_ampCopyFutContacts.wait();
 		m_gpuAccelView.wait();
-		Particle::CopyAmpArraysToD11Buffers(m_world.d11Device, m_ampArrays, m_d11Buffers, m_count);
+		Particle::CopyAmpArraysToD11Buffers(m_world.d11Device, m_ampArrays, m_d11Buffers,
+			m_count, m_debugContacts ? m_contactCount : 0);
 	}
-}
-
-
-float32 ParticleSystem::GetTimeDif(Time start, Time end)
-{
-	return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1000000.0f;
-}
-float32 ParticleSystem::GetTimeDif(Time start)
-{
-	return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count() / 1000000.0f;
 }
 
 void ParticleSystem::UpdateAllParticleFlags()

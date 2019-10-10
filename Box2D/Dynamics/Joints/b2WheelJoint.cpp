@@ -76,8 +76,8 @@ b2WheelJoint::b2WheelJoint(const b2WheelJointDef* def, b2World& world)
 
 void b2WheelJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	m_indexA = bodyA.m_islandIndex;
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterA = bodyA.m_sweep.localCenter;
@@ -350,8 +350,8 @@ float32 b2WheelJoint::GetReactionTorque(float32 inv_dt) const
 
 float32 b2WheelJoint::GetJointTranslation() const
 {
-	Body& bA = GetBodyA();
-	Body& bB = GetBodyB();
+	const Body& bA = GetBodyA();
+	const Body& bB = GetBodyB();
 
 	Vec2 pA = bA.GetWorldPoint(m_localAnchorA);
 	Vec2 pB = bB.GetWorldPoint(m_localAnchorB);

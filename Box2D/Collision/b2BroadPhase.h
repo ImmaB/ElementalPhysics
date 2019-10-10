@@ -74,12 +74,12 @@ public:
 
 	/// Update the pairs. This results in pair callbacks. This can only add pairs.
 	template<typename F>
-	void UpdatePairs(F& addPair);
+	void UpdatePairs(const F& addPair);
 	
 	/// Query an AABB for overlapping proxies. The callback class
 	/// is called for each proxy that overlaps the supplied AABB.
 	template <typename F>
-	void Query(const b2AABB& aabb, F& callback) const;
+	void Query(const b2AABB& aabb, const F& callback) const;
 
 	/// Ray-cast against the proxies in the tree. This relies on the callback
 	/// to perform a exact ray-cast in the case were the proxy contains a shape.
@@ -179,7 +179,7 @@ inline float32 b2BroadPhase::GetTreeQuality() const
 }
 
 template<typename F>
-void b2BroadPhase::UpdatePairs(F& addPair)
+void b2BroadPhase::UpdatePairs(const F& addPair)
 {
 	// Reset pair buffer
 	m_pairCount = 0;
@@ -248,7 +248,7 @@ void b2BroadPhase::UpdatePairs(F& addPair)
 }
 
 template <typename F>
-inline void b2BroadPhase::Query(const b2AABB& aabb, F& callback) const
+inline void b2BroadPhase::Query(const b2AABB& aabb, const F& callback) const
 {
 	m_tree.Query(aabb, callback);
 }

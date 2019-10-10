@@ -89,8 +89,8 @@ void b2ContactManager::Collide()
 	b2Contact* c = m_contactList;
 	while (c)
 	{
-		Fixture& fixtureA = m_world.GetFixture(c->m_fixtureIdxA);
-		Fixture& fixtureB = m_world.GetFixture(c->m_fixtureIdxB);
+		const Fixture& fixtureA = m_world.GetFixture(c->m_fixtureIdxA);
+		const Fixture& fixtureB = m_world.GetFixture(c->m_fixtureIdxB);
 		int32 indexA = c->GetChildIndexA();
 		int32 indexB = c->GetChildIndexB();
 		const Body& bodyA = m_world.m_bodyBuffer[fixtureA.m_bodyIdx];

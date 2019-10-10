@@ -62,6 +62,7 @@ typedef double float64;
 #define TILE_SIZE_SQRT 16
 
 #define MAX_CONTACTS_PER_PARTICLE 8
+#define MAX_BODY_CONTACTS_PER_PARTICLE 4
 
 template <typename T>
 using ampArrayView = Concurrency::array_view<T>;
@@ -86,7 +87,6 @@ using ampAccel = Concurrency::accelerator;
 using ampAccelView = Concurrency::accelerator_view;
 
 
-/// Used for detecting particle contacts
 struct Proxy
 {
 	int32 idx;
@@ -96,6 +96,7 @@ struct Proxy
 	Proxy(int32 idx, uint32 tag) restrict(amp) : idx(idx), tag(tag) {};
 	Proxy() restrict(amp) : idx(-1), tag(0) {};
 	Proxy() : idx(-1), tag(0) {};
+	void Set(int32 newIdx, uint32 newTag) restrict(amp) { idx = newIdx; tag = newTag; }
 
 	friend inline bool operator<(const Proxy& a, const Proxy& b)
 	{
@@ -122,7 +123,6 @@ struct Proxy
 		return a.tag < b;
 	}
 };
-
 
 #ifdef WIN32
 typedef __int64   int64;

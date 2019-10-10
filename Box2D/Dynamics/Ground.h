@@ -154,7 +154,8 @@ private:
 	Vec2 GetTileCenter(const int32 x, const int32 y) const { return Vec2(x * m_stride + m_halfStride, y * m_stride + m_halfStride); }
 
 	template<typename F>
-	pair<int32, int32> ForEachTileInsideShape(const b2Shape& shape, const b2Transform& transform, F& function);
+	pair<int32, int32> ForEachTileInsideShape(const b2Shape& shape,
+		const b2Transform& transform, const F& function);
 
 	inline Vec2 GetRandomTilePosition(const Vec2& center) const { return center + Vec2(0.5 - Random(), 0.5 - Random()) * m_stride; };
 };

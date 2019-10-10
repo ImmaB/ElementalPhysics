@@ -21,7 +21,7 @@
 
 // Return true if contact calculations should be performed between these two shapes.
 // If you implement your own collision filter you may want to build from this implementation.
-bool b2ContactFilter::ShouldCollide(Fixture& fixtureA, Fixture& fixtureB)
+bool b2ContactFilter::ShouldCollide(const Fixture& fixtureA, const Fixture& fixtureB)
 {
 	const b2Filter& filterA = fixtureA.m_filter;
 	const b2Filter& filterB = fixtureB.m_filter;

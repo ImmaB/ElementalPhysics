@@ -61,8 +61,8 @@ b2DistanceJoint::b2DistanceJoint(const b2DistanceJointDef* def, b2World& world)
 
 void b2DistanceJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	m_indexA = bodyA.m_islandIndex;
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterA = bodyA.m_sweep.localCenter;

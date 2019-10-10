@@ -17,10 +17,27 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_TIMER_H
-#define B2_TIMER_H
+#pragma once
 
 #include <Box2D/Common/b2Settings.h>
+
+using namespace std::chrono;
+class Timer
+{
+private:
+	time_point<steady_clock> t0;
+
+public:
+	Timer(bool start = true) { if (start) Start(); }
+
+	float32 Stop()
+	{
+		return duration_cast<nanoseconds>(high_resolution_clock::now() - t0).count() / 1000000.0f;
+	}
+	float32 Restart() { float32 t = Stop(); Start(); return t; }
+
+	void Start() { t0 = high_resolution_clock::now(); }
+};
 
 /// Timer for profiling. This has platform specific code and may
 /// not work on every platform.
@@ -46,5 +63,3 @@ private:
 #endif
 	int64 m_start;
 };
-
-#endif

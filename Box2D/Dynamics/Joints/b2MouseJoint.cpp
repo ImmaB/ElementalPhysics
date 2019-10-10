@@ -51,9 +51,8 @@ b2MouseJoint::b2MouseJoint(const b2MouseJointDef* def, b2World& world)
 
 void b2MouseJoint::SetTarget(const Vec2& target)
 {
-	Body& bodyB = GetBodyB();
-	if (!bodyB.IsAwake())
-		bodyB.SetAwake(true);
+	if (!GetBodyB().IsAwake())
+		GetBodyB().SetAwake(true);
 	m_targetA = target;
 }
 
@@ -94,7 +93,7 @@ float32 b2MouseJoint::GetDampingRatio() const
 
 void b2MouseJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyB = GetBodyB();
+	const Body& bodyB = GetBodyB();
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterB = bodyB.m_sweep.localCenter;
 	m_invMassB = bodyB.m_invMass;

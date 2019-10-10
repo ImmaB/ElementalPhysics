@@ -27,7 +27,7 @@
 
 struct ParticleGroup;
 
-struct Particle
+namespace Particle
 {
 	struct Def
 	{
@@ -183,6 +183,12 @@ struct Particle
 		inline bool IsWallSpringOrElastic() const restrict(amp) { return m_flags & k_wallOrSpringOrElasticFlags; }
 	};
 
+	struct ContactIdx
+	{
+		int32 i, j;
+		ContactIdx(int32 i, int32 j) restrict(amp) : i(i), j(j) {}
+		void Set(int32 newI, int32 newJ) restrict(amp) { i = newI; j = newJ; }
+	};
 
 	struct Contact
 	{
@@ -207,6 +213,10 @@ struct Particle
 		inline bool HasFlags(const uint32 f) const { return (flags & f) == f; }
 		inline bool HasFlags(const uint32 f) const restrict(amp) { return (flags & f) == f; }
 		inline bool IsZombie() const restrict(amp) { return HasFlag(Particle::Flag::Zombie); }
+	};
+	struct Contacts
+	{
+		Contact contacts[MAX_CONTACTS_PER_PARTICLE];
 	};
 	struct BodyContact
 	{
@@ -239,10 +249,10 @@ struct Particle
 
 	struct D11Buffers
 	{
-		ID3D11Buffer* flags, * matIdx, * position, * velocity, * weight,
-			* heat, * health, * color;
+		ID3D11Buffer* flags, *matIdx, *position, *velocity, *weight,
+			*heat, *health, *color, *contactIdx, *contact;
 
-		void Set(ID3D11Buffer** bufPtrs);
+		void Set(ID3D11Buffer** bufPtrs, bool includeContacts);
 	};
 
 	struct Buffers
@@ -266,7 +276,8 @@ struct Particle
 			staticPressure, accumulation, depth;
 		ampArray<int32>	matIdx, groupIdx, color, contactCnt, bodyContactCnt;
 		ampArray<Proxy> proxy;
-		ampArray2D<Contact> contact;
+		ampArray<ContactIdx> contactIdx;
+		ampArray<Contacts> contact;
 		ampArray2D<BodyContact> bodyContact;
 		ampArray<GroundContact> groundContact;
 
@@ -274,10 +285,10 @@ struct Particle
 		void Resize(int32 capacity, int32 copyCnt);
 	};
 
-	static void CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs, int32 first, int32 last);
-	static void CopyAmpArraysToD11Buffers(D11Device& device, AmpArrays& arrs, D11Buffers& d11Bufs, int32 cnt);
-
-
+	void CopyBufferRangeToAmpArrays(Buffers& bufs,
+		AmpArrays& arrs, int32 first, int32 last);
+	void CopyAmpArraysToD11Buffers(D11Device& device, const AmpArrays& arrs,
+		D11Buffers& d11Bufs, int32 cnt, int32 contactCnt = 0);
 };
 
 /// A helper function to calculate the optimal number of iterations.

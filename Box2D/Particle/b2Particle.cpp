@@ -108,7 +108,7 @@ Particle::AmpArrays::AmpArrays(int32 cap, const ampAccelView& accView) :
 	staticPressure(cap, accView), accumulation(cap, accView), depth(cap, accView),
 	matIdx(cap, accView), groupIdx(cap, accView), color(cap, accView),
 	contactCnt(cap, accView), bodyContactCnt(cap, accView), proxy(cap, accView),
-	contact(cap, MAX_CONTACTS_PER_PARTICLE, accView),
+	contactIdx(cap * MAX_CONTACTS_PER_PARTICLE, accView), contact(cap, accView),
 	bodyContact(cap, MAX_CONTACTS_PER_PARTICLE, accView),
 	groundContact(cap, accView)
 {}
@@ -138,12 +138,14 @@ void Particle::AmpArrays::Resize(int32 capacity, int32 copyCnt)
 	amp::resize(bodyContactCnt, capacity);
 	amp::resize(proxy, capacity);
 
+	amp::resize(contactIdx, capacity * MAX_CONTACTS_PER_PARTICLE);
 	amp::resize(contact, capacity);
 	amp::resize(bodyContact, capacity);
 	amp::resize(groundContact, capacity);
 }
 
-void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs, int32 first, int32 last)
+void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs,
+	int32 first, int32 last)
 {
 	const int32 size = last - first;
 	if (size <= 0) return;
@@ -161,35 +163,34 @@ void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs, int32 
 	amp::copy(bufs.groupIdx, arrs.groupIdx, first, size);
 }
 
-void Particle::CopyAmpArraysToD11Buffers(D11Device& device, AmpArrays& arrs, D11Buffers& d11Bufs, int32 cnt)
+template<typename T> inline ID3D11Buffer* ToD11Buffer(const ampArray<T>& arr)
+{
+	return reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arr));
+}
+
+void Particle::CopyAmpArraysToD11Buffers(D11Device& device, const AmpArrays& arrs,
+	D11Buffers& d11Bufs, int32 cnt, int32 contactCnt)
 {
 	if (cnt <= 0) return;
 	bool didCopy = false;
 
-	ID3D11Buffer* pFlags = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.flags));
-	if (pFlags && d11Bufs.flags)
-		didCopy |= device.copyRegion<uint32>(pFlags, d11Bufs.flags, 0, cnt);
-	ID3D11Buffer* pPosition = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.position));
-	if (pPosition && d11Bufs.position)
-		didCopy |= device.copyRegion<Vec3>(pPosition , d11Bufs.position, 0, cnt);
-	ID3D11Buffer* pVelocity = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.velocity));
-	if (pVelocity && d11Bufs.velocity)
-		didCopy |= device.copyRegion<Vec3>(pVelocity, d11Bufs.velocity, 0, cnt);
-	ID3D11Buffer* pWeight = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.weight));
-	if (pWeight && d11Bufs.weight)
-		didCopy |= device.copyRegion<float32>(pWeight, d11Bufs.weight, 0, cnt);
-	ID3D11Buffer* pHeat = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.heat));
-	if (pHeat && d11Bufs.heat)
-		didCopy |= device.copyRegion<float32>(pHeat, d11Bufs.heat, 0, cnt);
-	ID3D11Buffer* pHealth = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.health));
-	if (pHealth && d11Bufs.health)
-		didCopy |= device.copyRegion<float32>(pHealth, d11Bufs.health, 0, cnt);
-	ID3D11Buffer* pMatIdx = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.matIdx));
-	if (pMatIdx && d11Bufs.matIdx)
-		didCopy |= device.copyRegion<int32>(pMatIdx, d11Bufs.matIdx, 0, cnt);
-	ID3D11Buffer* pColor = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arrs.color));
-	if (pColor && d11Bufs.color)
-		didCopy |= device.copyRegion<int32>(pColor, d11Bufs.color, 0, cnt);
+	ID3D11Buffer* pFlags = ToD11Buffer(arrs.flags), * pPosition = ToD11Buffer(arrs.position),
+		* pVelocity = ToD11Buffer(arrs.velocity), * pWeight = ToD11Buffer(arrs.weight),
+		* pHeat = ToD11Buffer(arrs.heat), * pHealth = ToD11Buffer(arrs.health),
+		* pMatIdx = ToD11Buffer(arrs.matIdx), * pColor = ToD11Buffer(arrs.color),
+		* pContactIdx = contactCnt ? ToD11Buffer(arrs.contactIdx) : nullptr,
+		* pContact = contactCnt ? ToD11Buffer(arrs.contact) : nullptr;
+
+	didCopy |= device.copyRegion<uint32>(pFlags, d11Bufs.flags, 0, cnt);
+	didCopy |= device.copyRegion<Vec3>(pPosition , d11Bufs.position, 0, cnt);
+	didCopy |= device.copyRegion<Vec3>(pVelocity, d11Bufs.velocity, 0, cnt);
+	didCopy |= device.copyRegion<float32>(pWeight, d11Bufs.weight, 0, cnt);
+	didCopy |= device.copyRegion<float32>(pHeat, d11Bufs.heat, 0, cnt);
+	didCopy |= device.copyRegion<float32>(pHealth, d11Bufs.health, 0, cnt);
+	didCopy |= device.copyRegion<int32>(pMatIdx, d11Bufs.matIdx, 0, cnt);
+	didCopy |= device.copyRegion<int32>(pColor, d11Bufs.color, 0, cnt);
+	didCopy |= device.copyRegion<ContactIdx>(pContactIdx, d11Bufs.contactIdx, 0, contactCnt);
+	didCopy |= device.copyRegion<Contacts>(pContact, d11Bufs.contact, 0, cnt);
 
 	if (didCopy) device.Flush();
 	
@@ -201,9 +202,11 @@ void Particle::CopyAmpArraysToD11Buffers(D11Device& device, AmpArrays& arrs, D11
 	if (pHealth) pHealth->Release();
 	if (pMatIdx) pMatIdx->Release();
 	if (pColor) pColor->Release();
+	if (pContactIdx) pContactIdx->Release();
+	if (pContact) pContact->Release();
 }
 
-void Particle::D11Buffers::Set(ID3D11Buffer** bufPtrs)
+void Particle::D11Buffers::Set(ID3D11Buffer** bufPtrs, bool includeContacts)
 {
 	if (bufPtrs && *bufPtrs)
 	{
@@ -215,10 +218,11 @@ void Particle::D11Buffers::Set(ID3D11Buffer** bufPtrs)
 		health = bufPtrs[5];
 		matIdx = bufPtrs[6];
 		color = bufPtrs[7];
+		if (includeContacts) contact = bufPtrs[8];
 	}
 	else
 	{
-		flags = position = velocity = weight = heat = health = matIdx = color = nullptr;
+		flags = position = velocity = weight = heat = health = matIdx = color = contact = nullptr;
 	}
 }
 

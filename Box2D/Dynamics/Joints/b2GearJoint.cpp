@@ -58,9 +58,9 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def, b2World& world)
 	// TODO_ERIN there might be some problem with the joint edges in b2Joint.
 
 	m_bodyCIdx = m_joint1->GetBodyAIdx();
-	Body& bodyC = m_joint1->GetBodyA();
+	const Body& bodyC = m_joint1->GetBodyA();
 	m_bodyAIdx = m_joint1->GetBodyBIdx();
-	Body& bodyA = m_joint1->GetBodyB();
+	const Body& bodyA = m_joint1->GetBodyB();
 
 	// Get geometry of joint1
 	b2Transform xfA = bodyA.m_xf;
@@ -93,9 +93,9 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def, b2World& world)
 	}
 
 	m_bodyBIdx = m_joint2->GetBodyBIdx();
-	Body& bodyB = m_joint2->GetBodyB();
+	const Body& bodyB = m_joint2->GetBodyB();
 	m_bodyDIdx = m_joint2->GetBodyAIdx();
-	Body& bodyD = m_joint2->GetBodyA();
+	const Body& bodyD = m_joint2->GetBodyA();
 
 	// Get geometry of joint2
 	b2Transform xfB = bodyB.m_xf;
@@ -135,8 +135,8 @@ b2GearJoint::b2GearJoint(const b2GearJointDef* def, b2World& world)
 
 void b2GearJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	Body& bodyC = m_world.m_bodyBuffer[m_bodyCIdx];
 	Body& bodyD = m_world.m_bodyBuffer[m_bodyDIdx];
 	m_indexA = bodyA.m_islandIndex;

@@ -114,8 +114,8 @@ public:
 	/// Get the second body attached to this joint.
 	int32 GetBodyBIdx();
 
-	Body b2Joint::GetBodyA() const;
-	Body b2Joint::GetBodyB() const;
+	Body GetBodyA() const;
+	Body GetBodyB() const;
 
 	/// Get the anchor point on bodyA in world coordinates.
 	virtual Vec2 GetAnchorA() const = 0;

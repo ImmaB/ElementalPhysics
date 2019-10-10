@@ -35,11 +35,7 @@
 #include <numeric>
 #include <process.h>
 #include <Windows.h>
-#include <chrono>
 #include <amp.h>
-
-typedef std::chrono::high_resolution_clock Clock;
-typedef std::chrono::time_point<std::chrono::steady_clock> Time;
 
 class b2World;
 struct b2Shape;
@@ -285,7 +281,6 @@ public:
 	Particle::Buffers m_buffers;
 	Particle::AmpArrays m_ampArrays;
 	Particle::D11Buffers m_d11Buffers;
-	ID3D11Buffer* m_d11Contacts;
 
 	bool ShouldSolve();
 	void SolveInit();
@@ -293,6 +288,7 @@ public:
 	void InitStep();
 	void SortProxies();
 	void UpdateContacts(bool exceptZombie);
+	void ReduceContacts();
 	void ComputeDepth();
 	void UpdatePairsAndTriadsWithReactiveParticles();
 
@@ -345,9 +341,6 @@ public:
 	void IncrementIteration();
 
 	void SolveEnd();
-
-	float32 GetTimeDif(Time start, Time end);
-	float32 GetTimeDif(Time start);
 
 public:
 	/// Retrieve a handle to the particle at the specified index.
@@ -811,7 +804,7 @@ private:
 	template<typename F> void ForEachGroup(const F& function) const;
 
 	template<typename F> void AmpForEachParticle(const F& function) const;
-	template<typename F> void AmpForEachParticle(const uint32 flag, const F& function) const;
+	template<typename F> void AmpForEachParticle(uint32 flag, const F& function) const;
 	template<typename F> void AmpForEachContact(const F& function) const;
 	template<typename F> void AmpForEachContact(const uint32 flag, const F& function) const;
 	template<typename F> void AmpForEachContactShuffled(const F& function) const;
@@ -819,8 +812,8 @@ private:
 	template<typename F> void AmpForEachBodyContact(const uint32 flag, const F& function) const;
 	template<typename F> void AmpForEachGroundContact(const F& function) const;
 	template<typename F> void AmpForEachGroundContact(const uint32 partFlag, const F& function) const;
-	template<typename F> void AmpForEachPair(F& function) const;
-	template<typename F> void AmpForEachTriad(F& function) const;
+	template<typename F> void AmpForEachPair(const F& function) const;
+	template<typename F> void AmpForEachTriad(const F& function) const;
 
 	
 	boolean AdjustCapacityToSize(int32& capacity, int32 size, const int32 minCapacity) const;
@@ -878,18 +871,19 @@ private:
 
 	void BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagBounds& tagBounds);
 	template<typename F>
-	void AmpForEachInsideBounds(const b2AABB& aabb, F& function);
+	void AmpForEachInsideBounds(const b2AABB& aabb, const F& function);
 	template<typename F>
-	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, F& function);
+	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, const F& function);
 	template<typename F>
 	void AmpForEachInsideCircle(const b2CircleShape& circle,
-		const b2Transform& transform, F& function);
+		const b2Transform& transform, const F& function);
 	void UpdateAllParticleFlags();
 	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
-	bool ParticleSystem::AddContact(int32 a, int32 b, int32& contactCount);
-	bool ParticleSystem::ShouldCollide(int32 i, const Fixture& f) const;
+	bool AddContact(int32 a, int32 b, int32& contactCount);
+	bool ShouldCollide(int32 i, const Fixture& f) const;
 	void FindContacts();
+	void FindParticleContacts(int32 a, int32 c);
 	void AmpFindContacts(bool exceptZombie);
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
@@ -1126,7 +1120,7 @@ private:
 
 	vector<Particle::Contact> m_contacts;
 	vector<Particle::BodyContact> m_bodyContacts;
-	ampArray<Particle::Contact> m_ampContacts;
+	vector<Particle::ContactIdx> m_bodyContactIdxs;
 	ampArray<Particle::BodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;

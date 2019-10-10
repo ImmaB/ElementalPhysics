@@ -60,8 +60,8 @@ b2MotorJoint::b2MotorJoint(const b2MotorJointDef* def, b2World& world)
 
 void b2MotorJoint::InitVelocityConstraints(const b2SolverData& data)
 {
-	Body& bodyA = GetBodyA();
-	Body& bodyB = GetBodyB();
+	const Body& bodyA = GetBodyA();
+	const Body& bodyB = GetBodyB();
 	m_indexA = bodyA.m_islandIndex;
 	m_indexB = bodyB.m_islandIndex;
 	m_localCenterA = bodyA.m_sweep.localCenter;
