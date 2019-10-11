@@ -33,29 +33,14 @@ namespace amp
 	{
 	private:
 		ampCopyFuture m_future;
-
 	public:
-		void set(ampCopyFuture future)
-		{
-			m_future = future;
-		}
-
-		void wait()
-		{
-			if (m_future.valid())
-				m_future.wait();
-		}
+		void set(ampCopyFuture future) { m_future = future; }
+		void wait() { if (m_future.valid()) m_future.wait(); }
 	};
 
 	static ampAccel getGpuAccel() { return ampAccel(ampAccel::default_accelerator); }
-	static ampAccelView getCpuAccelView()
-	{
-		return ampAccel(ampAccel::cpu_accelerator).default_view;
-	}
-	static ampAccelView getGpuAccelView()
-	{
-		return ampAccel(ampAccel::default_accelerator).default_view;
-	}
+	static ampAccelView getCpuAccelView() { return ampAccel(ampAccel::cpu_accelerator).default_view; }
+	static ampAccelView getGpuAccelView() { return ampAccel(ampAccel::default_accelerator).default_view; }
 
 	static int32 getTileCount(const int32 size)
 	{
@@ -78,9 +63,11 @@ namespace amp
 	{
 		return ampExtent(getTilable(size, tileCnt));
 	}
+	template<int TileSize>
+	inline ampTiledExt<TileSize> tileAndPad(int32 cnt) { return ampExtent(cnt).tile<TileSize>().pad(); }
 
-	#define COPY_SYNC template<typename T> static void
-	#define COPY_ASYNC template<typename T> static ampCopyFuture
+	#define COPY_SYNC template<typename T> void
+	#define COPY_ASYNC template<typename T> ampCopyFuture
 
 	COPY_SYNC copy(const ampArray<T>& src, std::vector<T>& dst, const int32 size = 0)
 	{
@@ -136,6 +123,10 @@ namespace amp
 	{
 		return Concurrency::copy_async(src.section(idx, 1), &dst);
 	}
+	COPY_ASYNC copyAsync(const ampArrayView<const T>& src, const int32 idx, T& dst)
+	{
+		return Concurrency::copy_async(src.section(idx, 1), &dst);
+	}
 
 	COPY_SYNC copy(const ampArrayView<T>& src, std::vector<T>& dst)
 	{
@@ -176,6 +167,15 @@ namespace amp
 		Concurrency::parallel_for_each(e, [=, &a](ampIdx idx) restrict(amp)
 		{
 			a[idx] = value;
+		});
+	}
+	template <typename T>
+	static void fill(ampArrayView<T>& av, const T& value, const int32 size)
+	{
+		const ampExtent e = size ? ampExtent(size) : av.extent;
+		Concurrency::parallel_for_each(e, [=](ampIdx idx) restrict(amp)
+		{
+			av[idx] = value;
 		});
 	}
 	template <typename T>
@@ -264,7 +264,7 @@ namespace amp
 	static void forEach(const int32 cnt, const F& function)
 	{
 		if (!cnt) return;
-		Concurrency::parallel_for_each(ampExtent(cnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+		Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
 			if (const int32 i = tIdx.global[0]; i < cnt)
 				function(i);
@@ -301,7 +301,7 @@ namespace amp
 	{
 		if (const int32 cnt = end - start; cnt > 0)
 		{
-			Concurrency::parallel_for_each(ampExtent(cnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+			Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 			{
 				const int32 i = tIdx.global[0] + start;
 				if (i < end)
@@ -310,31 +310,31 @@ namespace amp
 		}
 	}
 	template <typename F>
-	static void forEachTiled(const int32 elemCnt, const F& function)
+	static void forEachTiled(const int32 cnt, const F& function)
 	{
-		if (!elemCnt) return;
-		Concurrency::parallel_for_each(ampExtent(elemCnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+		if (!cnt) return;
+		Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
-			if (tIdx.local[0] < elemCnt)
+			if (tIdx.local[0] < cnt)
 				function(tIdx.global[0], tIdx.tile[0], tIdx.local[0]);
 		});
 	}
 	template <typename F>
-	static void forEachTiledWithBarrier(const int32 elemCnt, const F& function)
+	static void forEachTiledWithBarrier(const int32 cnt, const F& function)
 	{
-		if (!elemCnt) return;
-		Concurrency::parallel_for_each(ampExtent(elemCnt).tile<TILE_SIZE>().pad(), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+		if (!cnt) return;
+		Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
 			function(tIdx);
 		});
 	}
 
-	static uint32 reduceFlags(const ampArray<uint32>& a, const int32 elemCnt)
+	static uint32 reduceFlags(const ampArrayView<const uint32>& a, const int32 cnt)
 	{
-		if (!elemCnt) return 0;
+		if (!cnt) return 0;
 		ampArrayView<uint32> flagBits(32);
 		fill(flagBits, 0u);
-		Concurrency::parallel_for_each(a.extent.tile<TILE_SIZE>().pad(), [=, &a](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+		Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
 			const int32 gi = tIdx.global[0];
 			const int32 li = tIdx.local[0];
@@ -342,7 +342,7 @@ namespace amp
 			if (li < 32)
 				lFlagBits[li] = 0;
 			tIdx.barrier.wait_with_tile_static_memory_fence();
-			if (gi < elemCnt)
+			if (gi < cnt)
 				for (int32 i = 0; i < 32; i++)
 					if (a[gi] & (1 << i))
 						lFlagBits[i] = 1;
@@ -399,116 +399,222 @@ namespace amp
 		return tIdx.local[0] == (TileSize - 1);
 	}
 
-	namespace _reduce_detail
+	//namespace _reduce_detail
+	//{
+	//	template<int32 TileSize, typename T>
+	//	ampArray<T> reduceInsideTiles(const ampArrayView<const T> src, ampArrayView<T> dst, int32 cnt = 0)
+	//	{
+	//		using namespace concurrency;
+	//		if (!cnt) cnt = src.extent.size();
+	//		const auto computeDomain = tileAndPad<TileSize>(cnt);
+	//		ampArray<T> tileSums(computeDomain.size() / TileSize);
+	//		parallel_for_each(computeDomain, [=, &tileSums](ampTiledIdx<TileSize> tIdx) restrict(amp)
+	//		{
+	//			const uint32 gi = tIdx.global[0], li = tIdx.local[0];
+	//			const bool inRange = gi < cnt;
+
+	//			tile_static T lPrefixSums[TileSize][2];
+	//			const T origVal = inRange ? src[gi] : 0;
+	//			lPrefixSums[li][0] = origVal;
+	//			tIdx.barrier.wait_with_tile_static_memory_fence();
+
+	//			for (uint32 i = 0; i < 8; i++)
+	//			{
+	//				const uint32 pow2i = _prefix_sum_detail::pow2(i);
+	//				const uint32 w = (i + 1) % 2, r = i % 2;
+	//				lPrefixSums[li][w] = (li >= pow2i) ?
+	//					(lPrefixSums[li][r] + lPrefixSums[li - pow2i][r]) : lPrefixSums[li][r];
+	//				tIdx.barrier.wait_with_tile_static_memory_fence();
+	//			}
+	//			T scan = (li == 0) ? 0 : lPrefixSums[li - 1][0];
+	//			if (inRange) dst[gi] = scan;
+
+	//			if (lastInTile(tIdx)) tileSums[tIdx.tile] = scan + origVal;
+	//		});
+	//		return tileSums;
+	//	}
+	//
+	//	template<int TileSize, typename T>
+	//	ampCopyFuture reduce(ampArray<T>& prefixSumsR, int32& sum, int32 cnt = 0)
+	//	{
+	//		if (!cnt) cnt = prefixSumsR.extent.size();
+	//		unsigned long iterations;
+	//		_BitScanReverse(&iterations, cnt);
+	//		if (1 << iterations != cnt) iterations++;
+
+	//		using namespace Concurrency;
+	//		auto computeDomain = tileAndPad<TileSize>(cnt);
+	//		ampArray<T> prefixSumsW(prefixSumsR.extent, prefixSumsR.accelerator_view);
+	//		for (uint32 i = 0; i < iterations; i++)
+	//		{
+	//			const uint32 pow2i = _prefix_sum_detail::pow2(i);
+	//			parallel_for_each(computeDomain, [=, &prefixSumsR, &prefixSumsW](ampTiledIdx<TileSize> tIdx) restrict(amp)
+	//			{
+	//				const int32 gi = tIdx.global[0];
+	//				if (gi > cnt) return;
+	//				prefixSumsW[gi] = (gi >= pow2i) ?
+	//					(prefixSumsR[gi] + prefixSumsR[gi - pow2i]) : prefixSumsR[gi];
+	//			});
+	//			if (i != iterations - 1)
+	//				std::swap(prefixSumsR, prefixSumsW);
+	//		}
+	//		ampCopyFuture fut = copyAsync(prefixSumsW, cnt - 1, sum);
+
+	//		parallel_for_each(computeDomain, [=, &prefixSumsR, &prefixSumsW](ampTiledIdx<TileSize> tIdx) restrict(amp)
+	//		{
+	//			const int32 gi = tIdx.global[0];
+	//			prefixSumsR[gi] = (gi == 0) ? 0 : prefixSumsW[gi - 1];
+	//		});
+	//		return fut;
+	//	}
+	//};
+
+	//template<typename F>
+	//static int32 reduce(const ampArrayView<const int32>& src, const int32 cnt, const F& function)
+	//{
+	//	if (!cnt) return 0;
+	//	ampArray<int32> lPrefixSums(cnt);
+	//	int32 lSum = 0, tSum = 0, ttSum = 0;
+
+	//	Timer t = Timer();
+
+	//	getGpuAccelView().wait();
+	//	ampArray<int32> tPrefixSums = _reduce_detail::reduceInsideTiles<TILE_SIZE>(src,
+	//		ampArrayView<int32>(lPrefixSums), cnt);
+	//	getGpuAccelView().wait();
+	//	ampCopyFuture lSumProm = copyAsync(lPrefixSums, cnt - 1, lSum);
+	//	float32 t0 = t.Restart();
+
+	//	ampArray<int32> tDst(tPrefixSums.extent);
+	//	ampArray<int32> ttPrefixSums = _reduce_detail::reduceInsideTiles<TILE_SIZE>(
+	//		ampArrayView<const int32>(tPrefixSums), ampArrayView<int32>(tDst));
+	//	getGpuAccelView().wait();
+	//	ampCopyFuture tSumProm = copyAsync(tDst, tDst.extent.size() - 1, tSum);
+	//	float32 t1 = t.Restart();
+
+	//	ampCopyFuture ttSumProm = _reduce_detail::reduce<TILE_SIZE>(ttPrefixSums, ttSum);
+	//	getGpuAccelView().wait();
+	//	float32 t2 = t.Restart();
+
+	//	Concurrency::parallel_for_each(ampExtent(cnt).tile<TILE_SIZE>().pad(),
+	//		[=, &lPrefixSums, &tPrefixSums, &ttPrefixSums](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+	//	{
+	//		const int32 gi = tIdx.global[0];
+	//		if (gi < cnt)
+	//			function(gi, ttPrefixSums[tIdx.tile / TILE_SIZE] + tPrefixSums[tIdx.tile] + lPrefixSums[gi]);
+	//	});
+	//	getGpuAccelView().wait();
+	//	float32 t3 = t.Stop();
+
+	//	lSumProm.wait();
+	//	tSumProm.wait();
+	//	ttSumProm.wait();
+	//	return ttSum + tSum + lSum;
+	//	//snprintf(debugString, 64, "1: %f 2: %f 3: %f", t0, t1, t2);
+	//}
+
+	namespace _scan_detail
 	{
-		template<int32 TileSize, typename T>
-		ampArray<T> reduceInsideTiles(const ampArray<T>& src, ampArray<T>& dst, int32 cnt = 0)
+		template <int TileSize, typename T>
+		void tilewiseScan(const ampArrayView<const T>& input,
+			ampArray<T>& tilewiseScans, ampArray<T>& tileSums, int32 cnt)
 		{
-			using namespace concurrency;
-			if (!cnt) cnt = src.extent.size();
-			const auto computeDomain = ampExtent(cnt).tile<TileSize>().pad();
-			ampArray<T> tileSums(computeDomain.size() / TileSize);
-			parallel_for_each(computeDomain, [=, &src, &dst, &tileSums](ampTiledIdx<TileSize> tIdx) restrict(amp)
+			ampArrayView<T> tileSumsView(tileSums);
+			ampArrayView<T> tilewiseScansView(tilewiseScans);
+			const int32 tileCnt = (cnt + TileSize - 1) / TileSize;
+			const int32 threadCnt = tileCnt * TileSize;
+
+			parallel_for_each(tileAndPad<TileSize>(cnt),
+				[=](ampTiledIdx<TileSize> tIdx) restrict(amp)
 			{
-				const uint32 gi = tIdx.global[0], li = tIdx.local[0];
+				const uint32 li = tIdx.local[0];
+				const int32 gi = tIdx.global[0];
 				const bool inRange = gi < cnt;
 
-				tile_static T lPrefixSums[TileSize][2];
-				const T origVal = inRange ? src[gi] : 0;
-				lPrefixSums[li][0] = origVal;
-				tIdx.barrier.wait_with_tile_static_memory_fence();
+				tile_static T tile[TileSize];
+				T val = input[gi];
+				if (inRange) tile[li] = val;
 
-				for (uint32 i = 0; i < 8; i++)
+				for (uint32 offset = 2, half = 1; half <= TileSize; half = offset, offset *= 2)
 				{
-					const uint32 pow2i = _prefix_sum_detail::pow2(i);
-					const uint32 w = (i + 1) % 2, r = i % 2;
-					lPrefixSums[li][w] = (li >= pow2i) ?
-						(lPrefixSums[li][r] + lPrefixSums[li - pow2i][r]) : lPrefixSums[li][r];
 					tIdx.barrier.wait_with_tile_static_memory_fence();
+					if ((li % offset) + 1 == offset)
+						tile[li] += tile[li - half];
 				}
-				T scan = (li == 0) ? 0 : lPrefixSums[li - 1][0];
-				if (inRange) dst[gi] = scan;
+				if (li % 2) val = tile[li];
+				if (li == TileSize - 1)
+					tileSumsView[tIdx.tile[0]] = val;
 
-				if (lastInTile(tIdx)) tileSums[tIdx.tile] = scan + origVal;
+				tIdx.barrier.wait_with_tile_static_memory_fence();
+				if (!inRange) return;
+
+				for (uint32 offset = TileSize, half = TileSize / 2; half >= 2; offset = half, half /= 2)
+					if (const uint32 modIdx = (li % offset) + 1; half < modIdx && modIdx < offset)
+						val += tile[li + half - modIdx];
+				tilewiseScansView[gi] = val;
 			});
-			return tileSums;
 		}
 
-		template<int TileSize, typename T>
-		ampCopyFuture reduce(ampArray<T>& prefixSumsR, int32& sum, int32 cnt = 0)
+		// Compute prefix of prefix
+		template <int TileSize, typename T>
+		void prefixScan(const ampArrayView<T>& a, int32 cnt)
 		{
-			if (!cnt) cnt = prefixSumsR.extent.size();
-			unsigned long iterations;
-			_BitScanReverse(&iterations, cnt);
-			if (1 << iterations != cnt) iterations++;
-
-			using namespace Concurrency;
-			auto computeDomain = ampExtent(cnt).tile<TileSize>().pad();
-			ampArray<T> prefixSumsW(prefixSumsR.extent, prefixSumsR.accelerator_view);
-			for (uint32 i = 0; i < iterations; i++)
-			{
-				const uint32 pow2i = _prefix_sum_detail::pow2(i);
-				parallel_for_each(computeDomain, [=, &prefixSumsR, &prefixSumsW](ampTiledIdx<TileSize> tIdx) restrict(amp)
-				{
-					const int32 gi = tIdx.global[0];
-					if (gi > cnt) return;
-					prefixSumsW[gi] = (gi >= pow2i) ?
-						(prefixSumsR[gi] + prefixSumsR[gi - pow2i]) : prefixSumsR[gi];
-				});
-				if (i != iterations - 1)
-					std::swap(prefixSumsR, prefixSumsW);
-			}
-			ampCopyFuture fut = copyAsync(prefixSumsW, cnt - 1, sum);
-
-			parallel_for_each(computeDomain, [=, &prefixSumsR, &prefixSumsW](ampTiledIdx<TileSize> tIdx) restrict(amp)
-			{
-				const int32 gi = tIdx.global[0];
-				prefixSumsR[gi] = (gi == 0) ? 0 : prefixSumsW[gi - 1];
-			});
-			return fut;
+			ampArray<T> atemp(cnt);
+			_scan_detail::scanTiled<TileSize>(ampArrayView<const T>(a), atemp, cnt);
+			Concurrency::copy(atemp, a);
 		}
-	};
 
-	template<typename F>
-	static int32 reduce(const ampArray<int32>& src, const int32 cnt, const F& function)
+		template <int TileSize, typename T>
+		void scanTiled(const ampArrayView<const T>& input, ampArray<T>& output, int32 cnt)
+		{
+			const int32 tileCnt = (cnt + TileSize - 1) / TileSize;
+
+			// Compute tile-wise scans and reductions
+			ampArray<T> tileSumScan(tileCnt);
+			_scan_detail::tilewiseScan<TileSize>(ampArrayView<const T>(input), output, tileSumScan, cnt);
+
+			// recurse if necessary
+			if (tileCnt > 1)
+			{
+				_scan_detail::prefixScan<TileSize>(ampArrayView<T>(tileSumScan), tileSumScan.extent[0]);
+
+				if (cnt > 0)
+				{
+					ampArrayView<T> outputView(output);
+					parallel_for_each(ampExtent(cnt), [=, &tileSumScan](ampIdx idx) restrict(amp)
+					{
+						const int32 tileIdx = idx[0] / TileSize;
+						outputView[idx] = (tileIdx == 0) ?
+							outputView[idx] : tileSumScan[tileIdx - 1] + outputView[idx];
+					});
+				}
+			}
+
+		}
+	}
+
+	template<typename T, typename F>
+	int32 scan(const ampArrayView<const T>& src, const int32 cnt, const F& function)
 	{
-		if (!cnt) return 0;
-		ampArray<int32> lPrefixSums(cnt, src.accelerator_view);
-		int32 lSum = 0, tSum = 0, ttSum = 0;
+		ampArray<T> dst(cnt);
+		//Timer t = Timer();
+		_scan_detail::scanTiled<TILE_SIZE>(src, dst, cnt);
 
-		Timer t = Timer();
+		T sum;
+		ampCopyFuture sumFut = copyAsync(dst, cnt - 1, sum);
+		//float32 t0 = t.Restart();
 
-		getGpuAccelView().wait();
-		ampArray<int32> tPrefixSums = _reduce_detail::reduceInsideTiles<TILE_SIZE>(src, lPrefixSums, cnt);
-		getGpuAccelView().wait();
-		ampCopyFuture lSumProm = copyAsync(lPrefixSums, cnt - 1, lSum);
-		float32 t0 = t.Restart();
-
-		ampArray<int32> ttPrefixSums = _reduce_detail::reduceInsideTiles<TILE_SIZE>(tPrefixSums, tPrefixSums);
-		getGpuAccelView().wait();
-		ampCopyFuture tSumProm = copyAsync(tPrefixSums, tPrefixSums.extent.size() - 1, tSum);
-		float32 t1 = t.Restart();
-
-		ampCopyFuture ttSumProm = _reduce_detail::reduce<TILE_SIZE>(ttPrefixSums, ttSum);
-		getGpuAccelView().wait();
-		float32 t2 = t.Restart();
-
-		Concurrency::parallel_for_each(ampExtent(cnt).tile<TILE_SIZE>().pad(),
-			[=, &lPrefixSums, &tPrefixSums, &ttPrefixSums](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+		parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=, &dst](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
 		{
 			const int32 gi = tIdx.global[0];
 			if (gi < cnt)
-				function(gi, ttPrefixSums[tIdx.tile / TILE_SIZE] + tPrefixSums[tIdx.tile] + lPrefixSums[gi]);
+				function(gi, (gi == 0) ? 0 : dst[gi - 1]);
 		});
-		getGpuAccelView().wait();
-		float32 t3 = t.Stop();
-
-		lSumProm.wait();
-		tSumProm.wait();
-		ttSumProm.wait();
-		return ttSum + tSum + lSum;
-		//snprintf(debugString, 64, "1: %f 2: %f 3: %f", t0, t1, t2);
+		//float32 t2 = t.Stop();
+		sumFut.wait();
+		return sum;
 	}
+
 
 	namespace _prefix_sum_detail
 	{
@@ -540,29 +646,50 @@ namespace amp
 
 
 		template<typename T, int TileSize>
-		inline T tilePrefixSum(T x, ampTiledIdx<TileSize> tidx, uint32& lastVal) restrict(amp)
+		inline T tilePrefixSum(T val, ampTiledIdx<TileSize> tIdx, T& sum) restrict(amp)
 		{
-			const uint32 li = tidx.local[0];
-			tile_static T lPrefixSums[TileSize][2];
+			const uint32 li = tIdx.local[0];
 
-			lPrefixSums[li][0] = x;
-			tidx.barrier.wait_with_tile_static_memory_fence();
+			tile_static T tile[TileSize];
+			const T origVal = tile[li] = val;
 
-			for (uint32 i = 0; i < 8; i++)
+			for (uint32 offset = 2, half = 1; half <= TileSize; half = offset, offset *= 2)
 			{
-				const uint32 pow2i = _prefix_sum_detail::pow2(i);
-
-				const uint32 w = (i + 1) % 2;
-				const uint32 r = i % 2;
-
-				lPrefixSums[li][w] = (li >= pow2i) ?
-					(lPrefixSums[li][r] + lPrefixSums[li - pow2i][r]) : lPrefixSums[li][r];
-
-				tidx.barrier.wait_with_tile_static_memory_fence();
+				tIdx.barrier.wait_with_tile_static_memory_fence();
+				if ((li % offset) + 1 == offset)
+					tile[li] += tile[li - half];
 			}
-			lastVal = lPrefixSums[TileSize - 1][0];
+			if (li % 2) val = tile[li];
+			//if (li + 1 == TileSize) sum = val;
 
-			return (li == 0) ? 0 : lPrefixSums[li - 1][0];
+			tIdx.barrier.wait_with_tile_static_memory_fence();
+			sum = tile[TileSize - 1];
+			for (uint32 offset = TileSize, half = TileSize / 2; half >= 2; offset = half, half /= 2)				
+				if (const uint32 modIdx = (li % offset) + 1; half < modIdx && modIdx < offset)
+					val += tile[li + half - modIdx];
+			return val - origVal;
+			
+			//const uint32 li = tIdx.local[0];
+			//tile_static T lPrefixSums[TileSize][2];
+
+			//lPrefixSums[li][0] = val;
+			//tIdx.barrier.wait_with_tile_static_memory_fence();
+
+			//for (uint32 i = 0; i < 8; i++)
+			//{
+			//	const uint32 pow2i = _prefix_sum_detail::pow2(i);
+
+			//	const uint32 w = (i + 1) % 2;
+			//	const uint32 r = i % 2;
+
+			//	lPrefixSums[li][w] = (li >= pow2i) ?
+			//		(lPrefixSums[li][r] + lPrefixSums[li - pow2i][r]) : lPrefixSums[li][r];
+
+			//	tIdx.barrier.wait_with_tile_static_memory_fence();
+			//}
+			//sum = lPrefixSums[TileSize - 1][0];
+
+			//return (li == 0) ? 0 : lPrefixSums[li - 1][0];
 		}
 
 		template<int TileSize>
@@ -641,7 +768,7 @@ namespace amp
 			});
 		}
 	}
-	static void radixSort(ampArray<Proxy>& a, const uint32 size)
+	static void radixSort(ampArrayView<Proxy>& a, const uint32 size)
 	{
 		const int32 tileCnt = getTileCnt<TILE_SIZE>(size);
 		ampArray<Proxy> intermArr(size);

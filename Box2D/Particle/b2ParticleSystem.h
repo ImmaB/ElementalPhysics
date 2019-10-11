@@ -488,7 +488,7 @@ public:
 	/// Get contacts between particles and bodies
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const Particle::BodyContact* GetBodyContacts() const;
+	//const Particle::BodyContact* GetBodyContacts() const;
 
 	int32 GetBodyContactCount() const;
 
@@ -956,6 +956,23 @@ private:
 	/// @return the world velocity of a point.
 	Vec2 GetLinearVelocityFromWorldPoint(const ParticleGroup& group, const Vec2& worldPoint) const;
 	
+	const ampArrayView<Particle::Mat> GetMats() { return ampArrayView<Particle::Mat>(m_ampMats); }
+	const ampArrayView<const Particle::Mat> GetConstMats() { return ampArrayView<const Particle::Mat>(m_ampMats); }
+
+	const ampArrayView<Fixture> GetFixtures() { return ampArrayView<Fixture>(m_ampFixtures); }
+	const ampArrayView<const Fixture> GetConstFixtures() { return ampArrayView<const Fixture>(m_ampFixtures); }
+	
+	const ampArrayView<Body> GetBodies() { return ampArrayView<Body>(m_ampBodies); }
+	const ampArrayView<const Body> GetConstBodies() { return ampArrayView<const Body>(m_ampBodies); }
+	
+	const ampArrayView<Body::Mat> GetBodyMats();
+	const ampArrayView<const Body::Mat> GetConstBodyMats();
+
+	const ampArrayView<ParticleGroup> GetGroups() { return ampArrayView<ParticleGroup>(m_ampGroups); }
+	const ampArrayView<const ParticleGroup> GetConstGroups() { return ampArrayView<const ParticleGroup>(m_ampGroups); }
+	const ampArrayView<const b2ParticlePair> GetConstPairs() { return ampArrayView<const b2ParticlePair>(m_ampPairs); }
+	const ampArrayView<const b2ParticleTriad> GetConstTriads() { return ampArrayView<const b2ParticleTriad>(m_ampTriads); }
+
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
 
@@ -1224,10 +1241,10 @@ inline const int32 ParticleSystem::GetContactCount() const
 	return m_contactCount;
 }
 
-inline const Particle::BodyContact* ParticleSystem::GetBodyContacts() const
-{
-	return m_bodyContacts.data();
-}
+//inline const Particle::BodyContact* ParticleSystem::GetBodyContacts() const
+//{
+//	return m_bodyContacts.data();
+//}
 
 inline int32 ParticleSystem::GetBodyContactCount() const
 {

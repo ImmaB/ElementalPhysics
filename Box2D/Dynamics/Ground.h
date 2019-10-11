@@ -132,6 +132,11 @@ public:
 	~Ground();
 
 	void SetTiles(Tile* tiles);
+	const ampArrayView<Tile> GetTiles() { return ampArrayView<Tile>(m_ampTiles); }
+	const ampArrayView<const Tile> GetConstTiles() { return ampArrayView<const Tile>(m_ampTiles); }
+	const ampArrayView<const Mat> GetConstMats() { return ampArrayView<const Mat>(m_ampMaterials); }
+	const ampArrayView<int32> GetChunkHasChange() { return ampArrayView<int32>(m_ampChunkHasChange); }
+	const ampArrayView<const int32> GetConstChunkHasChange() { return ampArrayView<const int32>(m_ampChunkHasChange); }
 
 	int32 CreateMaterial(Mat::def gmd);
 
