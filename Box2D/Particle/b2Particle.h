@@ -220,7 +220,6 @@ namespace Particle
 	};
 	struct BodyContact
 	{
-		int32 partIdx;
 		/// The body making contact.
 		int32 bodyIdx;
 		/// The specific fixture making contact
@@ -231,6 +230,10 @@ namespace Particle
 		Vec2 normal;
 		/// The effective mass used in calculating force.
 		float32 mass;
+	};
+	struct BodyContacts
+	{
+		BodyContact contacts[MAX_BODY_CONTACTS_PER_PARTICLE];
 	};
 	struct GroundContact
 	{
@@ -275,10 +278,13 @@ namespace Particle
 		ampArray<float32> weight, heat, health, mass, invMass,
 			staticPressure, accumulation, depth;
 		ampArray<int32>	matIdx, groupIdx, color, contactCnt, bodyContactCnt;
+		
 		ampArray<Proxy> proxy;
 		ampArray<ContactIdx> contactIdx;
 		ampArray<Contacts> contact;
-		ampArray2D<BodyContact> bodyContact;
+
+		ampArray<ContactIdx> bodyContactIdx;
+		ampArray<BodyContacts> bodyContact;
 		ampArray<GroundContact> groundContact;
 
 		AmpArrays(int32 cap, const ampAccelView& accelView);
@@ -305,7 +311,8 @@ namespace Particle
 		const ampArrayView<const Proxy> GetConstProxy() const { return ampArrayView<const Proxy>(proxy); }
 		const ampArrayView<const ContactIdx> GetConstContactIdx() const { return ampArrayView<const ContactIdx>(contactIdx); }
 		const ampArrayView<const Contacts> GetConstContact() const { return ampArrayView<const Contacts>(contact); }
-		const ampArrayView2D<const BodyContact> GetConstBodyContact() const { return ampArrayView2D<const BodyContact>(bodyContact); }
+		const ampArrayView<const ContactIdx> GetConstBodyContactIdx() const { return ampArrayView<const ContactIdx>(bodyContactIdx); }
+		const ampArrayView<const BodyContacts> GetConstBodyContact() const { return ampArrayView<const BodyContacts>(bodyContact); }
 		const ampArrayView<const GroundContact> GetConstGroundContact() const { return ampArrayView<const GroundContact>(groundContact); }
 		
 		ampArrayView<uint32> GetFlags()					{ return ampArrayView<uint32>(flags); }
@@ -329,7 +336,8 @@ namespace Particle
 		ampArrayView<Proxy> GetProxy()					{ return ampArrayView<Proxy>(proxy); }
 		ampArrayView<ContactIdx> GetContactIdx()		{ return ampArrayView<ContactIdx>(contactIdx); }
 		ampArrayView<Contacts> GetContact()				{ return ampArrayView<Contacts>(contact); }
-		ampArrayView2D<BodyContact> GetBodyContact()	{ return ampArrayView2D<BodyContact>(bodyContact); }
+		ampArrayView<ContactIdx> GetBodyContactIdx()	{ return ampArrayView<ContactIdx>(bodyContactIdx); }
+		ampArrayView<BodyContacts> GetBodyContact()		{ return ampArrayView<BodyContacts>(bodyContact); }
 		ampArrayView<GroundContact> GetGroundContact()	{ return ampArrayView<GroundContact>(groundContact); }
 	};
 

@@ -1143,7 +1143,7 @@ private:
 	vector<Particle::Contact> m_contacts;
 	vector<Particle::BodyContact> m_bodyContacts;
 	vector<Particle::ContactIdx> m_bodyContactIdxs;
-	ampArray<Particle::BodyContact> m_ampBodyContacts;
+	//ampArray<Particle::BodyContact> m_ampBodyContacts;
 
 	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 

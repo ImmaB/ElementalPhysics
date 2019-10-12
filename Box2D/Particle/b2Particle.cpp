@@ -109,7 +109,7 @@ Particle::AmpArrays::AmpArrays(int32 cap, const ampAccelView& accView) :
 	matIdx(cap, accView), groupIdx(cap, accView), color(cap, accView),
 	contactCnt(cap, accView), bodyContactCnt(cap, accView), proxy(cap, accView),
 	contactIdx(cap * MAX_CONTACTS_PER_PARTICLE, accView), contact(cap, accView),
-	bodyContact(cap, MAX_CONTACTS_PER_PARTICLE, accView),
+	bodyContactIdx(cap * MAX_BODY_CONTACTS_PER_PARTICLE, accView), bodyContact(cap, accView),
 	groundContact(cap, accView)
 {}
 
@@ -140,6 +140,7 @@ void Particle::AmpArrays::Resize(int32 capacity, int32 copyCnt)
 
 	amp::resize(contactIdx, capacity * MAX_CONTACTS_PER_PARTICLE);
 	amp::resize(contact, capacity);
+	amp::resize(bodyContactIdx, capacity * MAX_BODY_CONTACTS_PER_PARTICLE);
 	amp::resize(bodyContact, capacity);
 	amp::resize(groundContact, capacity);
 }

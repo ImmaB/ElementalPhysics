@@ -660,7 +660,6 @@ namespace amp
 					tile[li] += tile[li - half];
 			}
 			if (li % 2) val = tile[li];
-			//if (li + 1 == TileSize) sum = val;
 
 			tIdx.barrier.wait_with_tile_static_memory_fence();
 			sum = tile[TileSize - 1];
