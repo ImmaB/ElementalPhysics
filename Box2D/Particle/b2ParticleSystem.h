@@ -973,6 +973,11 @@ private:
 	const ampArrayView<const b2ParticlePair> GetConstPairs() { return ampArrayView<const b2ParticlePair>(m_ampPairs); }
 	const ampArrayView<const b2ParticleTriad> GetConstTriads() { return ampArrayView<const b2ParticleTriad>(m_ampTriads); }
 
+	const ampArrayView<const AmpChainShape> GetConstChainShapes() { return ampArrayView<const AmpChainShape>(m_ampChainShapes); }
+	const ampArrayView<const AmpCircleShape> GetConstCircleShapes() { return ampArrayView<const AmpCircleShape>(m_ampCircleShapes); }
+	const ampArrayView<const AmpEdgeShape> GetConstEdgeShapes() { return ampArrayView<const AmpEdgeShape>(m_ampEdgeShapes); }
+	const ampArrayView<const AmpPolygonShape> GetConstPolygonShapes() { return ampArrayView<const AmpPolygonShape>(m_ampPolygonShapes); }
+
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
 

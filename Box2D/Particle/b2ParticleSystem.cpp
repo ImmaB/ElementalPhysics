@@ -3033,12 +3033,12 @@ void ParticleSystem::AmpUpdateBodyContacts()
 
 		WaitForCopyBox2DToGPU();
 
-		auto& chainShapes = m_ampChainShapes;
-		auto& circleShapes = m_ampCircleShapes;
-		auto& edgeShapes = m_ampEdgeShapes;
-		auto& polygonShapes = m_ampPolygonShapes;
-		const auto computeDistance = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes]
-			(const Fixture& f, const b2Transform& xf, const Vec3& p, float32& d, Vec2& n, int32 childIndex) restrict(amp) -> bool
+		auto chainShapes = GetConstChainShapes();
+		auto circleShapes = GetConstCircleShapes();
+		auto edgeShapes = GetConstEdgeShapes();
+		auto polygonShapes = GetConstPolygonShapes();
+		const auto computeDistance = [=] (const Fixture& f, const b2Transform& xf, const Vec3& p,
+			float32& d, Vec2& n, int32 childIndex) restrict(amp) -> bool
 		{
 			if (f.m_shapeType == b2Shape::e_chain)
 			{
@@ -3297,12 +3297,12 @@ void ParticleSystem::SolveCollision()
 			return ShouldCollisionGroupsCollide(f.m_filter.collisionGroup, groups[groupIdxs[i]].m_collisionGroup);
 		};
 
-		auto& chainShapes = m_ampChainShapes;
-		auto& circleShapes = m_ampCircleShapes;
-		auto& edgeShapes = m_ampEdgeShapes;
-		auto& polygonShapes = m_ampPolygonShapes;
-		const auto rayCast = [=, &chainShapes, &circleShapes, &edgeShapes, &polygonShapes](const Fixture& f,
-			b2RayCastOutput& output, const b2RayCastInput& input, const float32 z, const b2Transform& xf, int32 childIdx) restrict(amp) -> bool
+		auto chainShapes = GetConstChainShapes();
+		auto circleShapes = GetConstCircleShapes();
+		auto edgeShapes = GetConstEdgeShapes();
+		auto polygonShapes = GetConstPolygonShapes();
+		const auto rayCast = [=](const Fixture& f, b2RayCastOutput& output, const b2RayCastInput& input,
+			const float32 z, const b2Transform& xf, int32 childIdx) restrict(amp) -> bool
 		{
 			switch (f.m_shapeType)
 			{
