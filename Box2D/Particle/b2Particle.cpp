@@ -162,6 +162,7 @@ void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs,
 	amp::copy(bufs.depth, arrs.depth, first, size);
 	amp::copy(bufs.matIdx, arrs.matIdx, first, size);
 	amp::copy(bufs.groupIdx, arrs.groupIdx, first, size);
+	amp::copy(bufs.color, arrs.color, first, size);
 }
 
 template<typename T> inline ID3D11Buffer* ToD11Buffer(const ampArray<T>& arr)

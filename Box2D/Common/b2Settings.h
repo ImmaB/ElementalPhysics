@@ -64,6 +64,8 @@ typedef double float64;
 #define MAX_CONTACTS_PER_PARTICLE 8
 #define MAX_BODY_CONTACTS_PER_PARTICLE 4
 
+#define MAX_PARTICLES_PER_GROUND_TILE 8
+
 template <typename T>
 using ampArrayView = Concurrency::array_view<T>;
 template <typename T>

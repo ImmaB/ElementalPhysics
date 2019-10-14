@@ -22,7 +22,7 @@ public:
 		int32 matIdx;
 		float32 height;
 		int32 particleCnt;
-		int32 particleMatIdxs[8];
+		int32 particleMatIdxs[MAX_PARTICLES_PER_GROUND_TILE];
 		int32 textureSeed;
 		uint32 flags;
 		
@@ -62,7 +62,7 @@ public:
 
 		struct def
 		{
-			def() : friction(0.0f), bounciness(0.0f), flags(0) {}
+			def() : friction(0.0f), bounciness(0.0f), particleCapacity(0), flags(0) {}
 
 			float32 friction;
 			float32 bounciness;
@@ -70,6 +70,7 @@ public:
 			uint32 flags;
 		};
 
+		Mat() : friction(0), bounciness(0), particleCapacity(0), flags(0) {}
 		Mat(const def& d) :
 			friction(d.friction),
 			bounciness(d.bounciness),
@@ -81,14 +82,6 @@ public:
 		float32 bounciness;
 		int32 particleCapacity;
 		uint32 flags;
-
-		bool compare(const def& d)
-		{
-			return friction == d.friction &&
-				bounciness == d.bounciness &&
-				particleCapacity == d.particleCapacity &&
-				flags == d.flags;
-		}
 
 		inline bool isWaterRepellent() const { return flags & Flags::waterRepellent; }
 		inline bool isWaterRepellent() const restrict(amp) { return flags & Flags::waterRepellent; }
@@ -139,6 +132,7 @@ public:
 	const ampArrayView<const int32> GetConstChunkHasChange() { return ampArrayView<const int32>(m_ampChunkHasChange); }
 
 	int32 CreateMaterial(Mat::def gmd);
+	void ClearMaterials() { m_materials.clear(); m_allMaterialFlags = 0; }
 
 	void CopyChangedTiles();
 

@@ -283,7 +283,7 @@ public:
 	Particle::D11Buffers m_d11Buffers;
 
 	bool ShouldSolve();
-	void SolveInit();
+	void SolveInit(int32 timestamp);
 
 	void InitStep();
 	void SortProxies();
@@ -869,7 +869,8 @@ public:
 private:
 	void CopyShapeToGPU(b2Shape::Type type, int32 idx);
 
-	void BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagBounds& tagBounds);
+	void BoundProxyToTagBound(const b2AABBFixtureProxy& aabb,
+		b2TagBounds& tagBounds);
 	template<typename F>
 	void AmpForEachInsideBounds(const b2AABB& aabb, const F& function);
 	template<typename F>

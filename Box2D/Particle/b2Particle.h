@@ -220,16 +220,28 @@ namespace Particle
 	};
 	struct BodyContact
 	{
+		enum Flag
+		{
+			Touching = 1 << 0	// otherwise its a potential collision
+		};
+
+		uint32 flags;
 		/// The body making contact.
 		int32 bodyIdx;
 		/// The specific fixture making contact
 		int32 fixtureIdx;
+		/// The specific fixture child making contact
+		int32 childIdx;
 		/// Weight of the contact. A value between 0.0f and 1.0f.
 		float32 weight;
 		/// The normalized direction from the particle to the body.
 		Vec2 normal;
 		/// The effective mass used in calculating force.
 		float32 mass;
+
+		inline void AddFlag(const uint32 f) restrict(amp) { flags |= f; }
+		inline bool HasFlag(const uint32 f) const restrict(amp) { return flags & f; }
+		inline bool IsReal() const restrict(amp) { return flags & Touching; }
 	};
 	struct BodyContacts
 	{

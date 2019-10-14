@@ -200,7 +200,7 @@ EXPORT int32 GetParticleIterations(float32 gravity, float32 particleRadius, floa
 
 EXPORT bool ShouldSolveParticleSystem() { return pPartSys != nullptr && pPartSys->ShouldSolve(); }
 
-EXPORT void SolveInit()	{ pPartSys->SolveInit(); }
+EXPORT void SolveInit(int32 timestamp) { pPartSys->SolveInit(timestamp); }
 
 EXPORT void InitStep() { pPartSys->InitStep(); }
 EXPORT void SortProxies() { pPartSys->SortProxies(); }
@@ -569,6 +569,7 @@ EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 parti
 	gmd.flags = flags;
 	return pGround->CreateMaterial(gmd);
 }
+EXPORT void ClearGroundMaterials() { if (pGround) pGround->ClearMaterials(); }
 
 EXPORT void CopyGroundTiles() { pGround->CopyChangedTiles(); }
 

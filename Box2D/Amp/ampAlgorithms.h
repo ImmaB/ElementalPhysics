@@ -132,6 +132,10 @@ namespace amp
 	{
 		Concurrency::copy(src, dst.data());
 	}
+	COPY_SYNC copy(const ampArrayView<const T>& src, std::vector<T>& dst)
+	{
+		Concurrency::copy(src, dst.data());
+	}
 
 	COPY_SYNC copy(const ampArrayView<T>& src, T* dst)
 	{
@@ -141,6 +145,10 @@ namespace amp
 	COPY_SYNC copy(const T& src, ampArray<T>& dst, const int32 idx)
 	{
 		Concurrency::copy(&src, &src + 1, dst.section(idx, 1));
+	}
+	COPY_ASYNC copyAsync(const T& src, ampArray<T>& dst, const int32 idx)
+	{
+		return Concurrency::copy_async(&src, &src + 1, dst.section(idx, 1));
 	}
 
 	COPY_SYNC copy(const ampArray<T>& src, std::vector<T>& dst, const int32 start, const int32 end)
@@ -851,6 +859,11 @@ namespace amp
 	{
 		if (dest & flag) return false;
 		return Concurrency::atomic_compare_exchange(&dest, &dest, dest | flag);
+	}
+
+	inline Vec2 toNormal(float32 f) restrict(amp)
+	{
+		return Vec2(ampSin(f), ampCos(f));
 	}
 
 	// returns value before increment

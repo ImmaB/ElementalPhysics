@@ -657,21 +657,19 @@ inline void ParticleSystem::AmpForEachBodyContact(const F& function) const
 	amp::forEach(m_bodyContactCount, [=](const int32 i) restrict(amp)
 	{
 		const Particle::ContactIdx idx = bodyContactIdxs[i];
-		function(idx.i, bodyContacts[idx.i].contacts[idx.j]);
+		const Particle::BodyContact& c = bodyContacts[idx.i].contacts[idx.j];
+		if (c.IsReal())
+			function(idx.i, c);
 	});
 }
 template<typename F>
 inline void ParticleSystem::AmpForEachBodyContact(const uint32 partFlag, const F& function) const
 {
 	if (!(m_allFlags & partFlag)) return;
-	auto bodyContactIdxs = m_ampArrays.GetConstBodyContactIdx();
-	auto bodyContacts = m_ampArrays.GetConstBodyContact();
 	auto flags = m_ampArrays.GetConstFlags();
-	amp::forEach(m_bodyContactCount, [=](const int32 i) restrict(amp)
+	AmpForEachBodyContact([=](const int32 i, const Particle::BodyContact& contact) restrict(amp)
 	{
-		const Particle::ContactIdx idx = bodyContactIdxs[i];
-		if (flags[idx.i] & partFlag)
-			function(idx.i, bodyContacts[idx.i].contacts[idx.j]);
+		if (flags[i] & partFlag) function(i, contact);
 	});
 }
 template<typename F>
@@ -2211,7 +2209,7 @@ ParticleSystem::GetInsideBoundsEnumerator(const b2AABB& aabb) const
 	return InsideBoundsEnumerator(lowerTag, upperTag, firstProxy, lastProxy);
 }
 
-void ParticleSystem::BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagBounds& tb)
+inline void ParticleSystem::BoundProxyToTagBound(const b2AABBFixtureProxy& aabb, b2TagBounds& tb)
 {
 	tb.lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
 		m_inverseDiameter * aabb.lowerBound.y - 1);
@@ -2259,7 +2257,7 @@ void ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aa
 	auto proxies = m_ampArrays.GetConstProxy();
 	amp::forEach(m_count, [=](const int32 i) restrict(amp)
 	{
-		const Proxy& proxy = proxies[i];
+		const Proxy proxy = proxies[i];
 		if (flags[proxy.idx] & Particle::Flag::Zombie) return;
 		const uint32 xTag = proxy.tag & xMask;
 		for (int32 i = 0; i < boundCnt; i++)
@@ -3062,6 +3060,7 @@ void ParticleSystem::AmpUpdateBodyContacts()
 
 		const float32 partDiameter = m_particleDiameter;
 		const float32 invDiameter = m_inverseDiameter;
+		const float32 critVelocity = m_particleDiameter;
 		auto bodies = GetConstBodies();
 		auto fixtures = GetConstFixtures();
 		auto positions = m_ampArrays.GetConstPosition();
@@ -3081,8 +3080,18 @@ void ParticleSystem::AmpUpdateBodyContacts()
 			const Body& b = bodies[bIdx];
 			const Vec3& ap = positions[i];
 			if (!computeDistance(fixture, b.m_xf, ap, d, n, childIdx)) return;
+			
+			//if (d > critVelocity) return;
+
+			Particle::BodyContact& contact = bodyContacts[i].contacts[bodyContactIdx++];
+			contact.bodyIdx = bIdx;
+			contact.fixtureIdx = fixtureIdx;
+			contact.childIdx = childIdx;
+			contact.flags = 0;
+
 			if (d > partDiameter) return;
-		
+			contact.AddFlag(Particle::BodyContact::Flag::Touching);
+
 			const Vec2 bp = b.GetWorldCenter();
 			const float32 bm = b.m_mass;
 			const float32 bI =
@@ -3094,9 +3103,6 @@ void ParticleSystem::AmpUpdateBodyContacts()
 			const float32 rpn = b2Cross(rp, n);
 			const float32 invM = invAm + invBm + invBI * rpn * rpn;
 			
-			Particle::BodyContact& contact = bodyContacts[i].contacts[bodyContactIdx++];
-			contact.bodyIdx = bIdx;
-			contact.fixtureIdx = fixtureIdx;
 			contact.weight = 1 - d * invDiameter;
 			contact.normal = -n;
 			contact.mass = invM > 0 ? 1 / invM : 0;
@@ -3148,7 +3154,8 @@ void ParticleSystem::AmpUpdateGroundContacts()
 				contact.setInvalid();
 				return;
 			}
-			const Ground::Tile& groundTile = groundTiles[ty * txMax + tx];
+			const int32 tileIdx = ty * txMax + tx;
+			const Ground::Tile& groundTile = groundTiles[tileIdx];
 			const float32 d = p.z - (groundTile.height + b2_linearSlop);
 			//if (r >= partRadius)
 			if (d >= partRadius)
@@ -3156,7 +3163,7 @@ void ParticleSystem::AmpUpdateGroundContacts()
 				contact.setInvalid();
 				return;
 			}
-			contact.groundTileIdx = ty * txMax + tx;
+			contact.groundTileIdx = tileIdx;
 			contact.groundChunkIdx = (ty / TILE_SIZE_SQRT) * cxMax + (tx / TILE_SIZE_SQRT);
 			contact.groundMatIdx = groundTile.matIdx;
 			contact.weight = 1 - d * invDiameter;
@@ -3274,14 +3281,12 @@ void ParticleSystem::SolveCollision()
 		AmpComputeAABB(aabb, true);
 		m_world.AmpQueryAABB(aabb, [=, &fixtureBounds](int32 fixtureIdx)
 		{
-			Fixture& fixture = m_world.m_fixtureBuffer[fixtureIdx];
-			if (fixture.m_isSensor) return;
+			const Fixture& f = m_world.m_fixtureBuffer[fixtureIdx];
+			if (f.m_isSensor) return;
 
-			const b2Shape& shape = m_world.GetShape(fixture);
-			int32 childCount = shape.GetChildCount();
-
+			const int32 childCount = m_world.GetShape(f).GetChildCount();
 			for (int32 childIdx = 0; childIdx < childCount; childIdx++)
-				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(fixture, childIdx), fixtureIdx, childIdx));
+				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(f, childIdx), fixtureIdx, childIdx));
 		});
 
 		auto positions = m_ampArrays.GetPosition();
@@ -3398,6 +3403,53 @@ void ParticleSystem::SolveCollision()
 			const Vec2 f = stepInvDt * masses[a] * (Vec2(av) - v);
 			particleAtomicApplyForce(a, f);
 		});
+
+		//auto bodyContacts = m_ampArrays.GetConstBodyContact();
+		//auto bodyContactIdxs = m_ampArrays.GetConstBodyContactIdx();
+		//amp::forEach(m_bodyContactCount, [=](const int32 i) restrict(amp)
+		//{
+		//	const Particle::ContactIdx idx = bodyContactIdxs[i];
+		//	const Particle::BodyContact& contact = bodyContacts[idx.i].contacts[idx.j];
+
+		//	const Vec3& ap = positions[i];
+		//	const Body& body = bodies[contact.bodyIdx];
+		//	const Fixture& fixture = fixtures[contact.fixtureIdx];
+
+		//	const Vec3 av = velocities[i];
+		//	b2RayCastOutput output;
+		//	b2RayCastInput input;
+		//	if (iteration == 0)
+		//	{
+		//		// Put 'ap' in the local space of the previous frame
+		//		Vec2 p1 = b2MulT(body.m_xf0, ap);
+		//		if (fixture.m_shapeType == b2Shape::e_circle)
+		//		{
+		//			// Make relative to the center of the circle
+		//			p1 -= body.GetLocalCenter();
+		//			// Re-apply rotation about the center of the
+		//			// circle
+		//			p1 = b2Mul(body.m_xf0.q, p1);
+		//			// Subtract rotation of the current frame
+		//			p1 = b2MulT(body.m_xf.q, p1);
+		//			// Return to local space
+		//			p1 += body.GetLocalCenter();
+		//		}
+		//		// Return to global space and apply rotation of current frame
+		//		input.p1 = b2Mul(body.m_xf, p1);
+		//	}
+		//	else
+		//		input.p1 = ap;
+		//	input.p2 = ap + stepDt * Vec2(av);
+		//	input.maxFraction = 1;
+		//	if (!rayCast(fixture, output, input, ap.z, body.m_xf, contact.childIdx)) return;
+		//	const Vec2& n = output.normal;
+		//	const Vec2 p = (1 - output.fraction) * input.p1 +
+		//		output.fraction * input.p2 + b2_linearSlop * n;
+		//	const Vec2 v = stepInvDt * (p - ap);
+		//	velocities[i] = Vec3(v, av.z);
+		//	const Vec2 f = stepInvDt * masses[i] * (Vec2(av) - v);
+		//	particleAtomicApplyForce(i, f);
+		//});
 
 		const float32 heightOffset = b2_linearSlop; // m_particleRadius;
 		auto groundTiles = m_world.m_ground->GetConstTiles();
@@ -3902,12 +3954,13 @@ bool ParticleSystem::ShouldSolve()
 	return true;
 }
 
-void ParticleSystem::SolveInit() 
+void ParticleSystem::SolveInit(int32 timestamp) 
 {
 
 	//if (!m_expireTimeBuf.empty())
 	//	SolveLifetimes(m_step);
 	m_iteration = 0;
+	m_timestamp = timestamp;
 	if (m_accelerate)
 	{
 		CopyBox2DToGPUAsync();
@@ -4050,7 +4103,9 @@ void ParticleSystem::SolveGravity()
 
 void ParticleSystem::SolveWind()
 {
-	const Vec3 wind = m_subStep.dt * m_world.m_wind * m_atmosphereParticleMass;
+	const Vec3 wind = m_world.m_wind;
+	const float32 factor = m_subStep.dt * m_atmosphereParticleMass;
+	const float32 timestamp = m_timestamp * b2_pi;
 
 	if (m_accelerate)
 	{
@@ -4058,7 +4113,7 @@ void ParticleSystem::SolveWind()
 		auto invMasses = m_ampArrays.GetConstInvMass();
 		AmpForEachParticle([=](const int32 i) restrict(amp)
 		{
-			velocities[i] += invMasses[i] * wind;
+			velocities[i] += invMasses[i] * factor * (wind + 0.1f * amp::toNormal(timestamp * i));
 		});
 	}
 }
@@ -5921,11 +5976,6 @@ void ParticleSystem::SolveFluid()
 	if (m_accelerate)
 	{
 		auto flags = m_ampArrays.GetFlags();
-		const auto killParticle = [=](int32 i) restrict(amp)
-		{
-			flags[i] = Particle::Flag::Zombie;
-		};
-
 		auto groundTiles = m_world.m_ground->GetTiles();
 		auto groundMats = m_world.m_ground->GetConstMats();
 		auto groundChunkHasChange = m_world.m_ground->GetChunkHasChange();
@@ -5940,7 +5990,7 @@ void ParticleSystem::SolveFluid()
 
 			const int32 cnt = amp::atomicInc(tile.particleCnt, mat.particleCapacity);
 			if (!cnt) return;
-			killParticle(i);
+			flags[i] = Particle::Flag::Zombie;
 			tile.particleMatIdxs[cnt - 1] = matIdxs[i];
 			groundChunkHasChange[contact.groundChunkIdx] = 1;
 		});
@@ -5960,7 +6010,7 @@ void ParticleSystem::SolveFluid()
 				&& b.atomicAddFlag(Body::Flag::Wet))
 			{
 				b.RemFlag(Body::Flag::Burning);
-				killParticle(i);
+				flags[i] = Particle::Flag::Zombie;
 			}
 		});
 	}

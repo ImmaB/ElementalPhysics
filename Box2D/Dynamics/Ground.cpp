@@ -29,7 +29,7 @@ Ground::Ground(b2World& world, const def& gd) :
 }
 Ground::~Ground()
 {
-	m_materials.clear();
+	ClearMaterials();
 }
 
 void Ground::SetTiles(Tile* tiles)
@@ -40,14 +40,12 @@ void Ground::SetTiles(Tile* tiles)
 
 int32 Ground::CreateMaterial(Mat::def md)
 {
-	int32 idx = 0;
-	for (idx = 0; idx < m_materials.size(); idx++)
-		if (m_materials[idx].compare(md)) return idx;
-
-	m_materials.push_back(Mat(md));
-	amp::resize(m_ampMaterials, m_materials.size());
-	amp::copy(m_materials, m_ampMaterials, idx);
+	const Mat& mat = Mat(md);
+	int32 idx = m_materials.size();
+	m_materials.push_back(mat);
 	m_allMaterialFlags |= md.flags;
+	amp::resize(m_ampMaterials, m_materials.size(), idx);
+	amp::copy(mat, m_ampMaterials, idx);
 	return idx;
 }
 
