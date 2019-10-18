@@ -99,50 +99,97 @@ void Particle::Buffers::Resize(int32 capacity)
 }
 
 
-Particle::AmpArrays::AmpArrays(int32 cap, const ampAccelView& accView) :
-	flags(cap, accView),
-	position(cap, accView), velocity(cap, accView), force(cap, accView),
-	accumulationVec3(cap, accView),
-	weight(cap, accView), heat(cap, accView), health(cap, accView),
-	mass(cap, accView), invMass(cap, accView),
-	staticPressure(cap, accView), accumulation(cap, accView), depth(cap, accView),
-	matIdx(cap, accView), groupIdx(cap, accView), color(cap, accView),
-	contactCnt(cap, accView), bodyContactCnt(cap, accView), proxy(cap, accView),
-	contactIdx(cap * MAX_CONTACTS_PER_PARTICLE, accView), contact(cap, accView),
-	bodyContactIdx(cap * MAX_BODY_CONTACTS_PER_PARTICLE, accView), bodyContact(cap, accView),
-	groundContact(cap, accView)
+Particle::AmpArrays::AmpArrays(const ampAccelView& accView) :
+	flags(accView),
+	position(accView), velocity(accView),
+	weight(accView), heat(accView), health(accView),
+	matIdx(accView), color(accView),
+	force(accView),
+	accumulationVec3(accView),
+	mass(accView), invMass(accView),
+	staticPressure(accView), accumulation(accView),
+	depth(accView),
+	groupIdx(accView),
+	contactCnt(accView), bodyContactCnt(accView),
+	proxy(accView),
+	contactIdx(accView, MIN_PART_CAPACITY * MAX_CONTACTS_PER_PARTICLE),
+	contact(accView),
+	bodyContactIdx(accView, MIN_PART_CAPACITY * MAX_BODY_CONTACTS_PER_PARTICLE),
+	bodyContact(accView),
+	groundContact(accView)
 {}
 
 void Particle::AmpArrays::Resize(int32 capacity, int32 copyCnt)
 {
-	amp::resize(flags, capacity, copyCnt);
-	amp::resize(position, capacity, copyCnt);
-	amp::resize(velocity, capacity, copyCnt);
-	amp::resize(force, capacity, copyCnt);
-	amp::resize(accumulationVec3, capacity);
+	amp::resize(flags.arr, capacity, copyCnt);
+	amp::resize(position.arr, capacity, copyCnt);
+	amp::resize(velocity.arr, capacity, copyCnt);
+	amp::resize(force.arr, capacity, copyCnt);
+	amp::resize(accumulationVec3.arr, capacity);
 
-	amp::resize(weight, capacity);
-	amp::resize(heat, capacity, copyCnt);
-	amp::resize(health, capacity, copyCnt);
-	amp::resize(mass, capacity, copyCnt);
-	amp::resize(invMass, capacity, copyCnt);
-	amp::resize(staticPressure, capacity, copyCnt);
-	amp::resize(accumulation, capacity);
-	amp::resize(depth, capacity);
+	amp::resize(weight.arr, capacity);
+	amp::resize(heat.arr, capacity, copyCnt);
+	amp::resize(health.arr, capacity, copyCnt);
+	amp::resize(mass.arr, capacity, copyCnt);
+	amp::resize(invMass.arr, capacity, copyCnt);
+	amp::resize(staticPressure.arr, capacity, copyCnt);
+	amp::resize(accumulation.arr, capacity);
+	amp::resize(depth.arr, capacity);
 
-	amp::resize(matIdx, capacity, copyCnt);
-	amp::resize(groupIdx, capacity, copyCnt);
-	amp::resize(color, capacity, copyCnt);
+	amp::resize(matIdx.arr, capacity, copyCnt);
+	amp::resize(groupIdx.arr, capacity, copyCnt);
+	amp::resize(color.arr, capacity, copyCnt);
 
-	amp::resize(contactCnt, capacity);
-	amp::resize(bodyContactCnt, capacity);
-	amp::resize(proxy, capacity);
+	amp::resize(contactCnt.arr, capacity);
+	amp::resize(bodyContactCnt.arr, capacity);
+	amp::resize(proxy.arr, capacity);
 
-	amp::resize(contactIdx, capacity * MAX_CONTACTS_PER_PARTICLE);
-	amp::resize(contact, capacity);
-	amp::resize(bodyContactIdx, capacity * MAX_BODY_CONTACTS_PER_PARTICLE);
-	amp::resize(bodyContact, capacity);
-	amp::resize(groundContact, capacity);
+	amp::resize(contactIdx.arr, capacity * MAX_CONTACTS_PER_PARTICLE);
+	amp::resize(contact.arr, capacity);
+	amp::resize(bodyContactIdx.arr, capacity * MAX_BODY_CONTACTS_PER_PARTICLE);
+	amp::resize(bodyContact.arr, capacity);
+	amp::resize(groundContact.arr, capacity);
+}
+
+void Particle::AmpArrays::SetD11Buffers(ID3D11Buffer** ppBufs)
+{
+	if (!ppBufs) return;
+
+	flags.SetD11Arr(ppBufs[0]);
+	position.SetD11Arr(ppBufs[1]);
+	velocity.SetD11Arr(ppBufs[2]);
+	weight.SetD11Arr(ppBufs[3]);
+	heat.SetD11Arr(ppBufs[4]);
+	health.SetD11Arr(ppBufs[5]);
+	matIdx.SetD11Arr(ppBufs[6]);
+	color.SetD11Arr(ppBufs[7]);
+}
+
+void Particle::AmpArrays::WaitForCopies()
+{
+	flags.copyFuture.wait();
+	flags.copyFuture.wait();
+	position.copyFuture.wait();
+	velocity.copyFuture.wait();
+	weight.copyFuture.wait();
+	heat.copyFuture.wait();
+	health.copyFuture.wait();
+	matIdx.copyFuture.wait();
+	color.copyFuture.wait();
+}
+
+
+template<typename T> inline void ReplaceArray(ampArray<T>& arr, ID3D11Buffer* pNewBuf, int32 size, int32 copyCnt)
+{
+	ampArray<T> temp = pNewBuf ? 
+		Concurrency::direct3d::make_array<T>(ampExtent(size), arr.accelerator_view, pNewBuf) :
+		ampArray<T>(size, arr.accelerator_view);
+	if (copyCnt)
+	{
+		if (arr.extent[0] <= size) Concurrency::copy(arr, temp);
+		else Concurrency::copy(arr.section(0, copyCnt), temp);
+	}
+	arr = temp;
 }
 
 void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs,
@@ -150,84 +197,20 @@ void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs,
 {
 	const int32 size = last - first;
 	if (size <= 0) return;
-	amp::copy(bufs.flags, arrs.flags, first, size);
-	amp::copy(bufs.position, arrs.position, first, size);
-	amp::copy(bufs.velocity, arrs.velocity, first, size);
-	amp::copy(bufs.force, arrs.force, first, size);
-	amp::copy(bufs.heat, arrs.heat, first, size);
-	amp::copy(bufs.health, arrs.health, first, size);
-	amp::copy(bufs.mass, arrs.mass, first, size);
-	amp::copy(bufs.invMass, arrs.invMass, first, size);
-	amp::copy(bufs.staticPressure, arrs.staticPressure, first, size);
-	amp::copy(bufs.depth, arrs.depth, first, size);
-	amp::copy(bufs.matIdx, arrs.matIdx, first, size);
-	amp::copy(bufs.groupIdx, arrs.groupIdx, first, size);
-	amp::copy(bufs.color, arrs.color, first, size);
+	amp::copy(bufs.flags, arrs.flags.arr, first, size);
+	amp::copy(bufs.position, arrs.position.arr, first, size);
+	amp::copy(bufs.velocity, arrs.velocity.arr, first, size);
+	amp::copy(bufs.force, arrs.force.arr, first, size);
+	amp::copy(bufs.heat, arrs.heat.arr, first, size);
+	amp::copy(bufs.health, arrs.health.arr, first, size);
+	amp::copy(bufs.mass, arrs.mass.arr, first, size);
+	amp::copy(bufs.invMass, arrs.invMass.arr, first, size);
+	amp::copy(bufs.staticPressure, arrs.staticPressure.arr, first, size);
+	amp::copy(bufs.depth, arrs.depth.arr, first, size);
+	amp::copy(bufs.matIdx, arrs.matIdx.arr, first, size);
+	amp::copy(bufs.groupIdx, arrs.groupIdx.arr, first, size);
+	amp::copy(bufs.color, arrs.color.arr, first, size);
 }
-
-template<typename T> inline ID3D11Buffer* ToD11Buffer(const ampArray<T>& arr)
-{
-	return reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arr));
-}
-
-void Particle::CopyAmpArraysToD11Buffers(D11Device& device, const AmpArrays& arrs,
-	D11Buffers& d11Bufs, int32 cnt, int32 contactCnt)
-{
-	if (cnt <= 0) return;
-	bool didCopy = false;
-
-	ID3D11Buffer* pFlags = ToD11Buffer(arrs.flags), * pPosition = ToD11Buffer(arrs.position),
-		* pVelocity = ToD11Buffer(arrs.velocity), * pWeight = ToD11Buffer(arrs.weight),
-		* pHeat = ToD11Buffer(arrs.heat), * pHealth = ToD11Buffer(arrs.health),
-		* pMatIdx = ToD11Buffer(arrs.matIdx), * pColor = ToD11Buffer(arrs.color),
-		* pContactIdx = contactCnt ? ToD11Buffer(arrs.contactIdx) : nullptr,
-		* pContact = contactCnt ? ToD11Buffer(arrs.contact) : nullptr;
-
-	didCopy |= device.copyRegion<uint32>(pFlags, d11Bufs.flags, 0, cnt);
-	didCopy |= device.copyRegion<Vec3>(pPosition , d11Bufs.position, 0, cnt);
-	didCopy |= device.copyRegion<Vec3>(pVelocity, d11Bufs.velocity, 0, cnt);
-	didCopy |= device.copyRegion<float32>(pWeight, d11Bufs.weight, 0, cnt);
-	didCopy |= device.copyRegion<float32>(pHeat, d11Bufs.heat, 0, cnt);
-	didCopy |= device.copyRegion<float32>(pHealth, d11Bufs.health, 0, cnt);
-	didCopy |= device.copyRegion<int32>(pMatIdx, d11Bufs.matIdx, 0, cnt);
-	didCopy |= device.copyRegion<int32>(pColor, d11Bufs.color, 0, cnt);
-	didCopy |= device.copyRegion<ContactIdx>(pContactIdx, d11Bufs.contactIdx, 0, contactCnt);
-	didCopy |= device.copyRegion<Contacts>(pContact, d11Bufs.contact, 0, cnt);
-
-	if (didCopy) device.Flush();
-	
-	if (pFlags) pFlags->Release();
-	if (pPosition) pPosition->Release();
-	if (pVelocity) pVelocity->Release();
-	if (pWeight) pWeight->Release();
-	if (pHeat) pHeat->Release();
-	if (pHealth) pHealth->Release();
-	if (pMatIdx) pMatIdx->Release();
-	if (pColor) pColor->Release();
-	if (pContactIdx) pContactIdx->Release();
-	if (pContact) pContact->Release();
-}
-
-void Particle::D11Buffers::Set(ID3D11Buffer** bufPtrs, bool includeContacts)
-{
-	if (bufPtrs && *bufPtrs)
-	{
-		flags = bufPtrs[0];
-		position = bufPtrs[1];
-		velocity = bufPtrs[2];
-		weight = bufPtrs[3];
-		heat = bufPtrs[4];
-		health = bufPtrs[5];
-		matIdx = bufPtrs[6];
-		color = bufPtrs[7];
-		if (includeContacts) contact = bufPtrs[8];
-	}
-	else
-	{
-		flags = position = velocity = weight = heat = health = matIdx = color = contact = nullptr;
-	}
-}
-
 
 
 inline bool Particle::Contact::operator==(const Particle::Contact& rhs) const

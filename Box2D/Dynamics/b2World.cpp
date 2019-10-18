@@ -38,7 +38,7 @@
 
 b2World::b2World() :
 	m_contactManager(*this),
-	m_ampBodyMaterials(16, amp::getGpuAccelView())
+	m_ampBodyMaterials(16, amp::accelView())
 {
 	m_destructionListener = NULL;
 	m_debugDraw = NULL;

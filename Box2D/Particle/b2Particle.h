@@ -262,14 +262,6 @@ namespace Particle
 		bool getValid() const restrict(amp) { return groundTileIdx != INVALID_IDX; }
 	};
 
-	struct D11Buffers
-	{
-		ID3D11Buffer* flags, *matIdx, *position, *velocity, *weight,
-			*heat, *health, *color, *contactIdx, *contact;
-
-		void Set(ID3D11Buffer** bufPtrs, bool includeContacts);
-	};
-
 	struct Buffers
 	{
 		std::vector<uint32> flags;
@@ -285,78 +277,32 @@ namespace Particle
 
 	struct AmpArrays
 	{
-		ampArray<uint32> flags;
-		ampArray<Vec3> position, velocity, force, accumulationVec3;
-		ampArray<float32> weight, heat, health, mass, invMass,
-			staticPressure, accumulation, depth;
-		ampArray<int32>	matIdx, groupIdx, color, contactCnt, bodyContactCnt;
+
+		amp::Array<uint32> flags;
+		amp::Array<Vec3> position, velocity;
+		amp::Array<float32> weight, heat, health;
+		amp::Array<int32> matIdx, color;
+
+		amp::Array<Vec3> force, accumulationVec3;
+		amp::Array<float32> mass, invMass, staticPressure, accumulation, depth;
+		amp::Array<int32>	groupIdx, contactCnt, bodyContactCnt;
 		
-		ampArray<Proxy> proxy;
-		ampArray<ContactIdx> contactIdx;
-		ampArray<Contacts> contact;
+		amp::Array<Proxy> proxy;
+		amp::Array<ContactIdx> contactIdx;
+		amp::Array<Contacts> contact;
 
-		ampArray<ContactIdx> bodyContactIdx;
-		ampArray<BodyContacts> bodyContact;
-		ampArray<GroundContact> groundContact;
+		amp::Array<ContactIdx> bodyContactIdx;
+		amp::Array<BodyContacts> bodyContact;
+		amp::Array<GroundContact> groundContact;
 
-		AmpArrays(int32 cap, const ampAccelView& accelView);
+		AmpArrays(const ampAccelView& accelView);
 		void Resize(int32 capacity, int32 copyCnt);
-
-		const ampArrayView<const uint32> GetConstFlags() const { return ampArrayView<const uint32>(flags); }
-		const ampArrayView<const Vec3> GetConstPosition() const { return ampArrayView<const Vec3>(position); }
-		const ampArrayView<const Vec3> GetConstVelocity() const { return ampArrayView<const Vec3>(velocity); }
-		const ampArrayView<const Vec3> GetConstForce() const { return ampArrayView<const Vec3>(force); }
-		const ampArrayView<const Vec3> GetConstAccumulationVec3() const { return ampArrayView<const Vec3>(accumulationVec3); }
-		const ampArrayView<const float32> GetConstWeight() const { return ampArrayView<const float32>(weight); }
-		const ampArrayView<const float32> GetConstHeat() const { return ampArrayView<const float32>(heat); }
-		const ampArrayView<const float32> GetConstHealth() const { return ampArrayView<const float32>(health); }
-		const ampArrayView<const float32> GetConstMass() const { return ampArrayView<const float32>(mass); }
-		const ampArrayView<const float32> GetConstInvMass() const { return ampArrayView<const float32>(invMass); }
-		const ampArrayView<const float32> GetConstStaticPressure() const { return ampArrayView<const float32>(staticPressure); }
-		const ampArrayView<const float32> GetConstAccumulation() const { return ampArrayView<const float32>(accumulation); }
-		const ampArrayView<const float32> GetConstDepth() const { return ampArrayView<const float32>(depth); }
-		const ampArrayView<const int32> GetConstMatIdx() const { return ampArrayView<const int32>(matIdx); }
-		const ampArrayView<const int32> GetConstGroupIdx() const { return ampArrayView<const int32>(groupIdx); }
-		const ampArrayView<const int32> GetConstColor() const { return ampArrayView<const int32>(color); }
-		const ampArrayView<const int32> GetConstContactCnt() const { return ampArrayView<const int32>(contactCnt); }
-		const ampArrayView<const int32> GetConstBodyContactCnt() const { return ampArrayView<const int32>(bodyContactCnt); }
-		const ampArrayView<const Proxy> GetConstProxy() const { return ampArrayView<const Proxy>(proxy); }
-		const ampArrayView<const ContactIdx> GetConstContactIdx() const { return ampArrayView<const ContactIdx>(contactIdx); }
-		const ampArrayView<const Contacts> GetConstContact() const { return ampArrayView<const Contacts>(contact); }
-		const ampArrayView<const ContactIdx> GetConstBodyContactIdx() const { return ampArrayView<const ContactIdx>(bodyContactIdx); }
-		const ampArrayView<const BodyContacts> GetConstBodyContact() const { return ampArrayView<const BodyContacts>(bodyContact); }
-		const ampArrayView<const GroundContact> GetConstGroundContact() const { return ampArrayView<const GroundContact>(groundContact); }
-		
-		ampArrayView<uint32> GetFlags()					{ return ampArrayView<uint32>(flags); }
-		ampArrayView<Vec3> GetPosition()				{ return ampArrayView<Vec3>(position); }
-		ampArrayView<Vec3> GetVelocity()				{ return ampArrayView<Vec3>(velocity); }
-		ampArrayView<Vec3> GetForce()					{ return ampArrayView<Vec3>(force); }
-		ampArrayView<Vec3> GetAccumulationVec3()		{ return ampArrayView<Vec3>(accumulationVec3); }
-		ampArrayView<float32> GetWeight()				{ return ampArrayView<float32>(weight); }
-		ampArrayView<float32> GetHeat()					{ return ampArrayView<float32>(heat); }
-		ampArrayView<float32> GetHealth()				{ return ampArrayView<float32>(health); }
-		ampArrayView<float32> GetMass()					{ return ampArrayView<float32>(mass); }
-		ampArrayView<float32> GetInvMass()				{ return ampArrayView<float32>(invMass); }
-		ampArrayView<float32> GetStaticPressure()		{ return ampArrayView<float32>(staticPressure); }
-		ampArrayView<float32> GetAccumulation()			{ return ampArrayView<float32>(accumulation); }
-		ampArrayView<float32> GetDepth()				{ return ampArrayView<float32>(depth); }
-		ampArrayView<int32> GetMatIdx()					{ return ampArrayView<int32>(matIdx); }
-		ampArrayView<int32> GetGroupIdx()				{ return ampArrayView<int32>(groupIdx); }
-		ampArrayView<int32> GetColor()					{ return ampArrayView<int32>(color); }
-		ampArrayView<int32> GetContactCnt()				{ return ampArrayView<int32>(contactCnt); }
-		ampArrayView<int32> GetBodyContactCnt()			{ return ampArrayView<int32>(bodyContactCnt); }
-		ampArrayView<Proxy> GetProxy()					{ return ampArrayView<Proxy>(proxy); }
-		ampArrayView<ContactIdx> GetContactIdx()		{ return ampArrayView<ContactIdx>(contactIdx); }
-		ampArrayView<Contacts> GetContact()				{ return ampArrayView<Contacts>(contact); }
-		ampArrayView<ContactIdx> GetBodyContactIdx()	{ return ampArrayView<ContactIdx>(bodyContactIdx); }
-		ampArrayView<BodyContacts> GetBodyContact()		{ return ampArrayView<BodyContacts>(bodyContact); }
-		ampArrayView<GroundContact> GetGroundContact()	{ return ampArrayView<GroundContact>(groundContact); }
+		void SetD11Buffers(ID3D11Buffer** ppNewBufs);
+		void WaitForCopies();
 	};
 
 	void CopyBufferRangeToAmpArrays(Buffers& bufs,
 		AmpArrays& arrs, int32 first, int32 last);
-	void CopyAmpArraysToD11Buffers(D11Device& device, const AmpArrays& arrs,
-		D11Buffers& d11Bufs, int32 cnt, int32 contactCnt = 0);
 };
 
 /// A helper function to calculate the optimal number of iterations.

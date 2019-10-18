@@ -190,8 +190,7 @@
       <SDLCheck>true</SDLCheck>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AdditionalIncludeDirectories>
-      </AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>P:/PROGRAMS/Unity/2019.2.9f1/Editor/Data/PluginAPI;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WholeProgramOptimization>true</WholeProgramOptimization>
       <FloatingPointModel>Precise</FloatingPointModel>
       <OpenMPSupport>
@@ -212,6 +211,10 @@
       <AdditionalDependencies>D3D11.lib;D3D12.lib</AdditionalDependencies>
       <LinkTimeCodeGeneration />
     </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\Box2D\Collision\b2BroadPhase.cpp" />
@@ -229,13 +232,13 @@
     <ClCompile Include="..\Box2D\Common\b2BlockAllocator.cpp" />
     <ClCompile Include="..\Box2D\Common\b2Draw.cpp" />
     <ClCompile Include="..\Box2D\Common\b2FreeList.cpp" />
-    <ClCompile Include="..\Box2D\Common\b2GlobalVariables.cpp" />
     <ClCompile Include="..\Box2D\Common\b2Math.cpp" />
     <ClCompile Include="..\Box2D\Common\b2Settings.cpp" />
     <ClCompile Include="..\Box2D\Common\b2StackAllocator.cpp" />
     <ClCompile Include="..\Box2D\Common\b2Stat.cpp" />
     <ClCompile Include="..\Box2D\Common\b2Timer.cpp" />
     <ClCompile Include="..\Box2D\Common\b2TrackedBlock.cpp" />
+    <ClCompile Include="..\Box2D\Common\Global.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\b2Body.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\b2ContactManager.cpp" />
     <ClCompile Include="..\Box2D\Dynamics\b2Fixture.cpp" />
@@ -288,7 +291,6 @@
     <ClInclude Include="..\Box2D\Common\b2BlockAllocator.h" />
     <ClInclude Include="..\Box2D\Common\b2Draw.h" />
     <ClInclude Include="..\Box2D\Common\b2FreeList.h" />
-    <ClInclude Include="..\Box2D\Common\b2GlobalVariables.h" />
     <ClInclude Include="..\Box2D\Common\b2GrowableBuffer.h" />
     <ClInclude Include="..\Box2D\Common\b2GrowableStack.h" />
     <ClInclude Include="..\Box2D\Common\b2IntrusiveList.h" />
@@ -299,6 +301,7 @@
     <ClInclude Include="..\Box2D\Common\b2Stat.h" />
     <ClInclude Include="..\Box2D\Common\b2Timer.h" />
     <ClInclude Include="..\Box2D\Common\b2TrackedBlock.h" />
+    <ClInclude Include="..\Box2D\Common\Global.h" />
     <ClInclude Include="..\Box2D\Dynamics\b2Body.h" />
     <ClInclude Include="..\Box2D\Dynamics\b2ContactManager.h" />
     <ClInclude Include="..\Box2D\Dynamics\b2Fixture.h" />

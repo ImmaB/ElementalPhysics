@@ -17,8 +17,7 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef BOX2D_H
-#define BOX2D_H
+#pragma once
 
 /**
 \mainpage LiquidFun API Documentation
@@ -64,5 +63,3 @@
 
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
-
-#endif

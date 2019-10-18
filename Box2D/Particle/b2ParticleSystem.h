@@ -19,7 +19,7 @@
 
 #include <Box2D/Common/b2SlabAllocator.h>
 #include <Box2D/Common/b2GrowableBuffer.h>
-#include <Box2D/Common/b2GlobalVariables.h>
+#include <Box2D/Common/Global.h>
 #include <Box2D/Particle/b2Particle.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
 #include <Box2D/Amp/ampAlgorithms.h>
@@ -31,10 +31,8 @@
 #include <Box2D/Collision/Shapes/b2PolygonShape.h>
 #include <Box2D/Collision/Shapes/b2ChainShape.h>
 #include <vector>
-#include <array> 
 #include <numeric>
 #include <process.h>
-#include <Windows.h>
 #include <amp.h>
 
 class b2World;
@@ -280,7 +278,6 @@ public:
 
 	Particle::Buffers m_buffers;
 	Particle::AmpArrays m_ampArrays;
-	Particle::D11Buffers m_d11Buffers;
 
 	bool ShouldSolve();
 	void SolveInit(int32 timestamp);
@@ -318,6 +315,7 @@ public:
 	void SolveRigid();
 	void SolveWall();
 	void CopyVelocities();
+
 	void SolveKillNotMoving();		// Needs: Velocity	| Modifies: Flags
 	void SolveFluid();				// Needs: Flags		| Modifies: Flags
 
@@ -342,7 +340,7 @@ public:
 
 	void SolveEnd();
 
-public:
+
 	/// Retrieve a handle to the particle at the specified index.
 	/// Please see #b2ParticleHandle for why you might want a handle.
 	const b2ParticleHandle* GetParticleHandleFromIndex(const int32 index);
@@ -803,17 +801,18 @@ private:
 
 	template<typename F> void ForEachGroup(const F& function) const;
 
-	template<typename F> void AmpForEachParticle(const F& function) const;
-	template<typename F> void AmpForEachParticle(uint32 flag, const F& function) const;
-	template<typename F> void AmpForEachContact(const F& function) const;
-	template<typename F> void AmpForEachContact(const uint32 flag, const F& function) const;
-	template<typename F> void AmpForEachContactShuffled(const F& function) const;
-	template<typename F> void AmpForEachBodyContact(const F& function) const;
-	template<typename F> void AmpForEachBodyContact(const uint32 flag, const F& function) const;
-	template<typename F> void AmpForEachGroundContact(const F& function) const;
-	template<typename F> void AmpForEachGroundContact(const uint32 partFlag, const F& function) const;
-	template<typename F> void AmpForEachPair(const F& function) const;
-	template<typename F> void AmpForEachTriad(const F& function) const;
+	template<typename F> void ForEachParticle(const F& function) const;
+	template<typename F> void ForEachParticle(uint32 flag, const F& function) const;
+	template<typename F> void ForEachContact(const F& function) const;
+	template<typename F> void ForEachContact(const uint32 flag, const F& function) const;
+	template<typename F> void ForEachContactShuffled(const F& function) const;
+	template<typename F> void ForEachPotentialBodyContact(const F& function) const;
+	template<typename F> void ForEachBodyContact(const F& function) const;
+	template<typename F> void ForEachBodyContact(const uint32 flag, const F& function) const;
+	template<typename F> void ForEachGroundContact(const F& function) const;
+	template<typename F> void ForEachGroundContact(const uint32 partFlag, const F& function) const;
+	template<typename F> void ForEachPair(const F& function) const;
+	template<typename F> void ForEachTriad(const F& function) const;
 
 	
 	boolean AdjustCapacityToSize(int32& capacity, int32 size, const int32 minCapacity) const;
@@ -1015,9 +1014,6 @@ private:
 		float32 invMass, float32 invInertia, float32 tangentDistance,
 		bool isRigidGroup, ParticleGroup& group, int32 particleIndex,
 		float32 impulse, const Vec2& normal);
-
-	ampAccelView m_cpuAccelView = amp::getCpuAccelView();
-	ampAccelView m_gpuAccelView = amp::getGpuAccelView();
 
 	ampArray<Fixture>		  m_ampFixtures;
 	ampArray<Body>			  m_ampBodies;
@@ -1452,5 +1448,3 @@ inline int b2ParticleSystem::CopyBuffer(int startIndex, int numParticles,
 }
 
 #endif // LIQUIDFUN_EXTERNAL_LANGUAGE_API
-
-

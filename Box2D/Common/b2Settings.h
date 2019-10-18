@@ -62,7 +62,7 @@ typedef double float64;
 #define TILE_SIZE_SQRT 16
 
 #define MAX_CONTACTS_PER_PARTICLE 8
-#define MAX_BODY_CONTACTS_PER_PARTICLE 4
+#define MAX_BODY_CONTACTS_PER_PARTICLE 8
 
 #define MAX_PARTICLES_PER_GROUND_TILE 8
 
@@ -270,7 +270,7 @@ typedef unsigned long long uint64;
 
 /// The initial size of particle data buffers.
 #define b2_minPartMatBufferCapacity		16
-#define b2_minParticleBufferCapacity	256
+#define MIN_PART_CAPACITY	256
 #define b2_minGroupBufferCapacity		64
 
 /// The time into the future that collisions against barrier particles will be detected.

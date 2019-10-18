@@ -3,9 +3,8 @@
 #include <amp.h>
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Common/b2Timer.h>
-#include <Box2D/Common/b2GlobalVariables.h>
+#include <Box2D/Common/Global.h>
 #include <d3d11.h>
-
 
 template <int N>
 inline int32 getNextMultiple(const int32 value)
@@ -20,7 +19,9 @@ inline int32 getTileCnt(const int32 value)
 
 namespace amp
 {
-	static ampAccel* _pAmpDevice = nullptr;
+	static inline ampAccelView d11AccelView() { return *spD11AccelView; }
+	static inline ampAccelView accelView() { return ampAccel(ampAccel::default_accelerator).default_view; }
+	static inline ampAccelView cpuAccelView() { return ampAccel(ampAccel::cpu_accelerator).default_view; }
 
 	static void CheckCompatibilty()
 	{
@@ -37,10 +38,6 @@ namespace amp
 		void set(ampCopyFuture future) { m_future = future; }
 		void wait() { if (m_future.valid()) m_future.wait(); }
 	};
-
-	static ampAccel getGpuAccel() { return ampAccel(ampAccel::default_accelerator); }
-	static ampAccelView getCpuAccelView() { return ampAccel(ampAccel::cpu_accelerator).default_view; }
-	static ampAccelView getGpuAccelView() { return ampAccel(ampAccel::default_accelerator).default_view; }
 
 	static int32 getTileCount(const int32 size)
 	{
@@ -64,10 +61,19 @@ namespace amp
 		return ampExtent(getTilable(size, tileCnt));
 	}
 	template<int TileSize>
-	inline ampTiledExt<TileSize> tileAndPad(int32 cnt) { return ampExtent(cnt).tile<TileSize>().pad(); }
+	static inline ampTiledExt<TileSize> tileAndPad(int32 cnt) { return ampExtent(cnt).tile<TileSize>().pad(); }
 
 	#define COPY_SYNC template<typename T> void
 	#define COPY_ASYNC template<typename T> ampCopyFuture
+
+	COPY_SYNC copy(const ampArray<T>& src, ampArray<T>& dst, const int32 size = 0)
+	{
+		Concurrency::copy((size && size != src.extent[0]) ? src.section(0, size) : src, dst);
+	}
+	COPY_ASYNC copyAsync(const ampArray<T>& src, ampArray<T>& dst, const int32 size = 0)
+	{
+		return Concurrency::copy_async((size && size != src.extent[0]) ? src.section(0, size) : src, dst);
+	}
 
 	COPY_SYNC copy(const ampArray<T>& src, std::vector<T>& dst, const int32 size = 0)
 	{
@@ -234,7 +240,7 @@ namespace amp
 		{
 			ampArray<T> newA(size, a.accelerator_view);
 			if (copyCnt == a.extent[0])
-				copy(a, newA);
+				Concurrency::copy(a, newA);
 			else
 				a.section(0, copyCnt).copy_to(newA.section(0, copyCnt));
 			a = newA;
@@ -249,7 +255,7 @@ namespace amp
 		{
 			ampArray2D<T> newA(size, a.extent[1], a.accelerator_view);
 			if (copyCnt == a.extent[0])
-				copy(a, newA);
+				Concurrency::copy(a, newA);
 			else
 				a.section(0, 0, copyCnt, a.extent[1]).copy_to(newA.section(0, 0, copyCnt, a.extent[1]));
 			a = newA;
@@ -368,7 +374,7 @@ namespace amp
 	}
 
 	/*template<typename F>
-	static uint32 reduceOld(const ampArray<uint32>& cnts, const uint32 size, const F& function)
+	uint32 reduceOld(const ampArray<uint32>& cnts, const uint32 size, const F& function)
 	{
 		const uint32 sizeMax = cnts.extent[0];
 		ampArray<uint32> cntSums(cnts, m_gpuAccelView);
@@ -402,7 +408,7 @@ namespace amp
 		return reducedCnt;
 	}*/
 
-	template<int32 TileSize> inline bool lastInTile(const ampTiledIdx<TileSize>& tIdx) restrict(amp)
+	template<int32 TileSize> static bool lastInTile(const ampTiledIdx<TileSize>& tIdx) restrict(amp)
 	{
 		return tIdx.local[0] == (TileSize - 1);
 	}
@@ -524,7 +530,7 @@ namespace amp
 	namespace _scan_detail
 	{
 		template <int TileSize, typename T>
-		void tilewiseScan(const ampArrayView<const T>& input,
+		static void tilewiseScan(const ampArrayView<const T>& input,
 			ampArray<T>& tilewiseScans, ampArray<T>& tileSums, int32 cnt)
 		{
 			ampArrayView<T> tileSumsView(tileSums);
@@ -565,7 +571,7 @@ namespace amp
 
 		// Compute prefix of prefix
 		template <int TileSize, typename T>
-		void prefixScan(const ampArrayView<T>& a, int32 cnt)
+		static void prefixScan(const ampArrayView<T>& a, int32 cnt)
 		{
 			ampArray<T> atemp(cnt);
 			_scan_detail::scanTiled<TileSize>(ampArrayView<const T>(a), atemp, cnt);
@@ -573,7 +579,7 @@ namespace amp
 		}
 
 		template <int TileSize, typename T>
-		void scanTiled(const ampArrayView<const T>& input, ampArray<T>& output, int32 cnt)
+		static void scanTiled(const ampArrayView<const T>& input, ampArray<T>& output, int32 cnt)
 		{
 			const int32 tileCnt = (cnt + TileSize - 1) / TileSize;
 
@@ -602,7 +608,7 @@ namespace amp
 	}
 
 	template<typename T, typename F>
-	int32 scan(const ampArrayView<const T>& src, const int32 cnt, const F& function)
+	static int32 scan(const ampArrayView<const T>& src, const int32 cnt, const F& function)
 	{
 		ampArray<T> dst(cnt);
 		//Timer t = Timer();
@@ -626,11 +632,11 @@ namespace amp
 
 	namespace _prefix_sum_detail
 	{
-		inline uint32 pow2(uint32 x) restrict(amp) { return 1u << x; }
-		inline uint32 pow2(uint32 x) { return 1u << x; }
+		static inline uint32 pow2(uint32 x) restrict(amp) { return 1u << x; }
+		static inline uint32 pow2(uint32 x) { return 1u << x; }
 
 		template<int TileSize>
-		inline uint32 tileSum(uint32 x, ampTiledIdx<TileSize>& tIdx) restrict(amp)
+		static uint32 tileSum(uint32 x, ampTiledIdx<TileSize>& tIdx) restrict(amp)
 		{
 			uint32 li = tIdx.local[0];
 			tile_static uint32 lSums[TileSize][2];
@@ -654,7 +660,7 @@ namespace amp
 
 
 		template<typename T, int TileSize>
-		inline T tilePrefixSum(T val, ampTiledIdx<TileSize> tIdx, T& sum) restrict(amp)
+		static T tilePrefixSum(T val, ampTiledIdx<TileSize> tIdx, T& sum) restrict(amp)
 		{
 			const uint32 li = tIdx.local[0];
 
@@ -677,7 +683,7 @@ namespace amp
 			return val - origVal;
 			
 			//const uint32 li = tIdx.local[0];
-			//tile_static T lPrefixSums[TileSize][2];
+			//tile_T lPrefixSums[TileSize][2];
 
 			//lPrefixSums[li][0] = val;
 			//tIdx.barrier.wait_with_tile_static_memory_fence();
@@ -700,7 +706,7 @@ namespace amp
 		}
 
 		template<int TileSize>
-		inline uint32 tilePrefixSum(uint32 x, ampTiledIdx<TileSize> tIdx) restrict(amp)
+		static uint32 tilePrefixSum(uint32 x, ampTiledIdx<TileSize> tIdx) restrict(amp)
 		{
 			uint32 ll = 0;
 			return tilePrefixSum(x, tIdx, ll);
@@ -709,7 +715,7 @@ namespace amp
 
 	namespace _radix_sort_detail
 	{
-		inline uint32 getBits(uint32 x, uint32 numbits, uint32 bitoffset) restrict(amp)
+		static uint32 getBits(uint32 x, uint32 numbits, uint32 bitoffset) restrict(amp)
 		{
 			return (x >> bitoffset) & ~(~0u << numbits);
 		}
@@ -799,11 +805,11 @@ namespace amp
 		concurrency::amp_uninitialize();
 	}
 
-	inline uint32 atomicAdd(uint32& dest, const uint32 add) restrict(amp)
+	static inline uint32 atomicAdd(uint32& dest, const uint32 add) restrict(amp)
 	{
 		return Concurrency::atomic_fetch_add(&dest, add);
 	}
-	inline int32 atomicAdd(int32& dest, const int32 add) restrict(amp)
+	static inline int32 atomicAdd(int32& dest, const int32 add) restrict(amp)
 	{
 		return Concurrency::atomic_fetch_add(&dest, add);
 	}
@@ -883,79 +889,127 @@ namespace amp
 		}
 		return newValue;
 	}
+
+	template <typename T>
+	struct Array
+	{
+		ampArray<T> arr, d11Arr;
+		ID3D11Buffer* buf;
+		amp::CopyFuture copyFuture;
+
+		Array(const ampAccelView& accelView, int32 cap = MIN_PART_CAPACITY) :
+			arr(cap, accelView),
+			d11Arr(cap, accelView) {}
+
+		void SetD11Arr(ID3D11Buffer* buf)
+		{
+			this->buf = buf;
+			if (buf) d11Arr = Concurrency::direct3d::make_array<T>(arr.extent, amp::d11AccelView(), buf);
+		}
+		void CopyToD11Async()
+		{
+			copyFuture.set(Concurrency::copy_async(arr, d11Arr));
+		}
+
+		inline ampArrayView<T> GetView() { return ampArrayView<T>(arr); }
+		inline ampArrayView<const T> GetConstView() const { return ampArrayView<const T>(arr); }
+	};
 };
 
 
-class D11Device
-{
-private:
-	ID3D11Device* pDevice = nullptr;
-	ID3D11DeviceContext* pImmediateContext = nullptr;
-
-	bool compareBuffers(ID3D11Buffer* pBuf1, ID3D11Buffer* pBuf2)
-	{
-		auto desc1 = getDescriptor(pBuf1);
-		auto desc2 = getDescriptor(pBuf2);
-		return desc1.ByteWidth == desc2.ByteWidth &&
-			   desc1.Usage == desc2.Usage &&
-			   desc1.BindFlags == desc2.BindFlags &&
-			   desc1.CPUAccessFlags == desc2.CPUAccessFlags &&
-			   desc1.MiscFlags == desc2.MiscFlags &&
-			   desc1.StructureByteStride == desc2.StructureByteStride;
-	}
-
-public:
-	D11Device()
-	{
-		pDevice = reinterpret_cast<ID3D11Device*>(Concurrency::direct3d::get_device(amp::getGpuAccelView()));
-		pDevice->GetImmediateContext(&pImmediateContext);
-	}
-	~D11Device()
-	{
-		pDevice->Release();
-	}
-
-	void Flush() { if (pImmediateContext) pImmediateContext->Flush(); }
-
-	template<typename T>
-	bool copyRegion(ID3D11Buffer* pSrc, ID3D11Buffer* pDst, uint32 start, uint32 cnt)
-	{
-		if (!pSrc || !pDst || !cnt || !compareBuffers(pSrc, pDst)) return false;
-		D3D11_BOX box{};
-		box.left = start * sizeof(T);
-		box.right = box.left + cnt * sizeof(T);
-		box.top = box.front = 0;
-		box.bottom = box.back = 1;
-		pImmediateContext->CopySubresourceRegion(pDst, 0, box.left, 0, 0, pSrc, 0, &box);
-		return true;
-	}
-
-	template <typename T>
-	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 cnt)
-	{
-		if (cnt <= 0 || !pDst) return;
-
-		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
-		if (copyRegion<T>(pSrc, pDst, 0, cnt))
-			pImmediateContext->Flush();
-		if (pSrc) pSrc->Release();
-	}
-
-	template <typename T>
-	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 start, const int32 end)
-	{
-		if (end <= start || !pDst) return;
-
-		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
-		if (copyRegion<T>(pSrc, pDst, start, end - start))
-			pImmediateContext->Flush();
-		if (pSrc) pSrc->Release();
-	}
-
-	inline D3D11_BUFFER_DESC getDescriptor(ID3D11Buffer* pBuffer)
-	{
-		D3D11_BUFFER_DESC desc;
-		pBuffer->GetDesc(&desc);
-		return desc;
-	}
-};
+//class D11Device
+//{
+//private:
+//
+//	bool compareBuffers(ID3D11Buffer* pBuf1, ID3D11Buffer* pBuf2)
+//	{
+//		auto desc1 = getDescriptor(pBuf1);
+//		auto desc2 = getDescriptor(pBuf2);
+//		return desc1.ByteWidth == desc2.ByteWidth &&
+//			   desc1.Usage == desc2.Usage &&
+//			   desc1.BindFlags == desc2.BindFlags &&
+//			   desc1.CPUAccessFlags == desc2.CPUAccessFlags &&
+//			   desc1.MiscFlags == desc2.MiscFlags &&
+//			   desc1.StructureByteStride == desc2.StructureByteStride;
+//	}
+//
+//public:
+//	ID3D11Device* m_pDevice = nullptr;
+//	ID3D11DeviceContext* m_pContext = nullptr;
+//
+//	D11Device(ID3D11Device* pDevice)
+//	{
+//		m_pDevice = pDevice;
+//		m_pDevice = reinterpret_cast<ID3D11Device*>(Concurrency::direct3d::get_device(amp::accelView()));
+//		m_pDevice->GetImmediateContext(&m_pContext);
+//	}
+//	~D11Device()
+//	{
+//		m_pDevice->Release();
+//	}
+//
+//	void Flush()
+//	{
+//		if (m_pContext) m_pContext->Flush();
+//	}
+//
+//	template<typename T>
+//	bool copyRegion(ID3D11Buffer* pSrc, ID3D11Buffer* pDst, uint32 start, uint32 cnt)
+//	{
+//		if (!pSrc || !pDst || !cnt || !compareBuffers(pSrc, pDst)) return false;
+//		D3D11_BOX box{};
+//		box.left = start * sizeof(T);
+//		box.right = box.left + cnt * sizeof(T);
+//		box.top = box.front = 0;
+//		box.bottom = box.back = 1;
+//		m_pContext->CopySubresourceRegion(pDst, 0, box.left, 0, 0, pSrc, 0, &box);
+//		return true;
+//	}
+//
+//	template <typename T>
+//	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 cnt)
+//	{
+//		if (cnt <= 0 || !pDst) return;
+//
+//		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
+//		if (copyRegion<T>(pSrc, pDst, 0, cnt))
+//			m_pContext->Flush();
+//		if (pSrc) pSrc->Release();
+//	}
+//
+//	template <typename T>
+//	void copy(const ampArray<T>& src, ID3D11Buffer* pDst, const int32 start, const int32 end)
+//	{
+//		if (end <= start || !pDst) return;
+//
+//		ID3D11Buffer* pSrc = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(src));
+//		if (copyRegion<T>(pSrc, pDst, start, end - start))
+//			m_pContext->Flush();
+//		if (pSrc) pSrc->Release();
+//	}
+//
+//	inline D3D11_BUFFER_DESC getDescriptor(ID3D11Buffer* pBuffer)
+//	{
+//		D3D11_BUFFER_DESC desc;
+//		pBuffer->GetDesc(&desc);
+//		return desc;
+//	}
+//
+//	//template <class T>
+//	//bool GetSRV(const ampArray<T>& arr, ID3D11ShaderResourceView** pSrv) const
+//	//{
+//	//	ID3D11Buffer* pBuf = reinterpret_cast<ID3D11Buffer*>(concurrency::direct3d::get_buffer(arr));
+//	//	uint32 elemCnt = arr.extent[0];
+//	//	if (!elemCnt) return false;
+//	//	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+//	//	ZeroMemory(&srvDesc, sizeof(srvDesc));
+//	//	srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+//	//	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+//	//	srvDesc.BufferEx.FirstElement = 0;
+//	//	srvDesc.BufferEx.NumElements = elemCnt * sizeof(T) / sizeof(float);
+//	//	srvDesc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+//	//	HRESULT hr = m_pDevice->CreateShaderResourceView(pBuf, &srvDesc, pSrv);
+//	//	if (hr != S_OK) return false;
+//	//	return true;
+//	//}
+//};

@@ -817,7 +817,6 @@ inline float32 Random(const float32 min = 0, const float32 max = 1)
 {
 	return min + (((float32)rand()) / (float32)RAND_MAX) * (max - min);
 }
-
 inline bool IsBetween(float32 x, float32 a, float32 b, float32 tol)
 {
 	return a < b ? x + tol >= a && a + x - tol <= b

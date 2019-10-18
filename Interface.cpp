@@ -1,16 +1,17 @@
 #include <Box2D/Box2D.h>
 #include <utility>
 #include <Box2D/Common/b2Math.h>
-#include <Box2D/Common/b2GlobalVariables.h>
+#include <Box2D/Common/Global.h>
 #include <Box2D/Particle/b2ParticleSystem.h>
 #include <math.h>
 #include <vector>
 #include <string.h>
+#include <IUnityGraphics.h>
 #include <d3d11.h>
+#include <IUnityGraphicsD3D11.h>
 #include <ppl.h>
 
 #define EXPORT extern "C" __declspec(dllexport)
-
 
 class InterfaceContactListener : public b2ContactListener
 {
@@ -81,12 +82,34 @@ private:
 };
 
 #pragma region GlobalVariables
-b2World* pWorld = nullptr;
-Ground* pGround = nullptr;
-ParticleSystem* pPartSys = nullptr;
 b2NewRaycastCallback* newRC;
 InterfaceContactListener* pContactListener;
+
+b2World* pWorld = nullptr;
+ParticleSystem* pPartSys = nullptr;
+Ground* pGround = nullptr;
+
+ID3D11Device* pD3D11Device = nullptr;
+std::shared_ptr<ampAccelView> spD11AccelView;
 #pragma endregion
+
+
+extern "C"
+{
+	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* interfaces)
+	{
+		IUnityGraphicsD3D11* d11 = interfaces->Get<IUnityGraphicsD3D11>();
+		pD3D11Device = d11->GetDevice();
+
+		spD11AccelView = make_shared<ampAccelView>(Concurrency::direct3d::create_accelerator_view(
+			pD3D11Device, Concurrency::queuing_mode::queuing_mode_automatic));
+		auto accel = spD11AccelView->get_accelerator();
+		
+		bool done = accel.set_default_cpu_access_type(Concurrency::access_type::access_type_none);
+		//bool done2 = Concurrency::accelerator::set_default(accel.device_path);
+	}
+
+}
 
 #pragma region API World
 EXPORT void CreateWorld()
@@ -309,14 +332,28 @@ EXPORT int32 GetParticleCount() { return pPartSys->GetCount(); }
 EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callback)
 {
 	pPartSys->m_resizeCallback = callback;
-	pPartSys->m_resizeCallback(pPartSys->GetCapacity());
+	if (int32 capacity = pPartSys->GetCapacity(); capacity)
+		pPartSys->m_resizeCallback(capacity);
 }
-EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs)
+EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs, int32 size)
 {
-	pPartSys->m_d11Buffers.Set(bufPtrs, pPartSys->m_debugContacts);
+	//if (pPartSys && bufPtrs) pPartSys->m_ampArrays.Replace(size, pPartSys->GetCount(), bufPtrs);
+	if (pPartSys && bufPtrs) pPartSys->m_ampArrays.SetD11Buffers(bufPtrs);
 }
-EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr) { pPartSys->m_d11Buffers.contactIdx = bufPtr; }
+EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr)
+{
+	pPartSys->m_ampArrays.contactIdx.SetD11Arr(bufPtr);
+}
 
+EXPORT void SetShaderPropIDs(int32 flagsID)
+{
+	//pPartSys->m_ampArrays.SetShaderPropIDs(flagsID);
+}
+
+EXPORT void UploadBuffers()
+{
+	//if (pPartSys) pPartSys->m_ampArrays.ToShader();
+}
 
 #pragma endregion
 
@@ -471,7 +508,6 @@ EXPORT int32 CreateBody(Body::Type type, b2Transform transform, float32 linearDa
 
     return pWorld->CreateBody(bd);
 }
-EXPORT Body* GetBody(int32 idx) { return &pWorld->m_bodyBuffer[idx]; }
 EXPORT Body* GetBodies(int32* outCnt)
 {
 	*outCnt = pWorld->m_bodyBuffer.size();
@@ -547,7 +583,10 @@ EXPORT void CreateGround(int32 xSize, int32 ySize, float32 stride)
 	gd.stride = stride;
 	pGround = pWorld->CreateGround(gd);
 }
-EXPORT void SetGroundBuffer(ID3D11Buffer* pD11Tiles) { if (pGround) pGround->m_d11Tiles = pD11Tiles; }
+EXPORT void SetGroundBuffer(ID3D11Buffer* pD11Tiles)
+{
+	if (pGround) pGround->m_ampTiles.SetD11Arr(pD11Tiles);
+}
 EXPORT void SetGroundTiles(Ground::Tile* pTiles)
 {
 	pGround->SetTiles(pTiles);
@@ -592,9 +631,10 @@ EXPORT int32 AddFixture(int32 bodyIdx, b2Shape::Type shapeType, int32 shapeIdx,
 
     return idx;
 }
-EXPORT Fixture* GetFixture(int32 idx)
+EXPORT Fixture* GetFixtures(int32* outCnt)
 {
-	return &pWorld->m_fixtureBuffer[idx];
+	*outCnt = pWorld->m_fixtureBuffer.size();
+	return pWorld->m_fixtureBuffer.data();
 }
 
 EXPORT bool TestPoint(Fixture* pFixture, float32 x, float32 y)

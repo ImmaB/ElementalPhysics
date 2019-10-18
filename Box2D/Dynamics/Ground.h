@@ -111,9 +111,7 @@ public:
 	int32 m_chunkCntX;
 	int32 m_chunkCnt;
 	vector<Tile> m_tiles;
-	ampArray<Tile> m_ampTiles;
-	ampCopyFuture m_tileCopyFuture;
-	ID3D11Buffer* m_d11Tiles;
+	amp::Array<Tile> m_ampTiles;
 	ampArray<int32> m_ampChunkHasChange;
 	ampArray<int32> m_ampTilesChangedIdxs;
 
@@ -125,8 +123,8 @@ public:
 	~Ground();
 
 	void SetTiles(Tile* tiles);
-	const ampArrayView<Tile> GetTiles() { return ampArrayView<Tile>(m_ampTiles); }
-	const ampArrayView<const Tile> GetConstTiles() { return ampArrayView<const Tile>(m_ampTiles); }
+	const ampArrayView<Tile> GetTiles() { return ampArrayView<Tile>(m_ampTiles.arr); }
+	const ampArrayView<const Tile> GetConstTiles() { return ampArrayView<const Tile>(m_ampTiles.arr); }
 	const ampArrayView<const Mat> GetConstMats() { return ampArrayView<const Mat>(m_ampMaterials); }
 	const ampArrayView<int32> GetChunkHasChange() { return ampArrayView<int32>(m_ampChunkHasChange); }
 	const ampArrayView<const int32> GetConstChunkHasChange() { return ampArrayView<const int32>(m_ampChunkHasChange); }
@@ -158,5 +156,3 @@ private:
 
 	inline Vec2 GetRandomTilePosition(const Vec2& center) const { return center + Vec2(0.5 - Random(), 0.5 - Random()) * m_stride; };
 };
-
-

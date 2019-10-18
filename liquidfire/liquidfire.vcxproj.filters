@@ -234,14 +234,14 @@
     <ClCompile Include="..\Box2D\Rope\b2Rope.cpp">
       <Filter>Quelldateien\Rope</Filter>
     </ClCompile>
-    <ClCompile Include="..\Box2D\Common\b2GlobalVariables.cpp">
-      <Filter>Quelldateien\Common</Filter>
+    <ClCompile Include="..\Box2D\Dynamics\Ground.cpp">
+      <Filter>Quelldateien\Dynamics</Filter>
     </ClCompile>
     <ClCompile Include="..\Interface.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="..\Box2D\Dynamics\Ground.cpp">
-      <Filter>Quelldateien\Dynamics</Filter>
+    <ClCompile Include="..\Box2D\Common\Global.cpp">
+      <Filter>Quelldateien\Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -422,9 +422,6 @@
     <ClInclude Include="..\Box2D\Box2D.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="..\Box2D\Common\b2GlobalVariables.h">
-      <Filter>Headerdateien\Common</Filter>
-    </ClInclude>
     <ClInclude Include="VkCompute.h">
       <Filter>Headerdateien\Vulkan</Filter>
     </ClInclude>
@@ -436,6 +433,9 @@
     </ClInclude>
     <ClInclude Include="..\Box2D\Particle\b2ParticleGroup.h">
       <Filter>Headerdateien\Particle</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Box2D\Common\Global.h">
+      <Filter>Headerdateien\Common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

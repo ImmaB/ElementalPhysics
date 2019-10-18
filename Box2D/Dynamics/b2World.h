@@ -349,8 +349,6 @@ public:
 	float32 m_surfaceThickness;
 	float32 m_massMultiplicator;
 
-	D11Device d11Device;
-
 private:
 
 	// m_flags

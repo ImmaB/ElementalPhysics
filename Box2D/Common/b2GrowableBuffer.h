@@ -95,7 +95,7 @@ public:
 	{
 		// Double the capacity.
 		int32 newCapacity = capacity ? 2 * capacity
-						  : b2_minParticleBufferCapacity;
+						  : MIN_PART_CAPACITY;
 		b2Assert(newCapacity > capacity);
 		Reserve(newCapacity);
 	}

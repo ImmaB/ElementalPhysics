@@ -6,12 +6,12 @@
 
 Ground::Ground(b2World& world, const def& gd) :
 	m_world(world),
-	m_ampChunkHasChange(1, amp::getGpuAccelView()),
-	m_ampTilesChangedIdxs(16, amp::getGpuAccelView()),
-	m_ampTiles(16, amp::getGpuAccelView()),
-	m_ampMaterials(8, amp::getGpuAccelView())
+	m_ampChunkHasChange(1, amp::accelView()),
+	m_ampTilesChangedIdxs(16, amp::accelView()),
+	m_ampTiles(amp::accelView(), 16),
+	m_ampMaterials(8, amp::accelView())
 {
-	m_ampMaterials = ampArray<Mat>(16, amp::getGpuAccelView());
+	m_ampMaterials = ampArray<Mat>(16, amp::accelView());
 	m_stride = gd.stride;
 	m_invStride = 1 / gd.stride;
 	m_halfStride = gd.stride / 2;
@@ -22,7 +22,7 @@ Ground::Ground(b2World& world, const def& gd) :
 	m_chunkCntY = m_tileCntY / TILE_SIZE_SQRT + 1;
 	m_chunkCntX = m_tileCntX / TILE_SIZE_SQRT + 1;
 	m_chunkCnt = m_chunkCntY * m_chunkCntX;
-	amp::resize(m_ampTiles, m_tileCnt);
+	amp::resize(m_ampTiles.arr, m_tileCnt);
 
 	amp::resize(m_ampChunkHasChange, m_chunkCnt);
 	amp::fill(m_ampChunkHasChange, 0);
@@ -35,7 +35,7 @@ Ground::~Ground()
 void Ground::SetTiles(Tile* tiles)
 {
 	m_tiles = vector(tiles, tiles + m_tileCnt);
-	amp::copy(m_tiles, m_ampTiles, m_tileCnt);
+	amp::copy(m_tiles, m_ampTiles.arr, m_tileCnt);
 }
 
 int32 Ground::CreateMaterial(Mat::def md)
@@ -89,8 +89,8 @@ void Ground::CopyChangedTiles()
 
 	});*/
 	if (!HasChange()) return;
-	m_world.d11Device.copy(m_ampTiles, m_d11Tiles, m_tileCnt);
-	m_tileCopyFuture = amp::copyAsync(m_ampTiles, m_tiles);
+	m_ampTiles.CopyToD11Async();
+
 	if (m_changeCallback)
 		m_changeCallback(nullptr, m_tiles.data(), m_tileCnt);
 	m_hasChange = false;
@@ -134,7 +134,7 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 	pgd.matIdx = partMatIdx;
 	pgd.flags = partFlags;
 	pgd.heat = m_world.m_roomTemperature;
-	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles, range.first, range.second - range.first);
+	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles.arr, range.first, range.second - range.first);
 	m_world.GetParticleSystem()->CreateGroup(pgd);
 	copyFuture.wait();
 	m_hasChange = true;
@@ -150,7 +150,7 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape,
 	shape.ComputeAABB(b, transform, 0);
 	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),
 		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
-	m_tileCopyFuture.wait();
+	m_ampTiles.copyFuture.wait();
 	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
 	{
 		const Vec2 p = GetTileCenter(x, y);
