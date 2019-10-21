@@ -337,24 +337,12 @@ EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callb
 }
 EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs, int32 size)
 {
-	//if (pPartSys && bufPtrs) pPartSys->m_ampArrays.Replace(size, pPartSys->GetCount(), bufPtrs);
-	if (pPartSys && bufPtrs) pPartSys->m_ampArrays.SetD11Buffers(bufPtrs);
+	if (pPartSys) pPartSys->m_ampArrays.SetD11Buffers(bufPtrs);
 }
 EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr)
 {
 	pPartSys->m_ampArrays.contactIdx.SetD11Arr(bufPtr);
 }
-
-EXPORT void SetShaderPropIDs(int32 flagsID)
-{
-	//pPartSys->m_ampArrays.SetShaderPropIDs(flagsID);
-}
-
-EXPORT void UploadBuffers()
-{
-	//if (pPartSys) pPartSys->m_ampArrays.ToShader();
-}
-
 #pragma endregion
 
 #pragma region ParticleGroups

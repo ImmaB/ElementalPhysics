@@ -90,6 +90,7 @@ void Ground::CopyChangedTiles()
 	});*/
 	if (!HasChange()) return;
 	m_ampTiles.CopyToD11Async();
+	m_tileCopyFuture = amp::copyAsync(m_ampTiles.arr, m_tiles);
 
 	if (m_changeCallback)
 		m_changeCallback(nullptr, m_tiles.data(), m_tileCnt);
@@ -126,7 +127,7 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 			return;
 		}
 	});
-	range.second = b2Max(range.second, m_tileCnt);
+	range.second = b2Min(range.second, m_tileCnt);
 	if (positions.empty()) return;
 	ParticleGroup::Def pgd;
 	pgd.particleCount = positions.size();
@@ -150,7 +151,7 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape,
 	shape.ComputeAABB(b, transform, 0);
 	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),
 		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
-	m_ampTiles.copyFuture.wait();
+	m_tileCopyFuture.wait();
 	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
 	{
 		const Vec2 p = GetTileCenter(x, y);

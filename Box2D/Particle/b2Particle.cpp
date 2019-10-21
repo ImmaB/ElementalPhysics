@@ -153,16 +153,28 @@ void Particle::AmpArrays::Resize(int32 capacity, int32 copyCnt)
 
 void Particle::AmpArrays::SetD11Buffers(ID3D11Buffer** ppBufs)
 {
-	if (!ppBufs) return;
-
-	flags.SetD11Arr(ppBufs[0]);
-	position.SetD11Arr(ppBufs[1]);
-	velocity.SetD11Arr(ppBufs[2]);
-	weight.SetD11Arr(ppBufs[3]);
-	heat.SetD11Arr(ppBufs[4]);
-	health.SetD11Arr(ppBufs[5]);
-	matIdx.SetD11Arr(ppBufs[6]);
-	color.SetD11Arr(ppBufs[7]);
+	if (!ppBufs)
+	{
+		flags.SetD11Arr(nullptr);
+		position.SetD11Arr(nullptr);
+		velocity.SetD11Arr(nullptr);
+		weight.SetD11Arr(nullptr);
+		heat.SetD11Arr(nullptr);
+		health.SetD11Arr(nullptr);
+		matIdx.SetD11Arr(nullptr);
+		color.SetD11Arr(nullptr);
+	}
+	else
+	{
+		flags.SetD11Arr(ppBufs[0]);
+		position.SetD11Arr(ppBufs[1]);
+		velocity.SetD11Arr(ppBufs[2]);
+		weight.SetD11Arr(ppBufs[3]);
+		heat.SetD11Arr(ppBufs[4]);
+		health.SetD11Arr(ppBufs[5]);
+		matIdx.SetD11Arr(ppBufs[6]);
+		color.SetD11Arr(ppBufs[7]);
+	}
 }
 
 void Particle::AmpArrays::WaitForCopies()

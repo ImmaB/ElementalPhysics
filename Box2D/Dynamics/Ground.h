@@ -114,6 +114,7 @@ public:
 	amp::Array<Tile> m_ampTiles;
 	ampArray<int32> m_ampChunkHasChange;
 	ampArray<int32> m_ampTilesChangedIdxs;
+	ampCopyFuture m_tileCopyFuture;
 
 	vector<Mat> m_materials;
 	ampArray<Mat> m_ampMaterials;

@@ -862,6 +862,8 @@ void ParticleSystem::DestroyAllParticles()
 	m_count = 0;
 	m_allFlags = 0;
 	ResizeParticleBuffers(0);
+	m_ampArrays.Resize(m_capacity, m_count);
+	m_ampArrays.SetD11Buffers(nullptr);
 
 	m_groupCount = 0;
 	m_freeGroupIdxs.clear();
@@ -2268,8 +2270,8 @@ void ParticleSystem::AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aa
 		for (int32 i = 0; i < boundCnt; i++)
 		{
 			const b2TagBounds& tb = ampTagBounds[i];
-			if (proxy.tag < tb.lowerTag || proxy.tag > tb.upperTag) continue;
-			if (xTag < tb.xLower || xTag > tb.xUpper) continue;
+			if (proxy.tag < tb.lowerTag || tb.upperTag < proxy.tag) continue;
+			if (xTag < tb.xLower || tb.xUpper < xTag) continue;
 			function(proxy.idx, tb.fixtureIdx, tb.childIdx);
 		}
 	});
@@ -3960,6 +3962,7 @@ void ParticleSystem::SolveInit(int32 timestamp)
 	{
 		CopyBox2DToGPUAsync();
 		AmpSolveZombie();
+		m_ampArrays.color.CopyToD11Async();
 		if (m_needsUpdateAllParticleFlags)
 			AmpUpdateAllParticleFlags();
 	}

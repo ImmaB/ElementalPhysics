@@ -893,13 +893,16 @@ namespace amp
 	template <typename T>
 	struct Array
 	{
-		ampArray<T> arr, d11Arr;
+	private:
 		ID3D11Buffer* buf;
+		ampArray<T> d11Arr;
+		int32 minCap;
+	public:
+		ampArray<T> arr;
 		amp::CopyFuture copyFuture;
 
 		Array(const ampAccelView& accelView, int32 cap = MIN_PART_CAPACITY) :
-			arr(cap, accelView),
-			d11Arr(cap, accelView) {}
+			minCap(cap), buf(nullptr), arr(cap, accelView), d11Arr(cap, accelView) {}
 
 		void SetD11Arr(ID3D11Buffer* buf)
 		{
@@ -908,7 +911,7 @@ namespace amp
 		}
 		void CopyToD11Async()
 		{
-			copyFuture.set(Concurrency::copy_async(arr, d11Arr));
+			if (buf) copyFuture.set(Concurrency::copy_async(arr, d11Arr));
 		}
 
 		inline ampArrayView<T> GetView() { return ampArrayView<T>(arr); }
