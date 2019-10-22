@@ -332,6 +332,7 @@ public:
 	void SolveHealth();
 	void CopyHealths();
 	void SolvePosition();
+	void SolveSource();
 	void SolveOutOfBounds();		// Needs: Position	| Modifies: Flags
 	void CopyFlags();
 	void CopyBodies();

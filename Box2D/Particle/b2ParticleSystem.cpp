@@ -2280,26 +2280,14 @@ template<typename F>
 void ParticleSystem::AmpForEachInsideCircle(const b2CircleShape& circle,
 	const b2Transform& transform, const F& function)
 {
+	ampArrayView<const AmpCircleShape> ampCircle(1, (AmpCircleShape*)&circle);
 	b2AABB aabb;
 	circle.ComputeAABB(aabb, transform, 0);
-	const uint32 lowerTag = computeTag(m_inverseDiameter * aabb.lowerBound.x - 1,
-		m_inverseDiameter * aabb.lowerBound.y - 1);
-	const uint32 upperTag = computeTag(m_inverseDiameter * aabb.upperBound.x + 1,
-		m_inverseDiameter * aabb.upperBound.y + 1);
-	const uint32 xLower = lowerTag & xMask;
-	const uint32 xUpper = upperTag & xMask;
-
-	ampArrayView<const AmpCircleShape> ampCircle(1, (AmpCircleShape*)&circle);
-	auto proxies = m_ampArrays.proxy.GetConstView();
 	auto positions = m_ampArrays.position.GetConstView();
-	ForEachParticle([=](const int32 i) restrict(amp)
+	AmpForEachInsideBounds(aabb, [=](const int32 i) restrict(amp)
 	{
-		const Proxy& proxy = proxies[i];
-		if (proxy.tag < lowerTag || proxy.tag > upperTag) return;
-		const uint32 xTag = proxy.tag & xMask;
-		if (xTag < xLower || xTag > xUpper) return;
-		if (ampCircle[0].TestPoint(transform, positions[proxy.idx]))
-			function(proxy.idx);
+		if (ampCircle[0].TestPoint(transform, positions[i]))
+			function(i);
 	});
 }
 
@@ -3450,20 +3438,15 @@ void ParticleSystem::SolveCollision()
 
 		const float32 heightOffset = b2_linearSlop; // m_particleRadius;
 		auto groundTiles = m_world.m_ground->GetConstTiles();
-		auto groundMats = m_world.m_ground->GetConstMats();
 		ForEachGroundContact([=](const int32 a, const Particle::GroundContact& contact) restrict(amp)
 		{
-			const Ground::Tile& gt = groundTiles[contact.groundTileIdx];
-			const Ground::Mat& groundMat = groundMats[gt.matIdx];
-
-			Vec3& p1 = positions[a];
+			const Vec3 p1 = positions[a];
 			Vec3& v = velocities[a];
-			const Vec3 p2 = p1 + stepDt * v;
-			const float32 h = gt.height + heightOffset;
-			if (p2.z > h) return;
-			if (p1.z < h) p1.z = h;
-
 			if (v.z >= 0) return;
+			const Vec3 p2 = p1 + stepDt * v;
+			const float32 h = groundTiles[contact.groundTileIdx].height + heightOffset;
+			if (p2.z > h) return;
+
 			const Vec3 av = v;
 			v.z = stepInvDt * (h - p1.z);
 			const Vec3 f = stepInvDt * masses[a] * (av - v);
@@ -5529,17 +5512,17 @@ void ParticleSystem::SolveColorMixing()
 			if (m_buffers.flags[a] & m_buffers.flags[b] &
 				Particle::Mat::Flag::ColorMixing)
 			{
-				int32& colA = m_buffers.color[a];
-				int32& colB = m_buffers.color[b];
+				uint32& colA = m_buffers.color[a];
+				uint32& colB = m_buffers.color[b];
 
-				int8 ar = (colA & 0xFF000000) >> 24;
-				int8 ag = (colA & 0x00FF0000) >> 16;
-				int8 ab = (colA & 0x0000FF00) >>  8;
-				int8 aa = (colA & 0x000000FF) >>  0;
-				int8 br = (colB & 0xFF000000) >> 24;
-				int8 bg = (colB & 0x00FF0000) >> 16;
-				int8 bb = (colB & 0x0000FF00) >>  8;
-				int8 ba = (colB & 0x000000FF) >>  0;
+				uint8 ar = (colA & 0xFF000000) >> 24;
+				uint8 ag = (colA & 0x00FF0000) >> 16;
+				uint8 ab = (colA & 0x0000FF00) >>  8;
+				uint8 aa = (colA & 0x000000FF) >>  0;
+				uint8 br = (colB & 0xFF000000) >> 24;
+				uint8 bg = (colB & 0x00FF0000) >> 16;
+				uint8 bb = (colB & 0x0000FF00) >>  8;
+				uint8 ba = (colB & 0x000000FF) >>  0;
 				const uint8 dr = (uint8)(strength * (br - ar));
 				const uint8 dg = (uint8)(strength * (bg - ag));
 				const uint8 db = (uint8)(strength * (bb - ab));
@@ -5951,6 +5934,18 @@ void ParticleSystem::CopyHealths()
 {
 	if (m_accelerate && IsLastIteration())
 		m_ampArrays.health.CopyToD11Async();
+}
+
+void ParticleSystem::SolveSource()
+{
+	auto flags = m_ampArrays.flags.GetView();
+	auto matIdxs = m_ampArrays.matIdx.GetConstView();
+	auto groundMats = m_world.m_ground->GetConstMats();
+	ForEachGroundContact([=](int32 a, const Particle::GroundContact& contact) restrict(amp)
+	{
+		if (groundMats[contact.groundMatIdx].partMatIdx == matIdxs[a])
+			flags[a] = Particle::Flag::Zombie;
+	});
 }
 
 void ParticleSystem::SolveFluid()

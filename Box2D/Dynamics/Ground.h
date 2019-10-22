@@ -62,12 +62,15 @@ public:
 
 		struct def
 		{
-			def() : friction(0.0f), bounciness(0.0f), particleCapacity(0), flags(0) {}
+			def() : friction(0.0f), bounciness(0.0f), particleCapacity(0), flags(0),
+				partMatIdx(INVALID_IDX), color(0) {}
 
 			float32 friction;
 			float32 bounciness;
 			int32 particleCapacity;
 			uint32 flags;
+			int32 partMatIdx;
+			uint32 color;
 		};
 
 		Mat() : friction(0), bounciness(0), particleCapacity(0), flags(0) {}
@@ -75,13 +78,16 @@ public:
 			friction(d.friction),
 			bounciness(d.bounciness),
 			particleCapacity(d.particleCapacity),
-			flags(d.flags)
+			flags(d.flags), partMatIdx(d.partMatIdx),
+			color(d.color)
 		{}
 
 		float32 friction;
 		float32 bounciness;
 		int32 particleCapacity;
 		uint32 flags;
+		int32 partMatIdx;
+		uint32 color;
 
 		inline bool isWaterRepellent() const { return flags & Flags::waterRepellent; }
 		inline bool isWaterRepellent() const restrict(amp) { return flags & Flags::waterRepellent; }
@@ -139,7 +145,7 @@ public:
 	Ground::Mat GetMat(const Ground::Tile& tile);
 
 	void ExtractParticles(const b2Shape& shape, const b2Transform& transform,
-						  int32 partMatIdx, uint32 partFlags, float32 probability);
+						  int32 partMatIdx, uint32 partFlags, float32 probability, bool color);
 
 private:
 	bool m_hasChange;

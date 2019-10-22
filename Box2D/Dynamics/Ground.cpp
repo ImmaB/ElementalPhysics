@@ -110,12 +110,22 @@ Ground::Mat Ground::GetMat(const Ground::Tile& tile)
 }
 
 void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform,
-							  int32 partMatIdx, uint32 partFlags, float32 probability)
+							  int32 partMatIdx, uint32 partFlags, float32 probability, bool color)
 {
 	vector<Vec3> positions;
+	vector<uint32> colors;
 	const float32 heightOffset = m_world.GetParticleSystem()->GetRadius() + b2_linearSlop;
-	auto range = ForEachTileInsideShape(shape, transform, [=, &positions](Tile& tile, const Vec2& tileCenter)
+	auto range = ForEachTileInsideShape(shape, transform,
+		[=, &positions, &colors](Tile& tile, const Vec2& tileCenter)
 	{
+		if (const auto& mat = m_materials[tile.matIdx]; mat.partMatIdx == partMatIdx)
+		{
+			if (Random() > probability) return;
+			const Vec3 p(GetRandomTilePosition(tileCenter), tile.height + heightOffset);
+			if (color) colors.push_back(mat.color);
+			positions.push_back(p);
+			return;
+		}
 		if (!tile.particleCnt) return;
 		for (int32 i = tile.particleCnt - 1; i >= 0; i--)
 		{
@@ -127,11 +137,13 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 			return;
 		}
 	});
-	range.second = b2Min(range.second, m_tileCnt);
+	range.first = b2Min(range.first, 0);
+	range.second = b2Max(range.second, m_tileCnt - 1);
 	if (positions.empty()) return;
 	ParticleGroup::Def pgd;
 	pgd.particleCount = positions.size();
 	pgd.positions = positions;
+	if (color) pgd.colors = colors;
 	pgd.matIdx = partMatIdx;
 	pgd.flags = partFlags;
 	pgd.heat = m_world.m_roomTemperature;
@@ -151,7 +163,7 @@ pair<int32, int32> Ground::ForEachTileInsideShape(const b2Shape& shape,
 	shape.ComputeAABB(b, transform, 0);
 	int32 lowerXIdx = GetIdx(b.lowerBound.x), upperXIdx = GetIdx(b.upperBound.x),
 		  lowerYIdx = GetIdx(b.lowerBound.y), upperYIdx = GetIdx(b.upperBound.y);
-	m_tileCopyFuture.wait();
+	if (m_tileCopyFuture.valid()) m_tileCopyFuture.wait();
 	for (int32 y = lowerYIdx; y <= upperYIdx; y++) for (int32 x = lowerXIdx; x <= upperXIdx; x++)
 	{
 		const Vec2 p = GetTileCenter(x, y);

@@ -78,7 +78,7 @@ struct ParticleGroup
 		Vec3 linearVelocity;
 		float32 angularVelocity;
 
-		int32 color;
+		uint32 color;
 
 		/// The shape where particles will be added.
 		b2Shape::Type shapeType;
@@ -92,7 +92,7 @@ struct ParticleGroup
 		/// The initial positions of the particleCount particles.
 		int32 particleCount;
 		std::vector<Vec3> positions;
-		std::vector<int32> colors;
+		std::vector<uint32> colors;
 
 		/// An existing particle group to which the particles will be added.
 		int32 groupIdx;

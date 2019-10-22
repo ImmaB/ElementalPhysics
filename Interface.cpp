@@ -270,6 +270,7 @@ EXPORT void SolveChangeMat() { pPartSys->SolveChangeMat(); }
 
 EXPORT void SolveHealth() { pPartSys->SolveHealth(); }
 EXPORT void CopyHealths() { pPartSys->CopyHealths(); }
+EXPORT void SolveSource() { pPartSys->SolveSource(); }
 EXPORT void SolvePosition() { pPartSys->SolvePosition(); }
 EXPORT void SolveOutOfBounds() { pPartSys->SolveOutOfBounds(); }
 EXPORT void CopyFlags() { pPartSys->CopyFlags(); }
@@ -349,7 +350,7 @@ EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr)
 
 EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup,
 	float32 angVel, Vec3 linVel, b2Shape::Type shapeType, int32 shapeIdx,
-	b2Transform transform, int32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
+	b2Transform transform, uint32 color, float32 stride, float32 health, float32 heat, int32 timestamp)
 {
 	ParticleGroup::Def gd;
 	gd.flags = partFlags;
@@ -369,13 +370,13 @@ EXPORT int32 CreateParticleGroup(uint32 partFlags, uint32 groupFlags, int32 matI
 	int32 idx = pPartSys->CreateGroup(gd);
 	return idx;
 }
-EXPORT int32 CreateParticles(int32 partCount, Vec3* poss, int32* cols, b2Transform transform,
+EXPORT int32 CreateParticles(int32 partCount, Vec3* poss, uint32* cols, b2Transform transform,
 	uint32 partFlags, uint32 groupFlags, int32 matIdx, int32 collisionGroup, Vec3 vel, float32 health, float32 heat, int32 timestamp)
 {
 	ParticleGroup::Def pd;
 	pd.particleCount = partCount;
 	if (poss != nullptr) pd.positions = std::vector<Vec3>(poss, poss + partCount);
-	if (cols != nullptr) pd.colors = std::vector<int32>(cols, cols + partCount);
+	if (cols != nullptr) pd.colors = std::vector<uint32>(cols, cols + partCount);
 	pd.transform = transform;
 	pd.flags = partFlags;
 	pd.groupFlags = groupFlags;
@@ -583,17 +584,22 @@ EXPORT void SetGroundTileChangeCallback(Ground::ChangeCallback callback)
 {
 	pGround->m_changeCallback = callback;
 }
-EXPORT void ExtractGroundParticles(int32 fixtureIdx, int32 partMatIdx, uint32 partFlags, float32 strength)
+EXPORT void ExtractGroundParticles(int32 fixtureIdx, int32 partMatIdx, uint32 partFlags,
+	float32 strength, bool color)
 {
-	pGround->ExtractParticles(pWorld->GetShape(fixtureIdx), b2Transform(), partMatIdx, partFlags, strength);
+	pGround->ExtractParticles(pWorld->GetShape(fixtureIdx), b2Transform(), partMatIdx, partFlags,
+		strength, color);
 }
-EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 particleCapacity, uint32 flags)
+EXPORT int32 AddGroundMaterial(float32 friction, float32 bounciness, int32 particleCapacity,
+	uint32 flags, int32 partMatIdx, uint32 color)
 {
 	Ground::Mat::def gmd;
 	gmd.friction = friction;
 	gmd.bounciness = bounciness;
 	gmd.particleCapacity = particleCapacity;
 	gmd.flags = flags;
+	gmd.partMatIdx = partMatIdx;
+	gmd.color = color;
 	return pGround->CreateMaterial(gmd);
 }
 EXPORT void ClearGroundMaterials() { if (pGround) pGround->ClearMaterials(); }

@@ -45,7 +45,7 @@ namespace Particle
 		uint32 flags;
 		Vec3 position;
 		Vec3 velocity;
-		int32 color;
+		uint32 color;
 
 		float32 heat;
 		float32 health;
@@ -264,11 +264,11 @@ namespace Particle
 
 	struct Buffers
 	{
-		std::vector<uint32> flags;
+		std::vector<uint32> flags, color;
 		std::vector<Vec3> position, velocity, force, accumulationVec3;
 		std::vector<float32> weight, heat, health, mass, invMass,
 			staticPressure, accumulation, depth;
-		std::vector<int32> matIdx, groupIdx, color, bodyContactCnt;
+		std::vector<int32> matIdx, groupIdx, bodyContactCnt;
 		std::vector<Proxy> proxy;
 
 		Buffers(int32 cap);
@@ -278,10 +278,10 @@ namespace Particle
 	struct AmpArrays
 	{
 
-		amp::Array<uint32> flags;
+		amp::Array<uint32> flags, color;
 		amp::Array<Vec3> position, velocity;
 		amp::Array<float32> weight, heat, health;
-		amp::Array<int32> matIdx, color;
+		amp::Array<int32> matIdx;
 
 		amp::Array<Vec3> force, accumulationVec3;
 		amp::Array<float32> mass, invMass, staticPressure, accumulation, depth;
