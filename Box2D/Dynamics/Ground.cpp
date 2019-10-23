@@ -11,7 +11,6 @@ Ground::Ground(b2World& world, const def& gd) :
 	m_ampTiles(amp::accelView(), 16),
 	m_ampMaterials(8, amp::accelView())
 {
-	m_ampMaterials = ampArray<Mat>(16, amp::accelView());
 	m_stride = gd.stride;
 	m_invStride = 1 / gd.stride;
 	m_halfStride = gd.stride / 2;
@@ -137,8 +136,6 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 			return;
 		}
 	});
-	range.first = b2Min(range.first, 0);
-	range.second = b2Max(range.second, m_tileCnt - 1);
 	if (positions.empty()) return;
 	ParticleGroup::Def pgd;
 	pgd.particleCount = positions.size();
@@ -147,6 +144,8 @@ void Ground::ExtractParticles(const b2Shape& shape, const b2Transform& transform
 	pgd.matIdx = partMatIdx;
 	pgd.flags = partFlags;
 	pgd.heat = m_world.m_roomTemperature;
+	range.first = b2Max(range.first, 0);
+	range.second = b2Min(range.second, m_tileCnt);
 	auto copyFuture = amp::copyAsync(m_tiles, m_ampTiles.arr, range.first, range.second - range.first);
 	m_world.GetParticleSystem()->CreateGroup(pgd);
 	copyFuture.wait();

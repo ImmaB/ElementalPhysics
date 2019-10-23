@@ -5723,7 +5723,7 @@ void ParticleSystem::SolveFlame()
 		{
 			float32& heat = heats[i];
 			const Particle::Mat& mat = mats[matIdxs[i]];
-			const float32 w = 2 - weights[i];
+			const float32 w = b2Max(2 - weights[i], 0.5f);
 			heat += heatGain * mat.m_stability * w;
 			healths[i] -= lifetime * mat.m_invStability * w;
 		});
