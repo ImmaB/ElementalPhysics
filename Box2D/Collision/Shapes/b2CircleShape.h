@@ -82,13 +82,33 @@ struct AmpCircleShape
 
 	Vec2 m_p;
 
-	void ComputeDistance(const b2Transform& xf, const Vec2& p, float32& distance, Vec2& normal) const restrict(amp)
+	bool FindCollision(const b2Transform& xf, const Vec3& p,
+		float32& distance, Vec3& normal, float32 maxDist) const restrict(amp)
 	{
-		Vec2 center = xf.p + b2Mul(xf.q, m_p);
-		Vec2 d = p - center;
-		float32 d1 = d.Length();
-		distance = d1 - m_radius;
-		normal = 1 / d1 * d;
+		if (FindZCollision(xf, p.z, distance, normal, maxDist))
+		{
+			const Vec2 center = xf.p + b2Mul(xf.q, m_p);
+			const Vec2 d = p - center;
+			const float32 dl = d.Length();
+			const float32 dist = dl - m_radius;
+			if (dist < 0 && distance > -b2_linearSlop)
+				return true;
+			distance = dist;
+			normal = Vec3(1 / dl * d, 0);
+			return distance < maxDist;
+		}
+		return false;
+	}
+
+	bool FindZCollision(const b2Transform& xf, float32 z,
+		float32& distance, Vec3& normal, float32 maxDist) const restrict(amp)
+	{
+		const float32 halfHeight = m_height / 2;
+		const float32 zRelToCenter = z - (xf.z + m_zPos + halfHeight);
+		const float32 absZ = b2Abs(zRelToCenter);
+		distance = absZ - halfHeight;
+		normal = Vec3(0, 0, zRelToCenter / absZ);
+		return distance < maxDist;
 	}
 
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
@@ -128,11 +148,6 @@ struct AmpCircleShape
 		Vec2 center = xf.p + b2Mul(xf.q, m_p);
 		Vec2 d = p - center;
 		return b2Dot(d, d) <= m_radius * m_radius;
-	}
-	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
-	{
-		z -= (m_zPos + xf.z);
-		return z >= 0 && z <= m_height;
 	}
 };
 

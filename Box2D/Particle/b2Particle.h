@@ -235,7 +235,7 @@ namespace Particle
 		/// Weight of the contact. A value between 0.0f and 1.0f.
 		float32 weight;
 		/// The normalized direction from the particle to the body.
-		Vec2 normal;
+		Vec3 normal;
 		/// The effective mass used in calculating force.
 		float32 mass;
 

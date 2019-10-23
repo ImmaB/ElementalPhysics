@@ -102,6 +102,12 @@ struct AmpEdgeShape
 		normal = d1 > 0 ? 1 / d1 * d : Vec2(0, 0);
 	}
 
+	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
+	{
+		z -= (m_zPos + xf.z);
+		return z >= 0 && z <= m_height;
+	}
+
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 		const b2Transform& xf) const restrict(amp)
 	{
@@ -148,12 +154,6 @@ struct AmpEdgeShape
 		else
 			output.normal = b2Mul(xf.q, normal);
 		return true;
-	}
-
-	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
-	{
-		z -= (m_zPos + xf.z);
-		return z >= 0 && z <= m_height;
 	}
 };
 

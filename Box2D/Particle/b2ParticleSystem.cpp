@@ -3022,40 +3022,34 @@ void ParticleSystem::AmpUpdateBodyContacts()
 		auto circleShapes = GetConstCircleShapes();
 		auto edgeShapes = GetConstEdgeShapes();
 		auto polygonShapes = GetConstPolygonShapes();
+		const float32 partDiameter = m_particleDiameter;
+		const float32 doublePartDiameter = 2 * m_particleDiameter;
+		const float32 invDiameter = m_inverseDiameter;
 		const auto computeDistance = [=] (const Fixture& f, const b2Transform& xf, const Vec3& p,
-			float32& d, Vec2& n, int32 childIndex) restrict(amp) -> bool
+			float32& d, Vec3& n, int32 childIndex) restrict(amp) -> bool
 		{
-			if (f.m_shapeType == b2Shape::e_chain)
-			{
-				const auto& s = chainShapes[f.m_shapeIdx];
-				if (!s.TestZ(xf, p.z)) return false;
-				s.ComputeDistance(xf, p, d, n, childIndex);
-			}
-			else if (f.m_shapeType == b2Shape::e_circle)
-			{
-				const auto& s = circleShapes[f.m_shapeIdx];
-				if (!s.TestZ(xf, p.z)) return false;
-				s.ComputeDistance(xf, p, d, n);
-			}
-			else if (f.m_shapeType == b2Shape::e_edge)
-			{
-				const auto& s = edgeShapes[f.m_shapeIdx];
-				if (!s.TestZ(xf, p.z)) return false;
-				s.ComputeDistance(xf, p, d, n);
+			//if (f.m_shapeType == b2Shape::e_chain)
+			//{
+			//	const auto& s = chainShapes[f.m_shapeIdx];
+			//	if (!s.TestZ(xf, p.z)) return false;
+			//	s.ComputeDistance(xf, p, d, n, childIndex);
+			//}
+			if (f.m_shapeType == b2Shape::e_circle)
+				return circleShapes[f.m_shapeIdx].FindCollision(xf, p, d, n, partDiameter);
+			
+			//else if (f.m_shapeType == b2Shape::e_edge)
+			//{
+			//	const auto& s = edgeShapes[f.m_shapeIdx];
+			//	if (!s.TestZ(xf, p.z)) return false;
+			//	s.ComputeDistance(xf, p, d, n);
 
-			}
+			//}
 			else if (f.m_shapeType == b2Shape::e_polygon)
-			{
-				const auto& s = polygonShapes[f.m_shapeIdx];
-				if (!s.TestZ(xf, p.z)) return false;;
-				s.ComputeDistance(xf, p, d, n);
-			}
+				return polygonShapes[f.m_shapeIdx].FindCollision(xf, p, d, n, partDiameter);
+			
 			return true;
 		};
 
-		const float32 partDiameter = m_particleDiameter;
-		const float32 invDiameter = m_inverseDiameter;
-		const float32 critVelocity = m_particleDiameter;
 		auto bodies = GetConstBodies();
 		auto fixtures = GetConstFixtures();
 		auto positions = m_ampArrays.position.GetConstView();
@@ -3070,13 +3064,13 @@ void ParticleSystem::AmpUpdateBodyContacts()
 			if (bodyContactIdx + 1 >= MAX_BODY_CONTACTS_PER_PARTICLE) return;
 		
 			float32 d;
-			Vec2 n;
+			Vec3 n;
 			const int32 bIdx = fixture.m_bodyIdx;
 			const Body& b = bodies[bIdx];
-			const Vec3& ap = positions[i];
-			if (!computeDistance(fixture, b.m_xf, ap, d, n, childIdx)) return;
-			
-			//if (d > critVelocity) return;
+			const Vec3 ap = positions[i];
+			const bool touch = computeDistance(fixture, b.m_xf, ap, d, n, childIdx);
+
+			if (d > doublePartDiameter) return;
 
 			Particle::BodyContact& contact = bodyContacts[i].contacts[bodyContactIdx++];
 			contact.bodyIdx = bIdx;
@@ -3084,7 +3078,7 @@ void ParticleSystem::AmpUpdateBodyContacts()
 			contact.childIdx = childIdx;
 			contact.flags = 0;
 
-			if (d > partDiameter) return;
+			if (!touch) return;
 			contact.AddFlag(Particle::BodyContact::Flag::Touching);
 
 			const Vec2 bp = b.GetWorldCenter();
@@ -4243,15 +4237,17 @@ void ParticleSystem::SolvePressure()
 		auto velocities = m_ampArrays.velocity.GetView();
 		auto invMasses = m_ampArrays.invMass.GetConstView();
 		auto bodies = GetBodies();
+		auto fixtures = GetConstFixtures();
 		auto positions = m_ampArrays.position.GetConstView();
 		ForEachBodyContact([=](const int32 i, const Particle::BodyContact& contact) restrict(amp)
 		{
-			Body& b = bodies(contact.bodyIdx);
+			Body& b = bodies[contact.bodyIdx];
 			const float32 w = contact.weight;
 			const float32 m = contact.mass;
-			const Vec2 n = contact.normal;
+			const Vec3 n = contact.normal;
 			const float32 h = accumulations[i] + pressurePerWeight * w;
-			const Vec2 f = velocityPerPressure * w * m * h * n;
+			const Vec3 f = fixtures[contact.fixtureIdx].m_restitution *
+						   velocityPerPressure * w * m * h * n;
 			amp::atomicSub(velocities[i], invMasses[i] * f);
 			b.ApplyLinearImpulse(f, positions[i], true);
 		});
@@ -4357,7 +4353,7 @@ void ParticleSystem::SolveDamping()
 			Body& b = bodies[contact.bodyIdx];
 			const float32 w = contact.weight;
 			const float32 m = contact.mass;
-			const Vec2 n = contact.normal;
+			const Vec3 n = contact.normal;
 			const Vec2 p = Vec2(positions[i]);
 			const Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
 				Vec2(velocities[i]);
@@ -4365,7 +4361,7 @@ void ParticleSystem::SolveDamping()
 			if (vn >= 0) return;
 			const float32 damping =
 				b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
-			const Vec2 f = damping * m * vn * n;
+			const Vec3 f = damping * m * vn * n;
 			amp::atomicAdd(velocities[i], invMasses[i] * f);
 			b.ApplyLinearImpulse(-f, p, true);
 		});
@@ -4664,7 +4660,7 @@ void ParticleSystem::SolveRigidDamping()
 			ParticleGroup& aGroup = groups[groupIdxs[i]];
 			if (!aGroup.HasFlag(ParticleGroup::Flag::Rigid)) return;
 			Body& b = bodies[contact.bodyIdx];
-			Vec2 n = contact.normal;
+			Vec3 n = contact.normal;
 			float32 w = contact.weight;
 			Vec2 p = Vec2(positions[i]);
 			Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
@@ -4847,14 +4843,14 @@ void ParticleSystem::SolveExtraDamping()
 		{
 			Body& b = bodies[contact.bodyIdx];
 			const float32 m = contact.mass;
-			const Vec2 n = contact.normal;
+			const Vec3 n = contact.normal;
 			const Vec2 p = Vec2(positions[i]);
 			const Vec2 v =
 				b.GetLinearVelocityFromWorldPoint(p) -
 				Vec2(velocities[i]);
 			const float32 vn = b2Dot(v, n);
 			if (vn >= 0) return;
-			const Vec2 f = 0.5f * m * vn * n;
+			const Vec3 f = 0.5f * m * vn * n;
 			amp::atomicAdd(velocities[i], invMasses[i] * f);
 			b.ApplyLinearImpulse(-f, p, true);
 		});
@@ -5264,10 +5260,10 @@ void ParticleSystem::SolveViscous()
 			Body& b = bodies[contact.bodyIdx];
 			const float32 w = contact.weight;
 			const float32 m = contact.mass;
-			const Vec2 p = Vec2(positions[i]);
-			const Vec2 v = b.GetLinearVelocityFromWorldPoint(p) -
-				Vec2(velocities[i]);
-			const Vec2 f = viscousStrength * m * w * v;
+			const Vec3 p = positions[i];
+			const Vec3 v(b.GetLinearVelocityFromWorldPoint(p) -
+				Vec2(velocities[i]), 0);
+			const Vec3 f = viscousStrength * m * w * v;
 			amp::atomicAdd(velocities[i], invMasses[i] * f);
 			b.ApplyLinearImpulse(-f, p, true);
 		});

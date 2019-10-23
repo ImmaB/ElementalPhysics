@@ -117,47 +117,69 @@ struct AmpPolygonShape
 	int32 m_count;
 	int32 _placeholder2;
 
-	void ComputeDistance(const b2Transform& xf, const Vec2& p,
-		float32& distance, Vec2& normal) const restrict(amp)
+	bool FindCollision(const b2Transform& xf, const Vec3& p,
+		float32& distance, Vec3& normal, float32 maxDist) const restrict(amp)
 	{
-		const Vec2 pLocal = b2MulT(xf.q, p - xf.p);
-		float32 maxDistance = -FLT_MAX;
-		Vec2 normalForMaxDistance = pLocal;
-
-		for (int32 i = 0; i < m_count; ++i)
+		if (FindZCollision(xf, p.z, distance, normal, maxDist))
 		{
-			float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
-			if (dot > maxDistance)
-			{
-				maxDistance = dot;
-				normalForMaxDistance = m_normals[i];
-			}
-		}
+			const Vec2 pLocal = b2MulT(xf.q, p - xf.p);
+			float32 maxDistance = -FLT_MAX;
+			Vec2 normalForMaxDistance = pLocal;
+			float32 dist;
+			Vec2 norm;
 
-		if (maxDistance > 0)
-		{
-			Vec2 minDistance = normalForMaxDistance;
-			float32 minDistance2 = maxDistance * maxDistance;
 			for (int32 i = 0; i < m_count; ++i)
 			{
-				const Vec2 distance = pLocal - m_vertices[i];
-				const float32 distance2 = distance.LengthSquared();
-				if (minDistance2 > distance2)
+				float32 dot = b2Dot(m_normals[i], pLocal - m_vertices[i]);
+				if (dot > maxDistance)
 				{
-					minDistance = distance;
-					minDistance2 = distance2;
+					maxDistance = dot;
+					normalForMaxDistance = m_normals[i];
 				}
 			}
 
-			distance = ampSqrt(minDistance2);
-			normal = b2Mul(xf.q, minDistance);
-			normal.Normalize();
+			if (maxDistance > 0)
+			{
+				Vec2 minDistance = normalForMaxDistance;
+				float32 minDistance2 = maxDistance * maxDistance;
+				for (int32 i = 0; i < m_count; ++i)
+				{
+					const Vec2 distance = pLocal - m_vertices[i];
+					const float32 distance2 = distance.LengthSquared();
+					if (minDistance2 > distance2)
+					{
+						minDistance = distance;
+						minDistance2 = distance2;
+					}
+				}
+
+				dist = ampSqrt(minDistance2);
+				norm = b2Mul(xf.q, minDistance);
+				norm.Normalize();
+			}
+			else
+			{
+				dist = maxDistance;
+				norm = Vec3(b2Mul(xf.q, normalForMaxDistance), 0);
+			}
+			if (dist < 0 && distance > -b2_linearSlop)
+				return true;
+			distance = dist;
+			normal = Vec3(norm, 0);
+			return distance < maxDist;
 		}
-		else
-		{
-			distance = maxDistance;
-			normal = b2Mul(xf.q, normalForMaxDistance);
-		}
+		return false;
+	}
+
+	bool FindZCollision(const b2Transform& xf, float32 z,
+		float32& distance, Vec3& normal, float32 maxDist) const restrict(amp)
+	{
+		const float32 halfHeight = m_height / 2;
+		const float32 zRelToCenter = z - (xf.z + m_zPos + halfHeight);
+		const float32 absZ = b2Abs(zRelToCenter);
+		distance = absZ - halfHeight;
+		normal = Vec3(0, 0, zRelToCenter / absZ);
+		return distance < maxDist;
 	}
 
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
@@ -234,11 +256,6 @@ struct AmpPolygonShape
 				return false;
 		}
 		return true;
-	}
-	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
-	{
-		z -= (m_zPos + xf.z);
-		return z >= 0 && z <= m_height;
 	}
 };
 

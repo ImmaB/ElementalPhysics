@@ -332,7 +332,7 @@ struct Body
 	/// @param point the world position of the point of application.
 	/// @param wake also wake up the body
 	void ApplyLinearImpulse(const Vec2& impulse, const Vec2& point, bool wake);
-	void ApplyLinearImpulse(const Vec2& impulse, const Vec2& point, bool wake) restrict(amp);
+	void ApplyLinearImpulse(const Vec3& impulse, const Vec2& point, bool wake) restrict(amp);
 
 	/// Apply an angular impulse.
 	/// @param impulse the angular impulse in units of kg*m*m/s
@@ -510,6 +510,7 @@ inline Vec2 Body::GetLinearVelocityFromWorldPoint(const Vec2& worldPoint) const 
 	return m_linearVelocity + b2Cross(m_angularVelocity, worldPoint - m_sweep.c);
 }
 
+
 inline Vec2 Body::GetLinearVelocityFromLocalPoint(const Vec2& localPoint) const
 {
 	return GetLinearVelocityFromWorldPoint(GetWorldPoint(localPoint));
@@ -668,7 +669,7 @@ inline void Body::ApplyLinearImpulse(const Vec2& impulse, const Vec2& point, boo
 			m_angularVelocity += m_invI * b2Cross(point - m_sweep.c, impulse);
 	}
 }
-inline void Body::ApplyLinearImpulse(const Vec2& impulse, const Vec2& point, bool wake) restrict(amp)
+inline void Body::ApplyLinearImpulse(const Vec3& impulse, const Vec2& point, bool wake) restrict(amp)
 {
 	if (m_type != Type::Dynamic)
 		return;

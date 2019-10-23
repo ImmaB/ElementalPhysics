@@ -145,6 +145,12 @@ struct AmpChainShape
 		edge.ComputeDistance(xf, p, distance, normal);
 	}
 
+	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
+	{
+		z -= (m_zPos + xf.z);
+		return z >= 0 && z <= m_height;
+	}
+
 	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
 		const b2Transform& xf, int32 childIndex) const restrict(amp)
 	{
@@ -159,12 +165,6 @@ struct AmpChainShape
 		edgeShape.m_vertex2 = m_vertices[i2];
 
 		return edgeShape.RayCast(output, input, xf);
-	}
-
-	bool TestZ(const b2Transform& xf, float32 z) const restrict(amp)
-	{
-		z -= (m_zPos + xf.z);
-		return z >= 0 && z <= m_height;
 	}
 };
 
