@@ -90,8 +90,8 @@ void Body::Set(const Body::Def& def)
 
 void Body::SetMassData(const b2MassData& massData)
 {
-	if (m_type != Dynamic)
-		return;
+	//if (m_type != Dynamic)
+	//	return;
 
 	m_invMass = 0.0f;
 	m_I = 0.0f;

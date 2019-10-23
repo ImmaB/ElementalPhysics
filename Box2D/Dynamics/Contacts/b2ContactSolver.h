@@ -16,18 +16,32 @@
 * 3. This notice may not be removed or altered from any source distribution.
 */
 
-#ifndef B2_CONTACT_SOLVER_H
-#define B2_CONTACT_SOLVER_H
+#pragma once
 
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Collision/b2Collision.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
+#include <vector>
 
 class b2World;
 class b2Contact;
 class b2Body;
 class b2StackAllocator;
-struct b2ContactPositionConstraint;
+
+struct b2ContactPositionConstraint
+{
+	Vec2 localPoints[b2_maxManifoldPoints];
+	Vec2 localNormal;
+	Vec2 localPoint;
+	int32 indexA;
+	int32 indexB;
+	float32 invMassA, invMassB;
+	Vec2 localCenterA, localCenterB;
+	float32 invIA, invIB;
+	b2Manifold::Type type;
+	float32 radiusA, radiusB;
+	int32 pointCount;
+};
 
 struct b2VelocityConstraintPoint
 {
@@ -71,9 +85,16 @@ class b2ContactSolver
 {
 private:
 	b2World& m_world;
+
+	template <typename F>
+	void ForEachContactVelConstraint(const F& func);
+	template <typename F>
+	void ForEachContactPosConstraint(const F& func);
+	template <typename F>
+	void ForEachContactVelAndPosConstraint(const F& func);
 public:
-	b2ContactSolver(b2ContactSolverDef& def, b2World& world);
-	~b2ContactSolver();
+	b2ContactSolver(const b2ContactSolverDef& def, b2World& world);
+	~b2ContactSolver() {}
 
 	void InitializeVelocityConstraints();
 
@@ -88,11 +109,8 @@ public:
 	b2Position* m_positions;
 	b2Velocity* m_velocities;
 	b2StackAllocator* m_allocator;
-	b2ContactPositionConstraint* m_positionConstraints;
-	b2ContactVelocityConstraint* m_velocityConstraints;
+	std::vector<b2ContactPositionConstraint> m_positionConstraints;
+	std::vector<b2ContactVelocityConstraint> m_velocityConstraints;
 	b2Contact** m_contacts;
 	int m_count;
 };
-
-#endif
-

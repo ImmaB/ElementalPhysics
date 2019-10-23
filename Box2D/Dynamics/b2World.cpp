@@ -1609,15 +1609,15 @@ void b2World::ResetMassData(Body& b)
 	b.m_sweep.localCenter.SetZero();
 
 	// Static and kinematic bodies have zero mass.
-	if (b.IsType(Body::Type::Static)|| b.IsType(Body::Type::Kinematic))
-	{
-		b.m_sweep.c0 = b.m_xf.p;
-		b.m_sweep.c = b.m_xf.p;
-		b.m_sweep.a0 = b.m_sweep.a;
-		return;
-	}
-
-	b2Assert(b.m_type == Body::Type::Dynamic);
+	bool justMass = b.IsType(Body::Type::Static) || b.IsType(Body::Type::Kinematic);
+	//if (b.IsType(Body::Type::Static) || b.IsType(Body::Type::Kinematic))
+	//{
+	//	b.m_sweep.c0 = b.m_xf.p;
+	//	b.m_sweep.c = b.m_xf.p;
+	//	b.m_sweep.a0 = b.m_sweep.a;
+	//	return;
+	//}
+	//b2Assert(b.m_type == Body::Type::Dynamic);
 
 	// Accumulate mass over all fixtures.
 	Vec2 localCenter = Vec2_zero;
@@ -1630,7 +1630,7 @@ void b2World::ResetMassData(Body& b)
 		b.m_mass += massData.mass;
 		b.m_surfaceMass += massData.surfaceMass;
 		localCenter += massData.mass * massData.center;
-		b.m_I += massData.I;
+		if (!justMass) b.m_I += massData.I;
 	});
 
 	// Compute center of mass.
@@ -1648,6 +1648,7 @@ void b2World::ResetMassData(Body& b)
 		b.m_surfaceMass = 1.0f;
 		b.m_surfaceInvMass = 1.0f;
 	}
+	if (justMass) return;
 
 	if (b.m_I > 0.0f && !b.HasFlag(Body::Flag::FixedRotation))
 	{
@@ -1655,7 +1656,6 @@ void b2World::ResetMassData(Body& b)
 		b.m_I -= b.m_mass * b2Dot(localCenter, localCenter);
 		b2Assert(m_I > 0.0f);
 		b.m_invI = 1.0f / b.m_I;
-
 	}
 	else
 	{
