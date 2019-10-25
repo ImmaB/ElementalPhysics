@@ -168,6 +168,7 @@ struct b2ParticleSystemDef
 	/// parameter can be larger than 1.0f but the damping effect becomes
 	/// sensitive to the time step when the damping parameter is large.
 	float32 dampingStrength;
+	float32 nonSolidFriction;
 
 	/// Restores shape of elastic particle groups
 	/// Larger values increase elastic particle velocity

@@ -1791,7 +1791,8 @@ bool ParticleSystem::MatchTriadIndices(
 void ParticleSystem::DestroyGroup(int32 groupIdx, int32 timestamp, bool destroyParticles)
 {
 	ParticleGroup& group = m_groupBuffer[groupIdx];
-	if (timestamp != INVALID_IDX && timestamp != group.m_timestamp)
+	if ((timestamp != INVALID_IDX && timestamp != group.m_timestamp) ||
+		group.m_firstIndex == INVALID_IDX)
 		return;
 
 	AddZombieRange(group.m_firstIndex, group.m_lastIndex);
@@ -2994,14 +2995,13 @@ void ParticleSystem::AmpUpdateBodyContacts()
 
 		b2AABB partsBounds;
 		AmpComputeAABB(partsBounds);
-		m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](int32 fixtureIdx)
+		m_world.AmpQueryAABB(partsBounds, [=, &fixtureBounds](const Fixture& f)
 		{
-			const Fixture& f = m_world.m_fixtureBuffer[fixtureIdx];
-			if (f.m_isSensor) return;
+			if (f.m_isSensor || f.m_idx == INVALID_IDX) return;
 
 			const int32 childCount = m_world.GetShape(f).GetChildCount();
 			for (int32 childIdx = 0; childIdx < childCount; childIdx++)
-				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(f, childIdx), fixtureIdx, childIdx));
+				fixtureBounds.push_back(b2AABBFixtureProxy(m_world.GetAABB(f, childIdx), f.m_idx, childIdx));
 		});
 		if (fixtureBounds.empty()) return;
 
@@ -3290,29 +3290,29 @@ void ParticleSystem::SolveCollision()
 		auto circleShapes = GetConstCircleShapes();
 		auto edgeShapes = GetConstEdgeShapes();
 		auto polygonShapes = GetConstPolygonShapes();
-		const auto rayCast = [=](const Fixture& f, b2RayCastOutput& output, const b2RayCastInput& input,
+		const auto rayCast = [=](const Fixture& f, RayCastOutput& output, const RayCastInput& input,
 			const float32 z, const b2Transform& xf, int32 childIdx) restrict(amp) -> bool
 		{
 			switch (f.m_shapeType)
 			{
-			case b2Shape::e_chain:
-			{
-				const auto& s = chainShapes[f.m_shapeIdx];
-				//if (!s.TestZ(xf, z)) return false;
-				return s.RayCast(output, input, xf, childIdx);
-			}
+			//case b2Shape::e_chain:
+			//{
+			//	const auto& s = chainShapes[f.m_shapeIdx];
+			//	//if (!s.TestZ(xf, z)) return false;
+			//	return s.RayCast(output, input, xf, childIdx);
+			//}
 			case b2Shape::e_circle:
 			{
 				const auto& s = circleShapes[f.m_shapeIdx];
 				//if (!s.TestZ(xf, z)) return false;
 				return s.RayCast(output, input, xf);
 			}
-			case b2Shape::e_edge:
-			{
-				const auto& s = edgeShapes[f.m_shapeIdx];
-				//if (!s.TestZ(xf, z)) return false;
-				return s.RayCast(output, input, xf);
-			}
+			//case b2Shape::e_edge:
+			//{
+			//	const auto& s = edgeShapes[f.m_shapeIdx];
+			//	//if (!s.TestZ(xf, z)) return false;
+			//	return s.RayCast(output, input, xf);
+			//}
 			case b2Shape::e_polygon:
 			{
 				const auto& s = polygonShapes[f.m_shapeIdx];
@@ -3390,13 +3390,13 @@ void ParticleSystem::SolveCollision()
 		ForEachPotentialBodyContact(
 			[=](const int32 i, const Particle::BodyContact& contact) restrict(amp)
 		{
-			const Vec3& ap = positions[i];
+			const Vec3 ap = positions[i];
 			const Body& body = bodies[contact.bodyIdx];
 			const Fixture& fixture = fixtures[contact.fixtureIdx];
 
 			const Vec3 av = velocities[i];
-			b2RayCastOutput output;
-			b2RayCastInput input;
+			RayCastOutput output;
+			RayCastInput input;
 			if (iteration == 0)
 			{
 				// Put 'ap' in the local space of the previous frame
@@ -3414,19 +3414,19 @@ void ParticleSystem::SolveCollision()
 					p1 += body.GetLocalCenter();
 				}
 				// Return to global space and apply rotation of current frame
-				input.p1 = b2Mul(body.m_xf, p1);
+				input.p1 = Vec3(b2Mul(body.m_xf, p1), ap.z);
 			}
 			else
 				input.p1 = ap;
-			input.p2 = ap + stepDt * Vec2(av);
+			input.p2 = ap + stepDt * av;
 			input.maxFraction = 1;
 			if (!rayCast(fixture, output, input, ap.z, body.m_xf, contact.childIdx)) return;
-			const Vec2& n = output.normal;
-			const Vec2 p = (1 - output.fraction) * input.p1 +
+			const Vec3& n = output.normal;
+			const Vec3 p = (1 - output.fraction) * input.p1 +
 				output.fraction * input.p2 + b2_linearSlop * n;
-			const Vec2 v = stepInvDt * (p - ap);
-			velocities[i] = Vec3(v, av.z);
-			const Vec2 f = stepInvDt * masses[i] * (Vec2(av) - v);
+			const Vec3 v = stepInvDt * (p - ap);
+			velocities[i] = v;
+			const Vec3 f = stepInvDt * masses[i] * (av - v);
 			particleAtomicApplyForce(i, f);
 		});
 
@@ -3986,8 +3986,8 @@ void ParticleSystem::SolveEnd()
 		m_ampCopyFutGroups.wait();
 		m_ampCopyFutBodies.wait();
 		if (m_debugContacts) m_ampCopyFutContacts.wait();
-		amp::accelView().wait();
 		m_ampArrays.WaitForCopies();
+		//amp::accelView().wait();
 	}
 }
 
@@ -4341,6 +4341,7 @@ void ParticleSystem::SolveDamping()
 	const b2TimeStep& step = m_subStep;
 	const float32 linearDamping = m_def.dampingStrength;
 	const float32 quadraticDamping = 1 / GetCriticalVelocity(step);
+	const float32 nonSolidFriction = m_def.nonSolidFriction;
 
 	if (m_accelerate)
 	{
@@ -4377,8 +4378,10 @@ void ParticleSystem::SolveDamping()
 			const float32 damping =
 				b2Max(linearDamping * w, b2Min(-quadraticDamping * vn, 0.5f));
 			v += damping * vn * n;
-			if (flags[a] & Particle::Mat::k_nonSolidFlags) return;
-			const float32 frictionFactor = 1 - groundMats[contact.groundMatIdx].friction;
+			float32 groundFriction = groundMats[contact.groundMatIdx].friction;
+			if (flags[a] & Particle::Mat::k_nonSolidFlags)
+				groundFriction *= nonSolidFriction;
+			const float32 frictionFactor = 1 - groundFriction;
 			v.x *= frictionFactor;
 			v.y *= frictionFactor;
 		});
@@ -5842,9 +5845,6 @@ void ParticleSystem::SolveIgnite()
 
 void ParticleSystem::SolveExtinguish()
 {
-	if (m_allFlags & Particle::Mat::Flag::Flame &&
-		m_world.m_allBodyMaterialFlags & Body::Mat::Flag::Extinguishing) return;
-	
 	if (m_accelerate)
 	{
 		auto flags = m_ampArrays.flags.GetView();
@@ -5857,14 +5857,10 @@ void ParticleSystem::SolveExtinguish()
 			[=](const int32 i, const Particle::BodyContact& contact) restrict(amp)
 		{
 			Body& b = bodies[contact.bodyIdx];
-			const Particle::Mat& aMat = mats[matIdxs[i]];
-			const Body::Mat& bMat = bodyMats[b.m_matIdx];
-			if (b.HasFlag(Body::Flag::Burning) &&
-				b.m_surfaceHeat < bMat.m_ignitionThreshold)
-			{
+			if (!b.HasFlag(Body::Flag::Burning)) return;
+
+			if (b.m_surfaceHeat < bodyMats[b.m_matIdx].m_ignitionThreshold)
 				b.RemFlag(Body::Flag::Burning);
-				b.AddFlag(Body::Flag::Wet);
-			}
 		});
 		ForEachContact(Particle::Flag::Burning | Particle::Mat::Flag::Extinguishing,
 			[=](const Particle::Contact& contact) restrict(amp)
@@ -5986,20 +5982,19 @@ void ParticleSystem::SolveFluid()
 		auto mats = GetConstMats();
 		auto bodies = GetBodies();
 		auto bodyMats = GetConstBodyMats();
+		auto heats = m_ampArrays.heat.GetView();
+		auto masses = m_ampArrays.mass.GetConstView();
 		ForEachBodyContact(Particle::Mat::Flag::Fluid,
 			[=](const int32 i, const Particle::BodyContact& contact) restrict(amp)
 		{
-			const Particle::Mat& partMat = mats[matIdxs[i]];
 			Body& b = bodies[contact.bodyIdx];
-			if (partMat.HasFlag(Particle::Mat::ChangeWhenHot) && b.m_surfaceHeat >= partMat.m_hotThreshold)
+			if (b.HasFlag(Body::Flag::Wet) ||
+				bodyMats[b.m_matIdx].HasFlag(Body::Mat::Flag::WaterRepellent))
 				return;
-			if (!b.HasFlag(Body::Flag::Wet) &&
-				!bodyMats[b.m_matIdx].HasFlag(Body::Mat::Flag::WaterRepellent)
-				&& b.atomicAddFlag(Body::Flag::Wet))
-			{
-				b.RemFlag(Body::Flag::Burning);
-				flags[i] = Particle::Flag::Zombie;
-			}
+			if (!b.atomicAddFlag(Body::Flag::Wet)) return;
+			DistributeHeat(heats[i], b.m_surfaceHeat, 1, masses[i], b.m_surfaceMass);
+			b.AddFlag(Body::Flag::Wet);
+			flags[i] = Particle::Flag::Zombie;
 		});
 	}
 	else

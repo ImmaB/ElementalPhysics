@@ -204,6 +204,8 @@ void b2World::ClearAll()
 	m_freeShapePositionIdxs.clear();
 	m_freeShapeNormalIdxs.clear();
 
+	//amp::uninitialize();
+
 	Lock();
 }
 

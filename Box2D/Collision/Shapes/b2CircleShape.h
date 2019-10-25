@@ -111,10 +111,26 @@ struct AmpCircleShape
 		return distance < maxDist;
 	}
 
-	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
-		const b2Transform& transform) const restrict(amp)
+	bool RayCast(RayCastOutput& output, const RayCastInput& input,
+		const b2Transform& xf) const restrict(amp)
 	{
-		Vec2 position = transform.p + b2Mul(transform.q, m_p);
+
+		// TODO if (p1 out, p2 in)
+		// add to z normal and dist
+		const float32 bot = xf.z + m_zPos;
+		const float32 top = bot + m_height;
+		if (const float32 p1Diff = input.p1.z - top; p1Diff > 0)
+		{
+			if (const float32 p2Diff = input.p2.z - top; p2Diff < 0)
+			{
+				output.normal = Vec3(0, 0, 1);
+				output.fraction = p1Diff / (p1Diff - p2Diff);
+					return true;
+			}
+			return false;
+		}
+
+		Vec2 position = xf.p + b2Mul(xf.q, m_p);
 		Vec2 s = input.p1 - position;
 		float32 b = b2Dot(s, s) - m_radius * m_radius;
 
@@ -136,7 +152,7 @@ struct AmpCircleShape
 		{
 			a /= rr;
 			output.fraction = a;
-			output.normal = s + a * r;
+			output.normal = Vec3(s + a * r, 0);
 			output.normal.Normalize();
 			return true;
 		}

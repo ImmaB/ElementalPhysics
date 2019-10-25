@@ -159,7 +159,9 @@ public:
 		m_contactManager.m_broadPhase.Query(aabb, [=](int32 proxyId) -> bool
 		{
 			b2FixtureProxy* proxy = m_contactManager.m_broadPhase.GetUserData(proxyId);
-			callback(proxy->fixtureIdx);
+			const Fixture& f = m_fixtureBuffer[proxy->fixtureIdx];
+			if (f.m_idx == INVALID_IDX) return false;
+			callback(f);
 			return true;
 		});
 	}

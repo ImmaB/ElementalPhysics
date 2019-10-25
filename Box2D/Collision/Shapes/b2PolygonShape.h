@@ -182,9 +182,22 @@ struct AmpPolygonShape
 		return distance < maxDist;
 	}
 
-	bool RayCast(b2RayCastOutput& output, const b2RayCastInput& input,
+	bool RayCast(RayCastOutput& output, const RayCastInput& input,
 		const b2Transform& xf) const restrict(amp)
 	{
+		const float32 bot = xf.z + m_zPos;
+		const float32 top = bot + m_height;
+		if (const float32 p1Diff = input.p1.z - top; p1Diff > 0)
+		{
+			if (const float32 p2Diff = input.p2.z - top; p2Diff < 0)
+			{
+				output.normal = Vec3(0, 0, 1);
+				output.fraction = p1Diff / (p1Diff - p2Diff);
+				return true;
+			}
+			return false;
+		}
+
 		// Put the ray into the polygon's frame of reference.
 		Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
 		Vec2 p2 = b2MulT(xf.q, input.p2 - xf.p);
@@ -239,7 +252,7 @@ struct AmpPolygonShape
 		if (index >= 0)
 		{
 			output.fraction = lower;
-			output.normal = b2Mul(xf.q, m_normals[index]);
+			output.normal = Vec3(b2Mul(xf.q, m_normals[index]), 0);
 			return true;
 		}
 		return false;

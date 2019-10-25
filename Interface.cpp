@@ -197,13 +197,14 @@ EXPORT int32 GetPartContactCnt() { return pPartSys->GetContactCount(); }
 #pragma region API Particle Systems
 
 EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 damping,
-	float32 gravityScale, float32 airResFactor, float32 minAirSpeed, float32 heatLossRatio,
-	float32 flameHealthLossPerSec, float32 flameHeatGainPerSec)
+	float32 nonSolidFriction, float32 gravityScale, float32 airResFactor, float32 minAirSpeed,
+	float32 heatLossRatio, float32 flameHealthLossPerSec, float32 flameHeatGainPerSec)
 {
 	if (!pPartSys) pPartSys = pWorld->CreateParticleSystem();
 	pPartSys->m_accelerate = accelerate;
 	pPartSys->SetRadius(radius);
 	pPartSys->m_def.dampingStrength = damping;
+	pPartSys->m_def.nonSolidFriction = nonSolidFriction;
 	pPartSys->m_def.gravityScale = gravityScale;
 	pPartSys->m_def.airResistanceFactor = airResFactor;
 	pPartSys->m_def.minAirSpeed = minAirSpeed;
@@ -503,18 +504,15 @@ EXPORT Body* GetBodies(int32* outCnt)
 	return pWorld->m_bodyBuffer.data();
 }
 
-EXPORT void SetBodyAwake(Body* pBody, bool isAwake)
-{
-	pBody->SetAwake(isAwake);
-}
+EXPORT void SetBodyActive(int32 bIdx, bool active) { pWorld->SetActive(pWorld->GetBody(bIdx), active); }
+EXPORT void SetBodyHeat(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_heat = heat; }
+EXPORT void SetBodyHealth(int32 bIdx, float32 health) { pWorld->GetBody(bIdx).m_health = health; }
+EXPORT void SetBodyFlags(int32 bIdx, uint32 flags) { pWorld->GetBody(bIdx).m_flags = flags; }
+
 EXPORT bool GetBodyAwake(b2World* pWorld, int32 bodyIdx)
 {
 	const Body& body = pWorld->GetBody(bodyIdx);
     return body.IsAwake();
-}
-EXPORT void SetBodyActive(Body* pBody, bool isActive)
-{
-	pWorld->SetActive(*pBody, isActive);
 }
 EXPORT bool GetBodyActive(b2World* pWorld, int32 bodyIdx)
 {
