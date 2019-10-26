@@ -506,6 +506,7 @@ EXPORT Body* GetBodies(int32* outCnt)
 
 EXPORT void SetBodyActive(int32 bIdx, bool active) { pWorld->SetActive(pWorld->GetBody(bIdx), active); }
 EXPORT void SetBodyHeat(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_heat = heat; }
+EXPORT void SetBodySurfaceHeat(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_surfaceHeat = heat; }
 EXPORT void SetBodyHealth(int32 bIdx, float32 health) { pWorld->GetBody(bIdx).m_health = health; }
 EXPORT void SetBodyFlags(int32 bIdx, uint32 flags) { pWorld->GetBody(bIdx).m_flags = flags; }
 

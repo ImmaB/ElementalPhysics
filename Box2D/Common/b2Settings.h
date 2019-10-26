@@ -270,7 +270,7 @@ typedef unsigned long long uint64;
 
 /// The initial size of particle data buffers.
 #define b2_minPartMatBufferCapacity		16
-#define MIN_PART_CAPACITY	256
+#define MIN_PART_CAPACITY	256 * 256
 #define b2_minGroupBufferCapacity		64
 
 /// The time into the future that collisions against barrier particles will be detected.
