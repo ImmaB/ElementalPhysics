@@ -185,28 +185,6 @@ struct AmpPolygonShape
 	bool RayCast(RayCastOutput& output, const RayCastInput& input,
 		const b2Transform& xf) const restrict(amp)
 	{
-		const float32 bot = xf.z + m_zPos;
-		const float32 top = bot + m_height;
-		if (const float32 p1Diff = input.p1.z - top; p1Diff > 0)
-		{
-			if (const float32 p2Diff = input.p2.z - top; p2Diff < 0)
-			{
-				output.normal = Vec3(0, 0, 1);
-				output.fraction = p1Diff / (p1Diff - p2Diff);
-				return true;
-			}
-			return false;
-		}
-		else if (const float32 p1Diff = top - input.p1.z; p1Diff > 0)
-		{
-			if (const float32 p2Diff = top - input.p2.z; p2Diff < 0)
-			{
-				output.normal = Vec3(0, 0, -1);
-				output.fraction = p1Diff / (p1Diff - p2Diff);
-				return true;
-			}
-			return false;
-		}
 
 		// Put the ray into the polygon's frame of reference.
 		Vec2 p1 = b2MulT(xf.q, input.p1 - xf.p);
@@ -257,6 +235,29 @@ struct AmpPolygonShape
 			//if (upper < lower - b2_epsilon)
 			if (upper < lower)
 				return false;
+		}
+
+		const float32 bot = xf.z + m_zPos;
+		const float32 top = bot + m_height;
+		if (const float32 p1Diff = input.p1.z - top; p1Diff > 0)
+		{
+			if (const float32 p2Diff = input.p2.z - top; p2Diff < 0)
+			{
+				output.normal = Vec3(0, 0, 1);
+				output.fraction = p1Diff / (p1Diff - p2Diff);
+				return true;
+			}
+			return false;
+		}
+		else if (const float32 p1Diff = top - input.p1.z; p1Diff > 0)
+		{
+			if (const float32 p2Diff = top - input.p2.z; p2Diff < 0)
+			{
+				output.normal = Vec3(0, 0, -1);
+				output.fraction = p1Diff / (p1Diff - p2Diff);
+				return true;
+			}
+			return false;
 		}
 
 		if (index >= 0)

@@ -7130,6 +7130,21 @@ void ParticleSystem::PullIntoCircle(const Vec3& pos, const float32 radius,
 		}
 	}
 }
+void ParticleSystem::Swirl(const Vec3& center, float32 swirlStrength, float32 pullStrength,
+	uint32 flag, float32 step)
+{
+	const float32 swirlStr = swirlStrength * step;
+	const float32 pullStr = pullStrength * step;
+	PrepareForceBuffer();
+	auto positions = m_ampArrays.position.GetConstView();
+	auto forces = m_ampArrays.force.GetView();
+	ForEachParticle(flag, [=](const int32 i) restrict(amp)
+	{
+		const Vec3 toCenter = (center - positions[i]).Normalized();
+		const Vec3 rot = b2Cross(Vec3(0, 0, 1), toCenter);
+		forces[i] += rot * swirlStr + toCenter * pullStr;
+	});
+}
 
 void ParticleSystem::ParticleApplyForce(int32 index, const Vec3& force)
 {

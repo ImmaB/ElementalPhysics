@@ -611,6 +611,8 @@ public:
 	void ApplyForce(int32 firstIndex, int32 lastIndex, const Vec3& force);
 	void PullIntoCircle(const Vec3& pos, const float32 radius,
 		float32 strength, uint32 flag, bool ignoreMass, float32 step);
+	void Swirl(const Vec3& center, float32 swirlStrength, float32 pullStrength,
+		uint32 flag, float32 step);
 
 	/// Get the next particle-system in the world's particle-system list.
 	ParticleSystem* GetNext();
