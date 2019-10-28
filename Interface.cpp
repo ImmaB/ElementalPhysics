@@ -2,12 +2,10 @@
 #include <utility>
 #include <Box2D/Common/b2Math.h>
 #include <Box2D/Common/Global.h>
-#include <Box2D/Particle/b2ParticleSystem.h>
 #include <math.h>
 #include <vector>
 #include <string.h>
 #include <IUnityGraphics.h>
-#include <d3d11.h>
 #include <IUnityGraphicsD3D11.h>
 #include <ppl.h>
 
@@ -109,6 +107,11 @@ extern "C"
 		//bool done2 = Concurrency::accelerator::set_default(accel.device_path);
 	}
 
+	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
+	{
+		if (pPartSys) { delete pPartSys; pPartSys = nullptr; }
+		if (pWorld) { delete pWorld; pWorld = nullptr; }
+	}
 }
 
 #pragma region API World
@@ -134,7 +137,7 @@ EXPORT void SetAtmosphericDensity(float32 density) { pWorld->m_atmosphericDensit
 EXPORT void SetWind(Vec3 wind) { pWorld->m_wind = wind; }
 
 EXPORT void ClearWorld() { if (pWorld) pWorld->ClearAll(); }
-EXPORT void DestroyWorld() { if (pWorld) delete pWorld; }
+EXPORT void DestroyWorld() { if (pWorld) { delete pWorld; pWorld = nullptr; pPartSys = nullptr; } }
 
 EXPORT bool IsWorldCreated() { return pWorld != nullptr; }
 
@@ -214,7 +217,7 @@ EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 dampin
 }
 EXPORT void DestroyAllParticles() { if (pPartSys) pPartSys->DestroyAllParticles(); }
 
-EXPORT void DestroyParticleSystem() { pWorld->DestroyParticleSystem(); }
+EXPORT void DestroyParticleSystem() { if (pWorld) { pWorld->DestroyParticleSystem(); } pPartSys = nullptr; }
 
 EXPORT void SetAccelerate(bool acc) { pPartSys->m_accelerate = acc; }
 
@@ -553,7 +556,7 @@ EXPORT void ApplyDamageToBody(int32 bIdx, float32 damage) { pWorld->GetBody(bIdx
 EXPORT void ApplyHeatToBody(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_heat += heat; }
 EXPORT void ApplyHeatToBodySurface(int32 bIdx, float32 heat) { pWorld->GetBody(bIdx).m_surfaceHeat += heat; }
 
-EXPORT void DestroyBody(int32 idx) { pWorld->DestroyBody(idx); }
+EXPORT void DestroyBody(int32 idx) { if (pWorld) pWorld->DestroyBody(idx); }
 
 EXPORT void SetBodyVelocity(int32 idx, Vec3 vel) { pWorld->GetBody(idx).SetLinearVelocity(vel); }
 
@@ -671,10 +674,7 @@ EXPORT void SetFixtureDensity(Fixture* pFixture, float32 density)
     pFixture->SetDensity(density);
 }
 
-EXPORT void DestroyFixture(int32 idx)
-{
-	pWorld->DestroyFixture(idx);
-}
+EXPORT void DestroyFixture(int32 idx) { if (pWorld) pWorld->DestroyFixture(idx); }
 #pragma endregion
 
 #pragma region Joints

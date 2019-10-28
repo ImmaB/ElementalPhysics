@@ -765,6 +765,9 @@ public:
 		const Proxy* m_last;
 	};
 
+	ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer);
+	~ParticleSystem();
+
 private:
 	/// Node of linked lists of connected particles
 	struct ParticleListNode
@@ -780,8 +783,6 @@ private:
 		int32 index;
 	};
 
-	ParticleSystem(b2World& world, b2TimeStep& step, vector<Body>& bodyBuffer, vector<Fixture>& fixtureBuffer);
-	~ParticleSystem();
 
 	template <typename T> void FreeBuffer(T** b, int capacity);
 	template <typename T> void FreeUserOverridableBuffer(

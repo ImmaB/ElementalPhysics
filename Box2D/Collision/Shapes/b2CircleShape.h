@@ -125,7 +125,17 @@ struct AmpCircleShape
 			{
 				output.normal = Vec3(0, 0, 1);
 				output.fraction = p1Diff / (p1Diff - p2Diff);
-					return true;
+				return true;
+			}
+			return false;
+		}
+		else if (const float32 p1Diff = top - input.p1.z; p1Diff > 0)
+		{
+			if (const float32 p2Diff = top - input.p2.z; p2Diff < 0)
+			{
+				output.normal = Vec3(0, 0, -1);
+				output.fraction = p1Diff / (p1Diff - p2Diff);
+				return true;
 			}
 			return false;
 		}
