@@ -541,13 +541,19 @@ namespace amp
 			parallel_for_each(tileAndPad<TileSize>(cnt),
 				[=](ampTiledIdx<TileSize> tIdx) restrict(amp)
 			{
+				//const int32 gi = tIdx.global[0];
+				//T sum;
+				//T val = _prefix_sum_detail::tilePrefixSumWithoutOrig(gi < cnt ? input[gi] : 0, tIdx, sum);
+				//if (gi < cnt) tilewiseScansView[gi] = val;
+				//tileSumsView[tIdx.tile] = sum;
+
 				const uint32 li = tIdx.local[0];
 				const int32 gi = tIdx.global[0];
 				const bool inRange = gi < cnt;
 
 				tile_static T tile[TileSize];
-				T val = input[gi];
-				if (inRange) tile[li] = val;
+				// if (inRange) tile[li] = val;
+				T val = tile[li] = inRange ? input[gi] : T(0);
 
 				for (uint32 offset = 2, half = 1; half <= TileSize; half = offset, offset *= 2)
 				{
@@ -555,13 +561,11 @@ namespace amp
 					if ((li % offset) + 1 == offset)
 						tile[li] += tile[li - half];
 				}
-				if (li % 2) val = tile[li];
-				if (li == TileSize - 1)
-					tileSumsView[tIdx.tile[0]] = val;
-
+				if (li == TileSize - 1) tileSumsView[tIdx.tile] = tile[li];
 				tIdx.barrier.wait_with_tile_static_memory_fence();
-				if (!inRange) return;
 
+				if (!inRange) return;
+				if (li % 2) val = tile[li];
 				for (uint32 offset = TileSize, half = TileSize / 2; half >= 2; offset = half, half /= 2)
 					if (const uint32 modIdx = (li % offset) + 1; half < modIdx && modIdx < offset)
 						val += tile[li + half - modIdx];
@@ -610,6 +614,7 @@ namespace amp
 	template<typename T, typename F>
 	static int32 scan(const ampArrayView<const T>& src, const int32 cnt, const F& function)
 	{
+		Timer t = Timer();
 		ampArray<T> dst(cnt);
 		//Timer t = Timer();
 		_scan_detail::scanTiled<TILE_SIZE>(src, dst, cnt);
@@ -626,8 +631,62 @@ namespace amp
 		});
 		//float32 t2 = t.Stop();
 		sumFut.wait();
+		float32 t1 = t.Stop();
 		return sum;
 	}
+
+	//template<typename T, typename F>
+	//static int32 scan(const ampArrayView<const T>& src, const int32 cnt, const F& function)
+	//{
+	//	Timer t = Timer();
+	//	ampArray<T> localScans(cnt);
+	//	const int32 tileCnt = (cnt + TILE_SIZE - 1) / TILE_SIZE;
+	//	ampArray<T> tileSums(tileCnt);
+	//	_scan_detail::tilewiseScan<TILE_SIZE>(src, localScans, tileSums, cnt);
+	//	ampArrayView<const T> localScansView(localScans);
+
+	//	if (tileCnt > 1)
+	//	{
+	//		const int32 tile2Cnt = (tileCnt + TILE_SIZE - 1) / TILE_SIZE;
+	//		ampArray<T> tile2Sums(tile2Cnt);
+	//		std::vector<T> tile2SumArr(tile2Cnt);
+	//		_scan_detail::tilewiseScan<TILE_SIZE>(ampArrayView<const T>(tileSums), tileSums, tile2Sums, tileCnt);
+	//		ampCopyFuture tile2SumsFut = copyAsync(tile2Sums, tile2SumArr);
+
+	//		ampArrayView<const T> tileSumScanView(tileSums);
+	//		ampArrayView<const T> tile2SumView(tile2Sums);
+	//		parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+	//		{
+	//			const int32 gi = tIdx.global[0];
+	//			if (gi >= cnt || !src[gi]) return;
+	//			const int32 ti = tIdx.tile[0];
+	//			const int32 tti = ti / TILE_SIZE;
+	//			T newI = ((gi == 0) ? 0 : localScansView[gi - 1]) +
+	//				     ((ti == 0) ? 0 : tileSumScanView[ti - 1]);
+	//			for (int32 i = 0; i < tti; i++)	// this will have (cnt / (256 * 256)) iterations
+	//				newI += tile2SumView[i];
+	//			function(gi, newI);
+	//		});
+
+	//		tile2SumsFut.wait();
+	//		int32 sum = 0;
+	//		for (int32 i = 0; i < tile2Cnt; i++) sum += tile2SumArr[i];
+	//		float32 t1 = t.Stop();
+	//		return sum;
+	//	}
+
+	//	T lastTileSum;
+	//	ampCopyFuture lastTileSumFut = copyAsync(tileSums, tileCnt - 1, lastTileSum);
+
+	//	parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+	//	{
+	//		const int32 gi = tIdx.global[0];
+	//		if (gi < cnt)
+	//			function(gi, (gi == 0) ? 0 : localScansView[gi - 1]);
+	//	});
+	//	lastTileSumFut.wait();
+	//	return lastTileSum;
+	//}
 
 
 	namespace _prefix_sum_detail
@@ -658,6 +717,30 @@ namespace amp
 			return lSums[0][0];
 		}
 
+
+		template<typename T, int TileSize>
+		static T tilePrefixSumWithoutOrig(T val, ampTiledIdx<TileSize> tIdx, T& sum) restrict(amp)
+		{
+			const uint32 li = tIdx.local[0];
+
+			tile_static T tile[TileSize];
+			tile[li] = val;
+
+			for (uint32 offset = 2, half = 1; half <= TileSize; half = offset, offset *= 2)
+			{
+				tIdx.barrier.wait_with_tile_static_memory_fence();
+				if ((li % offset) + 1 == offset)
+					tile[li] += tile[li - half];
+			}
+			if (li % 2) val = tile[li];
+
+			tIdx.barrier.wait_with_tile_static_memory_fence();
+			sum = tile[TileSize - 1];
+			for (uint32 offset = TileSize, half = TileSize / 2; half >= 2; offset = half, half /= 2)
+				if (const uint32 modIdx = (li % offset) + 1; half < modIdx && modIdx < offset)
+					val += tile[li + half - modIdx];
+			return val;
+		}
 
 		template<typename T, int TileSize>
 		static T tilePrefixSum(T val, ampTiledIdx<TileSize> tIdx, T& sum) restrict(amp)
