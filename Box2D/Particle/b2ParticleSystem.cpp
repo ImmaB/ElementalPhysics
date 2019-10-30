@@ -620,7 +620,7 @@ inline void ParticleSystem::ForEachContact(const uint32 flags, const F& function
 	});
 }
 template<typename F>
-inline void ParticleSystem::ForEachContactShuffled(const F& function) const
+void ParticleSystem::ForEachContactShuffled(const F& function) const
 {
 	const int32 contactCnt = m_contactCount;
 	const uint32 blockSize = amp::getTileCount(contactCnt);
@@ -647,6 +647,16 @@ inline void ParticleSystem::ForEachContactShuffled(const F& function) const
 			Particle::ContactIdx cIdx = contactIdxs[shuffledIdx];
 			function(contacts[cIdx.i].contacts[cIdx.j]);
 		}
+	});
+}
+template<typename F>
+void ParticleSystem::ForEachContactShuffled(const uint32 flag, const F& function) const
+{
+	if (!(m_allFlags & flag)) return;
+	auto flags = m_ampArrays.flags.GetConstView();
+	ForEachContactShuffled([=](const Particle::Contact& c) restrict(amp)
+	{
+		if (c.flags & flag) function(c);
 	});
 }
 template<typename F>
@@ -963,7 +973,7 @@ pair<int32, int32> ParticleSystem::CreateParticlesWithPositions(const ParticleGr
 			m_consecutiveContactStepsBuffer[wi] = 0;
 		const Vec3 p = groupDef.positions[i];
 		m_buffers.position[wi] = b2Mul3D(groupDef.transform, p);
-		m_buffers.velocity[wi] = Vec3(groupDef.linearVelocity +
+		m_buffers.velocity[wi] = groupDef.linearVelocity + Vec3(
 			b2Cross(groupDef.angularVelocity, (Vec2)p - groupDef.transform.p), 0);
 		m_buffers.heat[wi] = groupDef.heat;
 		m_buffers.health[wi] = groupDef.health;
@@ -3092,7 +3102,7 @@ void ParticleSystem::AmpUpdateBodyContacts()
 			const float32 rpn = b2Cross(rp, n);
 			const float32 invM = invAm + invBm + invBI * rpn * rpn;
 			
-			contact.weight = 1 - d * invDiameter;
+			contact.weight = b2Max(1 - d * invDiameter, 1.0f);
 			contact.normal = -n;
 			contact.mass = invM > 0 ? 1 / invM : 0;
 			//DetectStuckParticle(i); //TODO
@@ -5541,13 +5551,35 @@ void ParticleSystem::SolveColorMixing()
 	}
 }
 
+void AtomicHeatAdd()
+{
+}
+
+void DistributeHeatAtomicB(float32& aHeat, float32& bHeat, float32 factor,
+	const float32& aMass, const float32& bMass) restrict(amp)
+{
+	factor /= aMass + bMass;
+	if (b2Abs(factor) < b2_epsilon) return;
+	float32 expectedB, newB, newA;
+	do
+	{
+		const float32 d = (aHeat - bHeat) * factor;
+		if (b2Abs(factor) < b2_epsilon) return;
+		expectedB = bHeat;
+		newA = aHeat - d * bMass;
+		newB = bHeat + d * aMass;
+	} while (!Concurrency::atomic_compare_exchange((uint32*)&bHeat,
+		(uint32*)&expectedB, reinterpret_cast<uint32&>(newB)));
+	aHeat = newA;
+}
+
 void DistributeHeat(float32& aHeat, float32& bHeat, const float32& factor,
 	const float32& aMass, const float32& bMass) restrict(amp)
 {
 	const float32 d = (aHeat - bHeat) * factor / (aMass + bMass);
 	if (b2Abs(d) < b2_epsilon) return;
-	amp::atomicSub(aHeat, d * bMass);
-	amp::atomicAdd(bHeat, d * aMass);
+	aHeat -= d * bMass;
+	bHeat += d * aMass;
 }
 
 void ParticleSystem::SolveHeatConduct()
@@ -5568,17 +5600,19 @@ void ParticleSystem::SolveHeatConduct()
 			const Body::Mat& bMat = bodyMats[b.m_matIdx];
 			if (!bMat.HasFlag(Body::Mat::Flag::HeatConducting)) return;
 			const Particle::Mat& aMat = mats[matIdxs[i]];
-			const float32 factor = step.dt * aMat.m_heatConductivity * bMat.m_heatConductivity * ampSqrt(contact.weight);
-			DistributeHeat(heats[i], b.m_surfaceHeat, factor, aMat.m_mass, b.m_surfaceMass);
+			const float32 factor = step.dt * aMat.m_heatConductivity * bMat.m_heatConductivity
+				* ampSqrt(contact.weight);
+			DistributeHeatAtomicB(heats[i], b.m_surfaceHeat, factor, aMat.m_mass, b.m_surfaceMass);
 		});
-		ForEachContact(Particle::Mat::Flag::HeatConducting, [=](const Particle::Contact& contact) restrict(amp)
+		ForEachContactShuffled(Particle::Mat::Flag::HeatConducting, [=](const Particle::Contact& contact) restrict(amp)
 		{
 			const int32 a = contact.idxA;
 			const int32 b = contact.idxB;
 			const Particle::Mat& aMat = mats[matIdxs[a]];
 			const Particle::Mat& bMat = mats[matIdxs[b]];
 			if (!(aMat.m_heatConductivity && bMat.m_heatConductivity)) return;
-			const float32 factor = step.dt * aMat.m_heatConductivity * bMat.m_heatConductivity * ampSqrt(contact.weight);
+			const float32 factor = step.dt * aMat.m_heatConductivity * bMat.m_heatConductivity
+				* ampSqrt(contact.weight);
 			DistributeHeat(heats[a], heats[b], factor, aMat.m_mass, bMat.m_mass);
 		});
 	}
@@ -7099,7 +7133,6 @@ void ParticleSystem::PullIntoCircle(const Vec3& pos, const float32 radius,
 	{
 		auto positions = m_ampArrays.position.GetView();
 		auto forces = ignoreMass ? m_ampArrays.velocity.GetView() : m_ampArrays.force.GetView();
-		auto velocities = m_ampArrays.velocity.GetConstView();
 		ForEachParticle(flag, [=](const int32 i) restrict(amp)
 		{
 			Vec3& p = positions[i];
@@ -7131,7 +7164,7 @@ void ParticleSystem::PullIntoCircle(const Vec3& pos, const float32 radius,
 	}
 }
 void ParticleSystem::Swirl(const Vec3& center, float32 swirlStrength, float32 pullStrength,
-	uint32 flag, float32 step)
+	float32 upDraft, uint32 flag, float32 controlRadius, float32 step)
 {
 	const float32 swirlStr = swirlStrength * step;
 	const float32 pullStr = pullStrength * step;
@@ -7140,9 +7173,12 @@ void ParticleSystem::Swirl(const Vec3& center, float32 swirlStrength, float32 pu
 	auto forces = m_ampArrays.force.GetView();
 	ForEachParticle(flag, [=](const int32 i) restrict(amp)
 	{
-		const Vec3 toCenter = (center - positions[i]).Normalized();
+		Vec3 toCenter = center - positions[i];
+		float32 toCenterLength = toCenter.Length();
+		if (toCenterLength > controlRadius) return;
+		toCenter /= toCenterLength;
 		const Vec3 rot = b2Cross(Vec3(0, 0, 1), toCenter);
-		forces[i] += rot * swirlStr + toCenter * pullStr;
+		forces[i] += rot * swirlStr + toCenter * pullStr + Vec3(0, 0, 1) * upDraft;
 	});
 }
 
@@ -7383,7 +7419,7 @@ void ParticleSystem::WaitForCopyBox2DToGPU()
 	//shapes.resize(m_ampCircleShapes.extent[0]);
 	//amp::copy(m_ampCircleShapes, shapes);
 	//return;
-}	//
+}
 
 void ParticleSystem::SetRadius(float32 radius)
 {

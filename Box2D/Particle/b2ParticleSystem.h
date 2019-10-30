@@ -612,7 +612,7 @@ public:
 	void PullIntoCircle(const Vec3& pos, const float32 radius,
 		float32 strength, uint32 flag, bool ignoreMass, float32 step);
 	void Swirl(const Vec3& center, float32 swirlStrength, float32 pullStrength,
-		uint32 flag, float32 step);
+		float32 upDraft, uint32 flag, float32 controlRadius, float32 step);
 
 	/// Get the next particle-system in the world's particle-system list.
 	ParticleSystem* GetNext();
@@ -811,6 +811,7 @@ private:
 	template<typename F> void ForEachContact(const F& function) const;
 	template<typename F> void ForEachContact(const uint32 flag, const F& function) const;
 	template<typename F> void ForEachContactShuffled(const F& function) const;
+	template<typename F> void ForEachContactShuffled(const uint32 flag, const F& function) const;
 	template<typename F> void ForEachPotentialBodyContact(const F& function) const;
 	template<typename F> void ForEachBodyContact(const F& function) const;
 	template<typename F> void ForEachBodyContact(const uint32 flag, const F& function) const;

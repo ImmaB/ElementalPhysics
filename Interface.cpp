@@ -331,9 +331,9 @@ EXPORT void PullPartsIntoCircle(Vec3 pos, float32 radius, float32 strength, int3
 	pPartSys->PullIntoCircle(pos, radius, strength, flag, ignoreMass, step);
 }
 EXPORT void SwirlParticles(Vec3 pos, float32 swirlStrength,
-	float32 pullStrength, Particle::Flag flag, float32 step)
+	float32 pullStrength, float32 upDraft, Particle::Flag flag, float32 controlRadius, float32 step)
 {
-	pPartSys->Swirl(pos, swirlStrength, pullStrength, flag, step);
+	pPartSys->Swirl(pos, swirlStrength, pullStrength, upDraft, flag, controlRadius, step);
 }
 
 EXPORT int32 GetParticleCapacity() { return pPartSys->GetCapacity(); }
