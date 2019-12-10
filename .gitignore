@@ -218,6 +218,6 @@ pip-log.txt
 *.obj
 *.db
 *.db
-liquidfire.VC.db
-liquidfire.VC.db
+elementalphysics.VC.db
+elementalphysics.VC.db
 *.opendb

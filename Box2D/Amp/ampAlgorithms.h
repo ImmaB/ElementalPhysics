@@ -766,7 +766,7 @@ namespace amp
 			return val - origVal;
 			
 			//const uint32 li = tIdx.local[0];
-			//tile_T lPrefixSums[TileSize][2];
+			//T lPrefixSums[TileSize][2];
 
 			//lPrefixSums[li][0] = val;
 			//tIdx.barrier.wait_with_tile_static_memory_fence();

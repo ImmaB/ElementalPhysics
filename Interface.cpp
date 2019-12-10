@@ -91,7 +91,6 @@ ID3D11Device* pD3D11Device = nullptr;
 std::shared_ptr<ampAccelView> spD11AccelView;
 #pragma endregion
 
-
 extern "C"
 {
 	void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* interfaces)

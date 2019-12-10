@@ -2522,6 +2522,7 @@ void ParticleSystem::SortProxies()
 		//	if (proxies[i].tag > proxies[i2].tag)
 		//		sortError[0] = 1;
 		//});
+		//amp::accelView().wait();
 	}
 	else
 	{
@@ -3940,7 +3941,6 @@ bool ParticleSystem::ShouldSolve()
 
 void ParticleSystem::SolveInit(int32 timestamp) 
 {
-
 	//if (!m_expireTimeBuf.empty())
 	//	SolveLifetimes(m_step);
 	m_iteration = 0;
@@ -3971,6 +3971,8 @@ void ParticleSystem::InitStep()
 	m_subStep = m_step;
 	m_subStep.dt /= m_step.particleIterations;
 	m_subStep.inv_dt *= m_step.particleIterations;
+
+	//amp::accelView().wait();
 }
 
 void ParticleSystem::UpdateContacts(bool exceptZombie)
@@ -3980,6 +3982,7 @@ void ParticleSystem::UpdateContacts(bool exceptZombie)
 		AmpUpdateBodyContacts();
 		AmpUpdateGroundContacts();
 		AmpFindContacts(exceptZombie);
+		//amp::accelView().wait();
 	}
 	else
 	{
