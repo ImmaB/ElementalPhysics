@@ -65,15 +65,14 @@ int32 b2CalculateParticleIterations(
 }
 
 
+
 Particle::Buffers::Buffers(int32 cap) :
 	flags(cap),
 	position(cap), velocity(cap), force(cap),
-	accumulationVec3(cap),
 	weight(cap), heat(cap), health(cap),
 	mass(cap), invMass(cap),
 	staticPressure(cap), accumulation(cap), depth(cap),
-	matIdx(cap), groupIdx(cap), color(cap), bodyContactCnt(cap),
-	proxy(cap)
+	matIdx(cap), groupIdx(cap), color(cap)
 {}
 
 void Particle::Buffers::Resize(int32 capacity)
@@ -82,7 +81,6 @@ void Particle::Buffers::Resize(int32 capacity)
 	position.resize(capacity);
 	velocity.resize(capacity);
 	force.resize(capacity);
-	accumulationVec3.resize(capacity);
 	weight.resize(capacity);
 	heat.resize(capacity);
 	health.resize(capacity);
@@ -94,102 +92,93 @@ void Particle::Buffers::Resize(int32 capacity)
 	matIdx.resize(capacity);
 	groupIdx.resize(capacity);
 	color.resize(capacity);
-	bodyContactCnt.resize(capacity);
-	proxy.resize(capacity);
 }
 
 
 Particle::AmpArrays::AmpArrays(const ampAccelView& accView) :
-	flags(accView),
-	position(accView), velocity(accView),
-	weight(accView), heat(accView), health(accView),
-	matIdx(accView), color(accView),
-	force(accView),
-	accumulationVec3(accView),
-	mass(accView), invMass(accView),
-	staticPressure(accView), accumulation(accView),
-	depth(accView),
-	groupIdx(accView),
-	contactCnt(accView), bodyContactCnt(accView),
-	proxy(accView),
-	contactIdx(accView, MIN_PART_CAPACITY * MAX_CONTACTS_PER_PARTICLE),
-	contact(accView),
-	bodyContactIdx(accView, MIN_PART_CAPACITY * MAX_BODY_CONTACTS_PER_PARTICLE),
-	bodyContact(accView),
-	groundContact(accView)
+	m_flags(accView),
+	m_position(accView), m_velocity(accView),
+	m_weight(accView), m_heat(accView), m_health(accView),
+	m_matIdx(accView), m_color(accView),
+	m_force(accView),
+	m_accumulationVec3(accView),
+	m_mass(accView), m_invMass(accView),
+	m_staticPressure(accView), m_accumulation(accView),
+	m_depth(accView),
+	m_groupIdx(accView),
+	m_proxy(accView),
+	m_count(0), m_capacity(0)
 {}
 
-void Particle::AmpArrays::Resize(int32 capacity, int32 copyCnt)
+bool Particle::AmpArrays::Resize(int32 size)
 {
-	amp::resize(flags.arr, capacity, copyCnt);
-	amp::resize(position.arr, capacity, copyCnt);
-	amp::resize(velocity.arr, capacity, copyCnt);
-	amp::resize(force.arr, capacity, copyCnt);
-	amp::resize(accumulationVec3.arr, capacity);
+	const int32 lastCnt = m_count;
+	m_count = size;
+	if (!AdjustCapacityToSize(m_capacity, size, MIN_PART_CAPACITY)) return false;
 
-	amp::resize(weight.arr, capacity);
-	amp::resize(heat.arr, capacity, copyCnt);
-	amp::resize(health.arr, capacity, copyCnt);
-	amp::resize(mass.arr, capacity, copyCnt);
-	amp::resize(invMass.arr, capacity, copyCnt);
-	amp::resize(staticPressure.arr, capacity, copyCnt);
-	amp::resize(accumulation.arr, capacity);
-	amp::resize(depth.arr, capacity);
+	m_iterations = 1 + ((m_capacity - 1) / CONTACT_THREADS);
 
-	amp::resize(matIdx.arr, capacity, copyCnt);
-	amp::resize(groupIdx.arr, capacity, copyCnt);
-	amp::resize(color.arr, capacity, copyCnt);
+	m_flags.Resize(m_capacity, lastCnt);
+	m_position.Resize(m_capacity, lastCnt);
+	m_velocity.Resize(m_capacity, lastCnt);
+	m_force.Resize(m_capacity, lastCnt);
+	m_accumulationVec3.Resize(m_capacity);
 
-	amp::resize(contactCnt.arr, capacity);
-	amp::resize(bodyContactCnt.arr, capacity);
-	amp::resize(proxy.arr, capacity);
+	m_weight.Resize(m_capacity);
+	m_heat.Resize(m_capacity, lastCnt);
+	m_health.Resize(m_capacity, lastCnt);
+	m_mass.Resize(m_capacity, lastCnt);
+	m_invMass.Resize(m_capacity, lastCnt);
+	m_staticPressure.Resize(m_capacity, lastCnt);
+	m_accumulation.Resize(m_capacity);
+	m_depth.Resize(m_capacity);
 
-	amp::resize(contactIdx.arr, capacity * MAX_CONTACTS_PER_PARTICLE);
-	amp::resize(contact.arr, capacity);
-	amp::resize(bodyContactIdx.arr, capacity * MAX_BODY_CONTACTS_PER_PARTICLE);
-	amp::resize(bodyContact.arr, capacity);
-	amp::resize(groundContact.arr, capacity);
+	m_matIdx.Resize(m_capacity, lastCnt);
+	m_groupIdx.Resize(m_capacity, lastCnt);
+	m_color.Resize(m_capacity, lastCnt);
+
+	m_proxy.Resize(m_capacity);
+
+	return true;
 }
 
 void Particle::AmpArrays::SetD11Buffers(ID3D11Buffer** ppBufs)
 {
 	if (!ppBufs)
 	{
-		flags.SetD11Arr(nullptr);
-		position.SetD11Arr(nullptr);
-		velocity.SetD11Arr(nullptr);
-		weight.SetD11Arr(nullptr);
-		heat.SetD11Arr(nullptr);
-		health.SetD11Arr(nullptr);
-		matIdx.SetD11Arr(nullptr);
-		color.SetD11Arr(nullptr);
+		m_flags.SetD11Arr(nullptr);
+		m_position.SetD11Arr(nullptr);
+		m_velocity.SetD11Arr(nullptr);
+		m_weight.SetD11Arr(nullptr);
+		m_heat.SetD11Arr(nullptr);
+		m_health.SetD11Arr(nullptr);
+		m_matIdx.SetD11Arr(nullptr);
+		m_color.SetD11Arr(nullptr);
 	}
 	else
 	{
-		flags.SetD11Arr(ppBufs[0]);
-		position.SetD11Arr(ppBufs[1]);
-		velocity.SetD11Arr(ppBufs[2]);
-		weight.SetD11Arr(ppBufs[3]);
-		heat.SetD11Arr(ppBufs[4]);
-		health.SetD11Arr(ppBufs[5]);
-		matIdx.SetD11Arr(ppBufs[6]);
-		color.SetD11Arr(ppBufs[7]);
+		m_flags.SetD11Arr(ppBufs[0]);
+		m_position.SetD11Arr(ppBufs[1]);
+		m_velocity.SetD11Arr(ppBufs[2]);
+		m_weight.SetD11Arr(ppBufs[3]);
+		m_heat.SetD11Arr(ppBufs[4]);
+		m_health.SetD11Arr(ppBufs[5]);
+		m_matIdx.SetD11Arr(ppBufs[6]);
+		m_color.SetD11Arr(ppBufs[7]);
 	}
 }
 
 void Particle::AmpArrays::WaitForCopies()
 {
-	flags.copyFuture.wait();
-	flags.copyFuture.wait();
-	position.copyFuture.wait();
-	velocity.copyFuture.wait();
-	weight.copyFuture.wait();
-	heat.copyFuture.wait();
-	health.copyFuture.wait();
-	matIdx.copyFuture.wait();
-	color.copyFuture.wait();
+	m_flags.copyFuture.wait();
+	m_position.copyFuture.wait();
+	m_velocity.copyFuture.wait();
+	m_weight.copyFuture.wait();
+	m_heat.copyFuture.wait();
+	m_health.copyFuture.wait();
+	m_matIdx.copyFuture.wait();
+	m_color.copyFuture.wait();
 }
-
 
 template<typename T> inline void ReplaceArray(ampArray<T>& arr, ID3D11Buffer* pNewBuf, int32 size, int32 copyCnt)
 {
@@ -209,40 +198,56 @@ void Particle::CopyBufferRangeToAmpArrays(Buffers& bufs, AmpArrays& arrs,
 {
 	const int32 size = last - first;
 	if (size <= 0) return;
-	amp::copy(bufs.flags, arrs.flags.arr, first, size);
-	amp::copy(bufs.position, arrs.position.arr, first, size);
-	amp::copy(bufs.velocity, arrs.velocity.arr, first, size);
-	amp::copy(bufs.force, arrs.force.arr, first, size);
-	amp::copy(bufs.heat, arrs.heat.arr, first, size);
-	amp::copy(bufs.health, arrs.health.arr, first, size);
-	amp::copy(bufs.mass, arrs.mass.arr, first, size);
-	amp::copy(bufs.invMass, arrs.invMass.arr, first, size);
-	amp::copy(bufs.staticPressure, arrs.staticPressure.arr, first, size);
-	amp::copy(bufs.depth, arrs.depth.arr, first, size);
-	amp::copy(bufs.matIdx, arrs.matIdx.arr, first, size);
-	amp::copy(bufs.groupIdx, arrs.groupIdx.arr, first, size);
-	amp::copy(bufs.color, arrs.color.arr, first, size);
+	amp::copy(bufs.flags, arrs.m_flags.arr, first, size);
+	amp::copy(bufs.position, arrs.m_position.arr, first, size);
+	amp::copy(bufs.velocity, arrs.m_velocity.arr, first, size);
+	amp::copy(bufs.force, arrs.m_force.arr, first, size);
+	amp::copy(bufs.heat, arrs.m_heat.arr, first, size);
+	amp::copy(bufs.health, arrs.m_health.arr, first, size);
+	amp::copy(bufs.mass, arrs.m_mass.arr, first, size);
+	amp::copy(bufs.invMass, arrs.m_invMass.arr, first, size);
+	amp::copy(bufs.staticPressure, arrs.m_staticPressure.arr, first, size);
+	amp::copy(bufs.depth, arrs.m_depth.arr, first, size);
+	amp::copy(bufs.matIdx, arrs.m_matIdx.arr, first, size);
+	amp::copy(bufs.groupIdx, arrs.m_groupIdx.arr, first, size);
+	amp::copy(bufs.color, arrs.m_color.arr, first, size);
 }
 
 
-inline bool Particle::Contact::operator==(const Particle::Contact& rhs) const
+Particle::Mat::Mat(const Particle::Mat::Def& def)
 {
-	return idxA == rhs.idxA
-		&& idxB == rhs.idxB
-		&& flags == rhs.flags
-		&& weight == rhs.weight
-		&& normal == rhs.normal;
+	m_flags = def.flags;
+	m_mass = def.mass;
+	m_invMass = 1 / def.mass;
+	m_stability = def.stability;
+	m_invStability = 1 / def.stability;
+	m_heatConductivity = def.heatConductivity;
+	m_strength = def.strength;
 }
 
-// The reciprocal sqrt function differs between SIMD and non-SIMD, but they
-// should create approximately equal results.
-inline bool Particle::Contact::ApproximatelyEqual(const Particle::Contact& rhs) const
+Particle::MatArray::MatArray(const ampAccelView& accelView) :
+	m_array(accelView, b2_minPartMatBufferCapacity),
+	m_capacity(0), m_count(0)
+{}
+
+int32 Particle::MatArray::Add(Particle::Mat::Def& def)
 {
-	static const float MAX_WEIGHT_DIFF = 0.01f; // Weight 0 ~ 1, so about 1%
-	static const float MAX_NORMAL_DIFF = 0.01f; // Normal length = 1, so 1%
-	return idxA == rhs.idxA
-		&& idxB == rhs.idxB
-		&& flags == rhs.flags
-		&& b2Abs(weight - rhs.weight) < MAX_WEIGHT_DIFF
-		&& (normal - rhs.normal).Length() < MAX_NORMAL_DIFF;
+	const int32 idx = m_count++;
+	if (m_count > m_capacity)
+	{
+		if (!m_capacity) m_capacity = 1;
+		else m_capacity *= 2;
+		m_array.Resize(m_capacity);
+		m_vector.resize(m_capacity);
+	}
+	m_vector[idx] = Particle::Mat(def);
+
+	amp::copy(m_vector[idx], m_array.arr, idx);
+	return idx;
+}
+
+void Particle::MatArray::AddChange(const int32 idx, const Particle::Mat::ChangeDef& changeDef)
+{
+	m_vector[idx].SetMatChanges(changeDef);
+	amp::copy(m_vector[idx], m_array.arr, idx);
 }

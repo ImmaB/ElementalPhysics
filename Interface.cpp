@@ -187,23 +187,17 @@ EXPORT void SetContactCallback(ContactCallback callback)
 
 EXPORT void SetDebugContacts(bool debug) { pPartSys->m_debugContacts = debug; }
 
-EXPORT void GetPartContacts(int32* pCnt, Particle::Contact** pContacts)
-{
-	*pCnt = pPartSys->GetContactCount();
-	*pContacts = pPartSys->GetContacts();
-}
 EXPORT int32 GetPartContactCnt() { return pPartSys->GetContactCount(); }
 
 #pragma endregion
 
 #pragma region API Particle Systems
 
-EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 damping,
+EXPORT void CreateParticleSystem(float32 radius, float32 damping,
 	float32 nonSolidFriction, float32 gravityScale, float32 airResFactor, float32 minAirSpeed,
 	float32 heatLossRatio, float32 flameHealthLossPerSec, float32 flameHeatGainPerSec)
 {
 	if (!pPartSys) pPartSys = pWorld->CreateParticleSystem();
-	pPartSys->m_accelerate = accelerate;
 	pPartSys->SetRadius(radius);
 	pPartSys->m_def.dampingStrength = damping;
 	pPartSys->m_def.nonSolidFriction = nonSolidFriction;
@@ -217,8 +211,6 @@ EXPORT void CreateParticleSystem(bool accelerate, float32 radius, float32 dampin
 EXPORT void DestroyAllParticles() { if (pPartSys) pPartSys->DestroyAllParticles(); }
 
 EXPORT void DestroyParticleSystem() { if (pWorld) { pWorld->DestroyParticleSystem(); } pPartSys = nullptr; }
-
-EXPORT void SetAccelerate(bool acc) { pPartSys->m_accelerate = acc; }
 
 EXPORT int32 GetParticleIterations(float32 gravity, float32 particleRadius, float32 timeStep) {
 	return b2CalculateParticleIterations(gravity, particleRadius, timeStep);
@@ -292,27 +284,11 @@ EXPORT void SetDestroyStuck(bool toggle)
 	//parts->SetDestroyStuck(toggle);
 }
 
-EXPORT int32 DestroyParticlesInFixture(int32 fixtureIdx, b2Transform transform, bool call)
+EXPORT void DestroyParticlesInFixture(int32 fixtureIdx, b2Transform transform)
 {
-    return pPartSys->DestroyParticlesInFixture(pWorld->GetFixture(fixtureIdx), transform, call);
+    // TODO
 }
 
-EXPORT void SetAllParticleFlags(void* partSysPtr, int32 flags) {
-    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
-    int32 numParts = partSys->GetCount();
-    for (int32 i = 0; i < numParts; ++i) {
-        partSys->SetParticleFlags(i, flags);
-    }
-}
-
-EXPORT int32 GetStuckCandidateCount(void* partSysPtr) {
-    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
-    return partSys->GetStuckCandidateCount();
-}
-EXPORT void SetStuckThreshold(void* partSysPtr, int32 iterations) {
-    ParticleSystem* partSys = static_cast<ParticleSystem*>(partSysPtr);
-    partSys->SetStuckThreshold(iterations);
-}
 EXPORT void SetMaxParticleCount(int32 count) { pPartSys->SetMaxParticleCount(count); }
 
 #pragma endregion
@@ -335,22 +311,22 @@ EXPORT void SwirlParticles(Vec3 pos, float32 swirlStrength,
 	pPartSys->Swirl(pos, swirlStrength, pullStrength, upDraft, flag, controlRadius, step);
 }
 
-EXPORT int32 GetParticleCapacity() { return pPartSys->GetCapacity(); }
-EXPORT int32 GetParticleCount() { return pPartSys->GetCount(); }
+EXPORT int32 GetParticleCapacity() { return pPartSys->m_ampParts.m_capacity; }
+EXPORT int32 GetParticleCount() { return pPartSys->m_ampParts.m_count; }
 
 EXPORT void SetParticleBufferResizeCallback(ParticleSystem::ResizeCallback callback)
 {
 	pPartSys->m_resizeCallback = callback;
-	if (int32 capacity = pPartSys->GetCapacity(); capacity)
+	if (int32 capacity = pPartSys->m_ampParts.m_capacity; capacity)
 		pPartSys->m_resizeCallback(capacity);
 }
 EXPORT void SetParticlesBuffers(ID3D11Buffer** bufPtrs, int32 size)
 {
-	if (pPartSys) pPartSys->m_ampArrays.SetD11Buffers(bufPtrs);
+	if (pPartSys) pPartSys->m_ampParts.SetD11Buffers(bufPtrs);
 }
 EXPORT void SetContactIdxBuffer(ID3D11Buffer* bufPtr)
 {
-	pPartSys->m_ampArrays.contactIdx.SetD11Arr(bufPtr);
+	pPartSys->m_ampContacts.m_idx.SetD11Arr(bufPtr);
 }
 #pragma endregion
 
@@ -395,11 +371,6 @@ EXPORT int32 CreateParticles(int32 partCount, Vec3* poss, uint32* cols, b2Transf
 	pd.heat = heat;
 	pd.timestamp = timestamp;
 	return pPartSys->CreateGroup(pd);
-}
-EXPORT void JoinParticleGroups(void* partSysPtr, int32 groupAIdx, int32 groupBIdx)
-{
-    ParticleSystem* system = static_cast<ParticleSystem*>(partSysPtr);
-    system->JoinParticleGroups(groupAIdx, groupBIdx);
 }
 EXPORT void ApplyForceToParticleGroup(ParticleGroup* pGroup, Vec3 force)
 {
@@ -1137,18 +1108,18 @@ EXPORT int32 TestInt()
 
 #pragma region Material
 
-EXPORT void ClearParticleMaterials() { pPartSys->ClearMaterials(); }
+EXPORT void ClearParticleMaterials() { pPartSys->m_mats.Clear(); }
 
 EXPORT int32 CreateParticleMaterial(uint32 flags, float32 density, float32 stability,
 	float32 heatConductivity, float32 strength)
 {
 	Particle::Mat::Def md;
 	md.flags = flags;
-	md.density = density;
 	md.stability = stability;
 	md.heatConductivity = heatConductivity;
 	md.strength = strength;
-	return pPartSys->CreateMaterial(md);
+    md.mass = density * pPartSys->GetPartVolume();
+	return pPartSys->m_mats.Add(md);
 }
 EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 coldMatIdx,
 	float32 hotThreshold, int32 hotMatIdx, float32 ignitionThreshold, int32 burnedMatIdx,
@@ -1163,7 +1134,7 @@ EXPORT void AddParticleMatChanges(int32 matIdx, float32 coldThreshold, int32 col
 	mcd.burnedMatIdx = burnedMatIdx;
 	mcd.fireMatIdx = fireMatIdx;
 	mcd.deadMatIdx = deadMatIdx;
-	pPartSys->AddPartMatChange(matIdx, mcd);
+	pPartSys->m_mats.AddChange(matIdx, mcd);
 }
 
 #pragma endregion

@@ -20,6 +20,7 @@
 
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Particle/b2Particle.h>
+#include <Box2D/Particle/b2ParticleContact.h>
 #include <Box2D/Common/b2Math.h>
 
 

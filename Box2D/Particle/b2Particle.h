@@ -69,7 +69,6 @@ namespace Particle
 		struct Def
 		{
 			uint32  flags;
-			float32 density;
 			float32 mass;
 			float32 stability;
 			float32 heatConductivity;
@@ -147,22 +146,13 @@ namespace Particle
 		int32 m_changeToFireMatIdx;
 		int32 m_changeToDeadMatIdx;
 
+		Mat() {};
+		Mat(const Def& def);
 
 		bool Compare(const Def& def)
 		{
 			return def.flags == m_flags && def.mass == m_mass &&
 				def.stability == m_stability && def.heatConductivity == m_heatConductivity;
-		}
-
-		void Set(const Def& def)
-		{
-			m_flags = def.flags;
-			m_mass = def.mass;
-			m_invMass = 1 / def.mass;
-			m_stability = def.stability;
-			m_invStability = 1 / def.stability;
-			m_heatConductivity = def.heatConductivity;
-			m_strength = def.strength;
 		}
 
 		void SetMatChanges(const ChangeDef& changeDef)
@@ -183,93 +173,27 @@ namespace Particle
 		inline bool IsWallSpringOrElastic() const restrict(amp) { return m_flags & k_wallOrSpringOrElasticFlags; }
 	};
 
-	struct ContactIdx
+	struct MatArray
 	{
-		int32 i, j;
-		ContactIdx(int32 i, int32 j) restrict(amp) : i(i), j(j) {}
-		void Set(int32 newI, int32 newJ) restrict(amp) { i = newI; j = newJ; }
-	};
+		int32 m_count, m_capacity;
 
-	struct Contact
-	{
-		int32 idxA, idxB;
-		/// Weight of the contact. A value between 0.0f and 1.0f.
-		/// 0.0f ==> particles are just barely touching
-		/// 1.0f ==> particles are perfectly on top of each other
-		float32 weight;
-		float32 mass;
-		/// The normalized direction from A to B.
-		Vec3 normal;
-		/// The logical sum of the particle behaviors that have been set.
-		/// See the b2ParticleFlag enum.
-		uint32 flags;
+		amp::Array<Mat> m_array;
+		std::vector<Mat> m_vector;
 
-		bool operator==(const Contact& rhs) const;
-		bool operator!=(const Contact& rhs) const { return !operator==(rhs); }
-		bool ApproximatelyEqual(const Contact& rhs) const;
+		MatArray(const ampAccelView& accelView);
 
-		inline bool HasFlag(const uint32 f) const { return flags & f; }
-		inline bool HasFlag(const uint32 f) const restrict(amp) { return flags & f; }
-		inline bool HasFlags(const uint32 f) const { return (flags & f) == f; }
-		inline bool HasFlags(const uint32 f) const restrict(amp) { return (flags & f) == f; }
-		inline bool IsZombie() const restrict(amp) { return HasFlag(Particle::Flag::Zombie); }
-	};
-	struct Contacts
-	{
-		Contact contacts[MAX_CONTACTS_PER_PARTICLE];
-	};
-	struct BodyContact
-	{
-		enum Flag
-		{
-			Touching = 1 << 0	// otherwise its a potential collision
-		};
-
-		uint32 flags;
-		/// The body making contact.
-		int32 bodyIdx;
-		/// The specific fixture making contact
-		int32 fixtureIdx;
-		/// The specific fixture child making contact
-		int32 childIdx;
-		/// Weight of the contact. A value between 0.0f and 1.0f.
-		float32 weight;
-		/// The normalized direction from the particle to the body.
-		Vec3 normal;
-		/// The effective mass used in calculating force.
-		float32 mass;
-
-		inline void AddFlag(const uint32 f) restrict(amp) { flags |= f; }
-		inline bool HasFlag(const uint32 f) const restrict(amp) { return flags & f; }
-		inline bool IsReal() const restrict(amp) { return flags & Touching; }
-	};
-	struct BodyContacts
-	{
-		BodyContact contacts[MAX_BODY_CONTACTS_PER_PARTICLE];
-	};
-	struct GroundContact
-	{
-		int32 groundTileIdx;
-		int32 groundChunkIdx;
-		int32 groundMatIdx;
-		float32 weight;
-		Vec3 normal;
-		float32 mass;
-
-		void setInvalid() { groundTileIdx = INVALID_IDX; }
-		void setInvalid() restrict(amp) { groundTileIdx = INVALID_IDX; }
-		bool getValid() const { return groundTileIdx != INVALID_IDX; }
-		bool getValid() const restrict(amp) { return groundTileIdx != INVALID_IDX; }
+		int32 Add(Mat::Def& def);
+		void AddChange(const int32 matIdx, const Particle::Mat::ChangeDef& changeDef);
+		void Clear() { m_count = 0; }
 	};
 
 	struct Buffers
 	{
 		std::vector<uint32> flags, color;
-		std::vector<Vec3> position, velocity, force, accumulationVec3;
+		std::vector<Vec3> position, velocity, force;
 		std::vector<float32> weight, heat, health, mass, invMass,
 			staticPressure, accumulation, depth;
-		std::vector<int32> matIdx, groupIdx, bodyContactCnt;
-		std::vector<Proxy> proxy;
+		std::vector<int32> matIdx, groupIdx;
 
 		Buffers(int32 cap);
 		void Resize(int32 capacity);
@@ -277,30 +201,63 @@ namespace Particle
 
 	struct AmpArrays
 	{
+		int32 m_count, m_capacity, m_iterations;
 
-		amp::Array<uint32> flags, color;
-		amp::Array<Vec3> position, velocity;
-		amp::Array<float32> weight, heat, health;
-		amp::Array<int32> matIdx;
+		amp::Array<uint32> m_flags, m_color;
+		amp::Array<Vec3> m_position, m_velocity;
+		amp::Array<float32> m_weight, m_heat, m_health;
+		amp::Array<int32> m_matIdx;
 
-		amp::Array<Vec3> force, accumulationVec3;
-		amp::Array<float32> mass, invMass, staticPressure, accumulation, depth;
-		amp::Array<int32>	groupIdx, contactCnt, bodyContactCnt;
+		amp::Array<Vec3> m_force, m_accumulationVec3;
+		amp::Array<float32> m_mass, m_invMass, m_staticPressure, m_accumulation, m_depth;
+		amp::Array<int32> m_groupIdx;
 		
-		amp::Array<Proxy> proxy;
-		amp::Array<ContactIdx> contactIdx;
-		amp::Array<Contacts> contact;
+		amp::Array<Proxy> m_proxy;
 
-		amp::Array<ContactIdx> bodyContactIdx;
-		amp::Array<BodyContacts> bodyContact;
-		amp::Array<GroundContact> groundContact;
 
 		AmpArrays(const ampAccelView& accelView);
-		void Resize(int32 capacity, int32 copyCnt);
+		bool Empty() const { return m_count == 0; }
+		bool Resize(int32 size);
 		void SetD11Buffers(ID3D11Buffer** ppNewBufs);
 		void WaitForCopies();
-	};
 
+		template<typename F1, typename F2> void ForEachWithZombies(const F1& fn, const F2& zFn) const
+		{
+			auto flags = m_flags.GetConstView();
+			amp::forEach(m_count, [=](const int32 i) restrict(amp)
+			{
+				if (flags[i] & Particle::Flag::Zombie) zFn(i);
+				else fn(i);
+			});
+		}
+		template<typename F> void ForEach(const F& function) const
+		{
+			auto flags = m_flags.GetConstView();
+			amp::forEach(m_count, [=](const int32 i) restrict(amp)
+			{
+				if (!(flags[i] & Particle::Flag::Zombie)) function(i);
+			});
+		}
+		template<typename F> void ForEach(const uint32 flag, const F& function) const
+		{
+			auto flags = m_flags.GetConstView();
+			ForEach([=](const int32 i) restrict(amp)
+			{
+				if (flags[i] & flag) function(i);
+			});
+		}
+		template<typename F> void ForEachProxy(const F& function) const
+		{
+			auto flags = m_flags.GetConstView();
+			auto proxies = m_proxy.GetConstView();
+			amp::forEach(m_count, [=](const int32 i) restrict(amp)
+			{
+				const Proxy proxy = proxies[i];
+				if (!(flags[proxy.idx] & Particle::Flag::Zombie)) function(proxy);
+			});
+		}
+	};
+	
 	void CopyBufferRangeToAmpArrays(Buffers& bufs,
 		AmpArrays& arrs, int32 first, int32 last);
 };

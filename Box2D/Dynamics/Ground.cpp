@@ -50,8 +50,6 @@ int32 Ground::CreateMaterial(Mat::def md)
 
 void Ground::CopyChangedTiles()
 {
-	if (!m_world.GetParticleSystem()->m_accelerate) return;
-
 	/*std::async(launch::async, [=]()
 	{
 		ampArrayView<int32> ampChangedCnt(1);

@@ -21,6 +21,7 @@
 
 #include <Box2D/Common/b2Settings.h>
 #include <Box2D/Particle/b2Particle.h>
+#include <Box2D/Particle/b2ParticleContact.h>
 
 struct Vec2;
 struct b2Transform;

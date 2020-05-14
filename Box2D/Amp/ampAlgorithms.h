@@ -173,6 +173,14 @@ namespace amp
 		return size ? Concurrency::copy_async(src, src + size, dst) : ampCopyFuture();
 	}
 
+	template <typename T> T getValue(const ampArray<T>& src, const int32 idx)
+	{
+		T dst;
+		copy(src, idx, dst);
+		return dst;
+	}
+
+
 
 	template <typename T>
 	static void fill(ampArray<T>& a, const T& value, const int32 size = 0)
@@ -297,19 +305,19 @@ namespace amp
 				function(i1, i2);
 		});
 	}
-	template <int T1, int T2, typename F>
-	static void forEach2DTiled(const int32 cntY, const int32 cntX, const F& function)
-	{
-		if (!cntY || !cntX) return;
-		Concurrency::parallel_for_each(ampExtent2D(cntY, cntX).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
-			{
-				const ampIdx2D idx = tIdx.global;
-				const int32 i1 = idx[0];
-				const int32 i2 = idx[1];
-				if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cntY && i2 < cntX)
-					function(tIdx);
-			});
-	}
+	//template <int T1, int T2, typename F>
+	//static void forEach2DTiled(const int32 cntY, const int32 cntX, const F& function)
+	//{
+	//	if (!cntY || !cntX) return;
+	//	Concurrency::parallel_for_each(ampExtent2D(cntY, cntX).tile<T1, T2>().pad(), [=](ampTiledIdx2D<T1, T2> tIdx) restrict(amp)
+	//	{
+	//		const ampIdx2D idx = tIdx.global;
+	//		const int32 i1 = idx[0];
+	//		const int32 i2 = idx[1];
+	//		if (const int32 i1 = tIdx.global[0], i2 = tIdx.global[0]; i1 < cntY && i2 < cntX)
+	//			function(tIdx);
+	//	});
+	//}
 	template<typename F>
 	static void forEach(const int32 start, const int32 end, const F& function)
 	{
@@ -373,6 +381,26 @@ namespace amp
 		return particleFlags;
 	}
 
+	//template<typename T>
+	//bool isSorted(const ampArrayView<const T> av, const int32 cnt)
+	//{
+	//	ampArrayView<uint32> sorted(1);
+	//	fill(sorted, 1u);
+	//	Concurrency::parallel_for_each(tileAndPad<TILE_SIZE>(cnt), [=](ampTiledIdx<TILE_SIZE> tIdx) restrict(amp)
+	//	{
+	//		const int32 gi = tIdx.global[0];
+	//		const int32 li = tIdx.local[0];
+	//		if (gi + 1 >= cnt) return;
+	//		tile_static int32 lValues[TILE_SIZE + 1];
+	//		const int32 nextValue = lValues[li + 1] = av[gi + 1];
+	//		if (li == 0) lValues[li] = av[gi];
+	//		tIdx.barrier.wait_with_tile_static_memory_fence();
+	//		if (lValues[li] > nextValue)
+	//			sorted[0] = 0;
+	//	}
+	//	return sorted[0];
+	//}
+
 	/*template<typename F>
 	uint32 reduceOld(const ampArray<uint32>& cnts, const uint32 size, const F& function)
 	{
@@ -408,10 +436,10 @@ namespace amp
 		return reducedCnt;
 	}*/
 
-	template<int32 TileSize> static bool lastInTile(const ampTiledIdx<TileSize>& tIdx) restrict(amp)
-	{
-		return tIdx.local[0] == (TileSize - 1);
-	}
+	//template<int32 TileSize> static bool lastInTile(const ampTiledIdx<TileSize>& tIdx) restrict(amp)
+	//{
+	//	return tIdx.local[0] == (TileSize - 1);
+	//}
 
 	//namespace _reduce_detail
 	//{
@@ -984,7 +1012,7 @@ namespace amp
 		ampArray<T> arr;
 		amp::CopyFuture copyFuture;
 
-		Array(const ampAccelView& accelView, int32 cap = MIN_PART_CAPACITY) :
+		Array(const ampAccelView& accelView, int32 cap = 1) :
 			minCap(cap), buf(nullptr), arr(cap, accelView), d11Arr(cap, accelView) {}
 
 		void SetD11Arr(ID3D11Buffer* buf)
@@ -999,6 +1027,56 @@ namespace amp
 
 		inline ampArrayView<T> GetView() { return ampArrayView<T>(arr); }
 		inline ampArrayView<const T> GetConstView() const { return ampArrayView<const T>(arr); }
+
+		void Resize(int32 size, const int32 copyCnt = 0)
+		{
+			if (size < minCap) size = minCap;
+			if (size == arr.extent[0]) return;
+			amp::resize(arr, size, copyCnt);
+		}
+	};
+
+	template <typename T>
+	struct Array2D
+	{
+	private:
+		ID3D11Buffer* buf;
+		ampArray<T> d11Arr;
+		int32 minCap1;
+		int32 minCap2;
+	public:
+		ampArray2D<T> arr;
+		amp::CopyFuture copyFuture;
+
+		Array2D(const ampAccelView& accelView, int32 cap1 = MIN_PART_CAPACITY, int32 cap2 = 1) :
+			minCap1(cap1), minCap2(cap2), buf(nullptr), arr(cap1, cap2, accelView), d11Arr(cap1 * cap2, accelView) {}
+
+		void SetD11Arr(ID3D11Buffer* buf)
+		{
+			this->buf = buf;
+			if (buf) d11Arr = Concurrency::direct3d::make_array<T>(arr.extent[0] * arr.extent[1], amp::d11AccelView(), buf);
+		}
+		void CopyToD11Async()
+		{
+			// TODO
+		}
+
+		inline ampArrayView2D<T> GetView() { return ampArrayView2D<T>(arr); }
+		inline ampArrayView2D<const T> GetConstView() const { return ampArrayView2D<const T>(arr); }
+
+		void Resize(int32 size, const int32 copyCnt = 0)
+		{
+			if (size < minCap1) size = minCap1;
+			if (size == arr.extent[0]) return;
+			amp::resize(arr, size, copyCnt);
+		}
+
+		void Resize2ndDim(int32 size)
+		{
+			if (size < minCap2) size = minCap2;
+			if (size == arr.extent[0]) return;
+			amp::resize2ndDim(arr, size);
+		}
 	};
 };
 

@@ -21,6 +21,7 @@
 #include <Box2D/Common/b2GrowableBuffer.h>
 #include <Box2D/Common/Global.h>
 #include <Box2D/Particle/b2Particle.h>
+#include <Box2D/Particle/b2ParticleContact.h>
 #include <Box2D/Particle/b2ParticleGroup.h>
 #include <Box2D/Amp/ampAlgorithms.h>
 #include <Box2D/Dynamics/b2TimeStep.h>
@@ -274,11 +275,14 @@ public:
 	typedef void(__stdcall* ResizeCallback)(int32);
 	ResizeCallback m_resizeCallback;
 	b2ParticleSystemDef m_def;
-	bool m_accelerate;
 	bool m_debugContacts;
 
 	Particle::Buffers m_buffers;
-	Particle::AmpArrays m_ampArrays;
+	Particle::MatArray m_mats;
+	Particle::AmpArrays m_ampParts;
+	Particle::ContactArrays m_ampContacts;
+	Particle::BodyContactArrays m_ampBodyContacts;
+	Particle::GroundContactArrays m_ampGroundContacts;
 
 	bool ShouldSolve();
 	void SolveInit(int32 timestamp);
@@ -341,59 +345,15 @@ public:
 	void IncrementIteration();
 
 	void SolveEnd();
-
-
-	/// Retrieve a handle to the particle at the specified index.
-	/// Please see #b2ParticleHandle for why you might want a handle.
-	const b2ParticleHandle* GetParticleHandleFromIndex(const int32 index);
-
-	/// Destroy a particle.
-	/// The particle is removed after the next step.
-	/// @param Index of the particle to destroy.
-	/// @param Whether to call the destruction listener just before the
-	/// particle is destroyed.
-	void DestroyParticle(int32 index);
+	
 
 	void DestroyAllParticles();
-
-	void DestroyParticlesInGroup(const int32 groupIdx);
-	void DestroyParticlesInGroup(const ParticleGroup& group);
-
-
-	/// Destroy particles inside a shape.
-	/// This function is locked during callbacks.
-	/// In addition, this function immediately destroys particles in the shape
-	/// in constrast to DestroyParticle() which defers the destruction until
-	/// the next simulation step.
-	/// @param Shape which encloses particles that should be destroyed.
-	/// @param Transform applied to the shape.
-	/// @param Whether to call the world b2DestructionListener for each
-	/// particle destroyed.
-	/// @warning This function is locked during callbacks.
-	/// @return Number of particles destroyed.
-	int32 DestroyParticlesInFixture(const Fixture& fixture, const b2Transform& xf,
-	                              bool callDestructionListener = false);
-
-	void ClearMaterials();
-	int32 CreateMaterial(Particle::Mat::Def& def);
-	void AddPartMatChange(const int32 matIdx, const Particle::Mat::ChangeDef& changeDef);
 
 	/// Create a particle group whose properties have been defined. No
 	/// reference to the definition is retained.
 	/// @warning This function is locked during callbacks.
 	int32 CreateGroup(ParticleGroup::Def& def);
 	void DestroyGroup(int32 groupIdx, int32 timestamp = INVALID_IDX, bool destroyParticles = false);
-
-	/// Join two particle groups.
-	/// @param the first group. Expands to encompass the second group.
-	/// @param the second group. It is destroyed.
-	/// @warning This function is locked during callbacks.
-	void JoinParticleGroups(int32 groupAIdx, int32 groupBIdx);
-
-	/// Split particle group into multiple disconnected groups.
-	/// @param the group to be split.
-	/// @warning This function is locked during callbacks.
-	void SplitParticleGroup(ParticleGroup& group);
 
 	/// Get the world particle group list. With the returned group, use
 	/// ParticleGroup::GetNext to get the next group in the world list.
@@ -404,10 +364,6 @@ public:
 
 	/// Get the number of particle groups.
 	int32 GetParticleGroupCount() const;
-
-	/// Get the number of particles.
-	int32 GetCount() const { return m_count; }
-	int32 GetCapacity() const { return m_capacity; }
 
 	/// Set the maximum number of particles.
 	/// A value of 0 means there is no maximum. The particle buffers can
@@ -457,8 +413,6 @@ public:
 	void WaitForCopyBox2DToGPU();
 
 	/// Set flags for a particle. See the b2ParticleFlag enum.
-	void SetParticleFlags(int32 index, uint32 flags);
-	void AddParticleFlags(int32 index, uint32 flags);
 	void RemovePartFlagFromAll(const uint32 flags);
 
 	/// Set an external buffer for particle data.
@@ -481,8 +435,6 @@ public:
 	/// Get contacts between particles
 	/// Contact data can be used for many reasons, for example to trigger
 	/// rendering or audio effects.
-	const Particle::Contact* GetContacts() const;
-	Particle::Contact* GetContacts();
 	const int32 GetContactCount() const;
 
 	/// Get contacts between particles and bodies
@@ -523,48 +475,7 @@ public:
 	/// then indexB, then indexC. There are no duplicate entries.
 	const b2ParticleTriad* GetTriads() const;
 
-	/// Set an optional threshold for the maximum number of
-	/// consecutive particle iterations that a particle may contact
-	/// multiple bodies before it is considered a candidate for being
-	/// "stuck". Setting to zero or less disables.
-	void SetStuckThreshold(int32 iterations);
-
-	/// Get potentially stuck particles from the last step; the user must
-	/// decide if they are stuck or not, and if so, delete or move them
-	const int32* GetStuckCandidates() const;
-
-	/// Get the number of stuck particle candidates from the last step.
-	int32 GetStuckCandidateCount() const;
-
-	/// Compute the kinetic energy that can be lost by damping force
-	//float32 ComputeCollisionEnergy() const;
-
-	/// Set the lifetime (in seconds) of a particle relative to the current
-	/// time.  A lifetime of less than or equal to 0.0f results in the particle
-	/// living forever until it's manually destroyed by the application.
-	void SetParticleLifetime(const int32 index, const float32 lifetime);
-	/// Get the lifetime (in seconds) of a particle relative to the current
-	/// time.  A value > 0.0f is returned if the particle is scheduled to be
-	/// destroyed in the future, values <= 0.0f indicate the particle has an
-	/// infinite lifetime.
-	float32 GetParticleLifetime(const int32 index);
-
-	/// Convert a expiration time value in returned by
-	/// GetExpirationTimeBuffer() to a time in seconds relative to the
-	/// current simulation time.
-	float32 ExpirationTimeToLifetime(const int32 expirationTime) const;
-	/// Get the array of particle indices ordered by reverse lifetime.
-	/// The oldest particle indexes are at the end of the array with the
-	/// newest at the start.  Particles with infinite lifetimes
-	/// (i.e expiration times less than or equal to 0) are placed at the start
-	///  of the array.
-	/// ExpirationTimeToLifetime(GetExpirationTimeBuffer()[index])
-	/// is equivalent to GetParticleLifetime(index).
-	/// GetParticleCount() items are in the returned array.
-	vector<int32> GetIndexByExpirationTimeBuffer();
-
-
-	float32 GetMassFromDensity(const float32 density) const;
+	float32 GetPartVolume() const { return m_particleVolume; }
 
 
 	/// Apply an impulse to one particle. This immediately modifies the
@@ -617,23 +528,7 @@ public:
 	/// Get the next particle-system in the world's particle-system list.
 	ParticleSystem* GetNext();
 	const ParticleSystem* GetNext() const;
-
-	/// Query the particle system for all particles that potentially overlap
-	/// the provided AABB. b2QueryCallback::ShouldQueryParticleSystem is
-	/// ignored.
-	/// @param callback a user implemented callback class.
-	/// @param aabb the query box.
-	void QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const;
-	
-	/// Query the particle system for all particles that potentially overlap
-	/// the provided shape's AABB. Calls QueryAABB internally.
-	/// b2QueryCallback::ShouldQueryParticleSystem is ignored.
-	/// @param callback a user implemented callback class.
-	/// @param shape the query shape
-	/// @param xf the transform of the AABB
-	void QueryShapeAABB(b2QueryCallback* callback, const b2Shape& shape,
-						const b2Transform& xf) const;
-
+		
 	/// Ray-cast the particle system for all particles in the path of the ray.
 	/// Your callback controls whether you get the closest point, any point, or
 	/// n-points. The ray-cast ignores particles that contain the starting
@@ -641,14 +536,13 @@ public:
 	/// @param callback a user implemented callback class.
 	/// @param point1 the ray starting point
 	/// @param point2 the ray ending point
-	void RayCast(b2RayCastCallback& callback, const Vec2& point1,
-				 const Vec2& point2) const;
+	//void RayCast(b2RayCastCallback& callback, const Vec2& point1,
+	//			 const Vec2& point2) const;
 
 	/// Compute the axis-aligned bounding box for all particles contained
 	/// within this particle system.
 	/// @param aabb Returns the axis-aligned bounding box of the system.
-	void ComputeAABB(b2AABB* const aabb) const;
-	void AmpComputeAABB(b2AABB& aabb, bool addVel = false) const;
+	void ComputeAABB(b2AABB& aabb, bool addVel = false) const;
 	
 #if LIQUIDFUN_EXTERNAL_LANGUAGE_API
 public:
@@ -696,7 +590,6 @@ private:
 	friend class b2World;
 	friend struct ParticleGroup;
 	friend class b2ParticleBodyContactRemovePredicate;
-	friend class b2FixtureParticleQueryCallback;
 	friend class AmpFixtureParticleQueryCallback;
 #ifdef LIQUIDFUN_UNIT_TESTS
 	FRIEND_TEST(FunctionTests, GetParticleMass);
@@ -797,38 +690,15 @@ private:
 	template <typename T> T* ReallocateBuffer(
 		UserOverridableBuffer<T>* buffer, int32 oldCapacity, int32 newCapacity,
 		bool deferred);
-	template <typename T> void RequestBuffer(vector<T>& buf, bool& hasBuf);
-	template <typename T> void AmpRequestBuffer(ampArray<T>& buf, bool& hasBuf);
+	template <typename T> void RequestBuffer(ampArray<T>& buf, bool& hasBuf);
 	
-	/// Reallocate the handle / index map and schedule the allocation of a new
-	/// pool for handle allocation.
-	void ReallocateHandleBuffers(int32 newCapacity);
-
 	template<typename F> void ForEachGroup(const F& function) const;
 
-	template<typename F> void ForEachParticle(const F& function) const;
-	template<typename F> void ForEachParticle(uint32 flag, const F& function) const;
-	template<typename F> void ForEachContact(const F& function) const;
-	template<typename F> void ForEachContact(const uint32 flag, const F& function) const;
-	template<typename F> void ForEachContactShuffled(const F& function) const;
-	template<typename F> void ForEachContactShuffled(const uint32 flag, const F& function) const;
-	template<typename F> void ForEachPotentialBodyContact(const F& function) const;
-	template<typename F> void ForEachBodyContact(const F& function) const;
-	template<typename F> void ForEachBodyContact(const uint32 flag, const F& function) const;
-	template<typename F> void ForEachGroundContact(const F& function) const;
-	template<typename F> void ForEachGroundContact(const uint32 partFlag, const F& function) const;
 	template<typename F> void ForEachPair(const F& function) const;
 	template<typename F> void ForEachTriad(const F& function) const;
 
-	
-	boolean AdjustCapacityToSize(int32& capacity, int32 size, const int32 minCapacity) const;
-	void ResizePartMatBuffers(int32 size);
 	void ResizeParticleBuffers(int32 size);
 	void ResizeGroupBuffers(int32 size);
-	void ResizeContactBuffers(int32 size);
-	void ResizeBodyContactBuffers(int32 size);
-	void ResizePairBuffers(int32 size);
-	void ResizeTriadBuffers(int32 size);
 	pair<int32, int32> CreateParticlesWithPositions(const ParticleGroup::Def& groupDef);
 	pair<int32, int32> CreateParticlesStrokeShapeForGroup(
 		const b2Shape& shape,
@@ -839,8 +709,6 @@ private:
 	pair<int32, int32> CreateParticlesWithShapeForGroup(ParticleGroup::Def& gd);
 	int32 CloneParticle(int32 index, int32 groupIdx);
 
-	void UpdatePairsAndTriads(
-		int32 firstIndex, int32 lastIndex, const ConnectionFilter& filter);
 	void AmpUpdatePairsAndTriads(int32 firstIndex, int32 lastIndex);
 	static bool ComparePairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
 	static bool MatchPairIndices(const b2ParticlePair& a, const b2ParticlePair& b);
@@ -849,10 +717,6 @@ private:
 
 	static void InitializeParticleLists(
 		const ParticleGroup& group, ParticleListNode* nodeBuffer);
-	void MergeParticleListsInContact(
-		const ParticleGroup& group, ParticleListNode* nodeBuffer) const;
-	static void MergeParticleLists(
-		ParticleListNode* listA, ParticleListNode* listB);
 	static ParticleListNode* FindLongestParticleList(
 		const ParticleGroup& group, ParticleListNode* nodeBuffer);
 	void MergeZombieParticleListNodes(
@@ -867,51 +731,44 @@ private:
 		const ParticleGroup& group, const ParticleListNode* nodeBuffer);
 
 public:
-	InsideBoundsEnumerator GetInsideBoundsEnumerator(const b2AABB& aabb) const;
 	void AddFlagInsideFixture(const Particle::Flag flag, const int32 matIdx,
 		const Fixture& fixture);
 
 private:
+	bool FlagExists(Particle::Mat::Flag f) { return m_allFlags & f; }
+	bool GroupFlagExists(ParticleGroup::Flag f) { return m_allGroupFlags & f; }
 	void CopyShapeToGPU(b2Shape::Type type, int32 idx);
 
 	void BoundProxyToTagBound(const b2AABBFixtureProxy& aabb,
 		b2TagBounds& tagBounds);
 	template<typename F>
-	void AmpForEachInsideBounds(const b2AABB& aabb, const F& function);
+	void ForEachInsideBounds(const b2AABB& aabb, const F& function);
 	template<typename F>
-	void AmpForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, const F& function);
+	void ForEachInsideBounds(const vector<b2AABBFixtureProxy>& aabbs, const F& function);
 	template<typename F>
-	void AmpForEachInsideCircle(const b2CircleShape& circle,
+	void ForEachInsideCircle(const b2CircleShape& circle,
 		const b2Transform& transform, const F& function);
 	void UpdateAllParticleFlags();
-	void AmpUpdateAllParticleFlags();
 	void UpdateAllGroupFlags();
-	bool AddContact(int32 a, int32 b, int32& contactCount);
-	bool ShouldCollide(int32 i, const Fixture& f) const;
-	void FindContacts();
-	void FindParticleContacts(int32 a, int32 c);
-	void AmpFindContacts(bool exceptZombie);
+	void FindContacts(bool exceptZombie);
+	float32 FindContactsTest();
 	template<class T>
 	void reorder(vector<T>& v, const vector<int32>& order);
 	template<class T1, class T2>
 	void reorder(vector<T1>& v1, vector<T2>& v2, const vector<int32>& order);
 	void UpdateBodyContacts();
-	void AmpUpdateBodyContacts();
 
-	void AmpUpdateGroundContacts();
+	void UpdateGroundContacts();
 
 	//void AddBodyContactResults(ampArray<float32> dst, const ampArray<float32> bodyRes);
 	//void AddBodyContactResults(ampArray<Vec3> dst, const ampArray<Vec3> bodyRes);
 
-	void SolveSlowDown(const b2TimeStep& step);
 	void SolveColorMixing();
 	void SolveFreeze();
 	void SolveZombie();
-	void AmpSolveZombie();
 	/// Destroy all particles which have outlived their lifetimes set by
 	/// SetParticleLifetime().
 	void SolveLifetimes(const b2TimeStep& step);
-	void RotateBuffer(int32 start, int32 mid, int32 end);
 	
 	void AddZombieRange(int32 firstIdx, int32 lastIdx);
 	uint32 GetWriteIdx(int32 particleCnt);
@@ -962,9 +819,6 @@ private:
 	/// @return the world velocity of a point.
 	Vec2 GetLinearVelocityFromWorldPoint(const ParticleGroup& group, const Vec2& worldPoint) const;
 	
-	const ampArrayView<Particle::Mat> GetMats() { return ampArrayView<Particle::Mat>(m_ampMats); }
-	const ampArrayView<const Particle::Mat> GetConstMats() { return ampArrayView<const Particle::Mat>(m_ampMats); }
-
 	const ampArrayView<Fixture> GetFixtures() { return ampArrayView<Fixture>(m_ampFixtures); }
 	const ampArrayView<const Fixture> GetConstFixtures() { return ampArrayView<const Fixture>(m_ampFixtures); }
 	
@@ -986,11 +840,6 @@ private:
 
 	void RemoveSpuriousBodyContacts();
 	//static bool BodyContactCompare(int32 lhsIdx, int32 rhsIdx);
-
-	void DetectStuckParticle(int32 particle);
-
-	/// Determine whether a particle index is valid.
-	bool ValidateParticleIndex(const int32 index) const;
 
 	/// Get the time elapsed in b2ParticleSystemDef::lifetimeGranularity.
 	int32 GetQuantizedTimeElapsed() const;
@@ -1066,16 +915,8 @@ private:
 	//int32 m_tileCnt;
 	//int32 m_contactTileCnt;
 
-	int32 m_count;
-	int32 m_capacity;
 	int32 m_groupCount;
 	int32 m_groupCapacity;
-	int32 m_partMatCount;
-	int32 m_partMatCapacity;
-	int32 m_contactCount;
-	int32 m_contactCapacity;
-	int32 m_bodyContactCount;
-	int32 m_bodyContactCapacity;
 	int32 m_pairCount;
 	int32 m_pairCapacity;
 	int32 m_triadCount;
@@ -1106,9 +947,6 @@ private:
 	vector<uint32>		m_groupHasAlive;
 	ampArray<ParticleGroup>	m_ampGroups;
 	ampArray<uint32>	m_ampGroupHasAlive;
-	
-	vector<Particle::Mat> m_mats;
-	ampArray<Particle::Mat>  m_ampMats;
 
 	/// When any particles have the flag b2_staticPressureParticle,
 	/// m_staticPressureBuffer is first allocated and used in
@@ -1127,28 +965,8 @@ private:
 	/// used in SolveSolid(). It will be reallocated on subsequent
 	/// CreateParticle() calls.
 
-	/// Stuck particle detection parameters and record keeping
-	int32 m_stuckThreshold;
-	int32 m_stuckParticleCount;
-	bool hasLastBodyContactStepBuffer;
-	bool hasBodyContactCountBuffer;
-	bool hasConsecutiveContactStepsBuffer;
-	vector<int32>  m_lastBodyContactStepBuffer;
-	vector<int32>  m_consecutiveContactStepsBuffer;
-	vector<int32>  m_stuckParticleBuffer;
-
-	//vector<int32>  m_findContactCountBuf;
-	//vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxABuf;
-	//vector<std::array<int32, MAX_CONTACTS_PER_PARTICLE>>  m_findContactIdxBBuf;
-
 	int32 m_bodyContactFixtureCnt = 0;
 
-	vector<Particle::Contact> m_contacts;
-	vector<Particle::BodyContact> m_bodyContacts;
-	vector<Particle::ContactIdx> m_bodyContactIdxs;
-	//ampArray<Particle::BodyContact> m_ampBodyContacts;
-
-	//vector<b2ParticleBodyContact> m_bodyContactBuffer;
 
 	vector<b2ParticlePair> m_pairBuffer;
 	ampArray<b2ParticlePair> m_ampPairs;
@@ -1235,18 +1053,9 @@ inline bool ParticleSystem::GetPaused() const
 	return m_paused;
 }
 
-inline const Particle::Contact* ParticleSystem::GetContacts() const
-{
-	return m_contacts.data();
-}
-inline Particle::Contact* ParticleSystem::GetContacts()
-{
-	return m_contacts.data();
-}
-
 inline const int32 ParticleSystem::GetContactCount() const
 {
-	return m_contactCount;
+	return m_ampContacts.m_count;
 }
 
 //inline const Particle::BodyContact* ParticleSystem::GetBodyContacts() const
@@ -1256,7 +1065,7 @@ inline const int32 ParticleSystem::GetContactCount() const
 
 inline int32 ParticleSystem::GetBodyContactCount() const
 {
-	return m_bodyContactCount;
+	return m_ampBodyContacts.m_count;
 }
 
 
@@ -1278,16 +1087,6 @@ inline ParticleSystem* ParticleSystem::GetNext()
 inline const ParticleSystem* ParticleSystem::GetNext() const
 {
 	return m_next;
-}
-
-inline const int32* ParticleSystem::GetStuckCandidates() const
-{
-	return m_stuckParticleBuffer.data();
-}
-
-inline int32 ParticleSystem::GetStuckCandidateCount() const
-{
-	return m_stuckParticleCount;
 }
 
 inline void ParticleSystem::SetDensity(float32 density)
@@ -1323,14 +1122,8 @@ inline float32 ParticleSystem::GetParticleStride() const
 	return b2_particleStride * m_particleDiameter;
 }
 
-inline float32 ParticleSystem::GetMassFromDensity(const float32 density) const
-{
-	return density * m_particleVolume;
-}
-
 inline void ParticleSystem::SetMaxParticleCount(uint32 count)
 {
-	b2Assert(m_count <= count);
 	m_def.maxCount = count;
 }
 
@@ -1351,12 +1144,6 @@ inline uint32 ParticleSystem::GetAllParticleFlags(const ParticleGroup& group) co
 inline uint32 ParticleSystem::GetAllGroupFlags() const
 {
 	return m_allGroupFlags;
-}
-
-inline bool ParticleSystem::ValidateParticleIndex(const int32 index) const
-{
-	return index >= 0 && index < GetCount() &&
-		index != INVALID_IDX;
 }
 
 inline void ParticleSystem::ParticleApplyLinearImpulse(int32 index,

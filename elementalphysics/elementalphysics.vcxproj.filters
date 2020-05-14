@@ -243,6 +243,9 @@
     <ClCompile Include="..\Box2D\Common\Global.cpp">
       <Filter>Quelldateien\Common</Filter>
     </ClCompile>
+    <ClCompile Include="..\Box2D\Particle\b2ParticleContact.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Box2D\Collision\Shapes\b2PolygonShape.h">
@@ -436,6 +439,9 @@
     </ClInclude>
     <ClInclude Include="..\Box2D\Common\Global.h">
       <Filter>Headerdateien\Common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Box2D\Particle\b2ParticleContact.h">
+      <Filter>Headerdateien\Particle</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

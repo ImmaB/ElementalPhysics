@@ -1,4 +1,4 @@
-/*
+﻿/*
 * Copyright (c) 2006-2009 Erin Catto http://www.box2d.org
 * Copyright (c) 2013 Google, Inc.
 *
@@ -61,9 +61,17 @@ typedef double float64;
 #define TILE_SIZE_QUARTER 64
 #define TILE_SIZE_SQRT 16
 
+//#define CONTACT_THREADS 256
+//#define CONTACT_THREADS 4096 // 256 * 16
+//#define CONTACT_THREADS 8192 // 256 * 32
+//#define CONTACT_THREADS 16384 // 256 * 64
+//#define CONTACT_THREADS 32768 // 256 * 128
+
+#define CONTACT_THREADS 65536 // 256 * 256
+#define MAX_ITERATIONS_PER_PARTICLE 8 // results in max 65536 * 8 = 524.288 Particles
+
 #define MAX_CONTACTS_PER_PARTICLE 8
 #define MAX_BODY_CONTACTS_PER_PARTICLE 8
-
 #define MAX_PARTICLES_PER_GROUND_TILE 8
 
 template <typename T>

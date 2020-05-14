@@ -828,6 +828,28 @@ inline bool IsBetween(float32 x, float32 a, float32 b, float32 tol) restrict(amp
 		         : x + tol >= b && x - tol <= a;
 }
 
+inline boolean AdjustCapacityToSize(int32& capacity, int32 size, const int32 minCapacity)
+{
+	if (size < minCapacity)
+		size = minCapacity;
+	if (size > capacity)		// grow if needed
+	{
+		capacity *= 2;
+		if (capacity == 0) capacity = minCapacity;
+		while (size > capacity)
+			capacity *= 2;
+		return true;
+	}
+	if (size < capacity / 4)	// shrink if quarter
+	{
+		capacity /= 2;
+		while (size < capacity / 4)
+			capacity /= 2;
+		return true;
+	}
+	return false;
+}
+
 struct Future
 {
 private:

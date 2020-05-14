@@ -945,7 +945,7 @@ void b2World::QueryAABB(b2QueryCallback* callback, const b2AABB& aabb) const
 		b2FixtureProxy* proxy = m_contactManager.m_broadPhase.GetUserData(proxyId);
 		return callback->ReportFixture(proxy->fixtureIdx);
 	});
-	m_particleSystem->QueryAABB(callback, aabb);
+	//m_particleSystem->QueryAABB(callback, aabb);
 }
 
 void b2World::QueryShapeAABB(b2QueryCallback* callback, const b2Shape& shape,
@@ -992,7 +992,7 @@ void b2World::RayCast(b2RayCastCallback& callback, const Vec2& point1, const Vec
 	input.p1 = point1;
 	input.p2 = point2;
 	m_contactManager.m_broadPhase.RayCast(wrapper, input);
-	m_particleSystem->RayCast(callback, point1, point2);
+	//m_particleSystem->RayCast(callback, point1, point2);
 }
 
 void b2World::DrawShape(Fixture& fixture, const b2Transform& xf, const b2Color& color)
